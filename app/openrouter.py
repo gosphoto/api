@@ -13,12 +13,10 @@ from . import config
 log = logging.getLogger("gosphoto-gate")
 
 EDIT_PROMPT = (
-    "Edit this photo into a Russian passport / Gosuslugi ID photograph. "
-    "Background must be solid pure white #FFFFFF only — no gray, no beige, no gradient, no shadows. "
-    "Keep the person's exact face identity, skin texture, hair, and features unchanged: "
-    "no beauty filter, no face morphing, no makeup changes. "
-    "Frontal head-and-shoulders, eyes open looking at camera, mouth closed, neutral expression. "
-    "Even soft lighting on the face. Document photo style."
+    "Replace ONLY the background with solid pure white #FFFFFF. "
+    "Do not change the person's face, skin, hair, eyes, mouth, clothes, or identity. "
+    "No beauty filter, no morphing, no retouching, no makeup. "
+    "Keep original sharpness. Studio ID / Russian passport style, frontal head-and-shoulders."
 )
 
 

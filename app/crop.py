@@ -70,8 +70,8 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     eye_y = ((le.y + re.y) / 2) * h
     chin_y = chin.y * h
     forehead_y = forehead.y * h
-    # crown ≈ above forehead
-    crown_y = forehead_y - 0.35 * (chin_y - forehead_y)
+    # crown ≈ above forehead (include typical hair volume)
+    crown_y = forehead_y - 0.45 * (chin_y - forehead_y)
     face_h = max(chin_y - crown_y, 1.0)
     mid_x = ((le.x + re.x) / 2) * w
 
@@ -112,18 +112,36 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     if patch.size == 0:
         raise ValueError("empty_crop")
 
-    out = cv2.resize(patch, (out_w, out_h), interpolation=cv2.INTER_AREA)
+    # Upscale with cubic, downscale with area — sharper passport output
+    ph, pw = patch.shape[:2]
+    interp = cv2.INTER_AREA if (pw > out_w or ph > out_h) else cv2.INTER_CUBIC
+    out = cv2.resize(patch, (out_w, out_h), interpolation=interp)
     metrics = {
         "roll_corrected_deg": round(roll_deg, 2),
         "width": out_w,
         "height": out_h,
         "face_ratio_target": config.PASSPORT_FACE_RATIO,
+        "face_ratio_est": round(float(face_h * scale / out_h), 3),
     }
     return out, metrics
 
 
-def encode_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes:
-    ok, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
-    if not ok:
-        raise ValueError("jpeg_encode_failed")
-    return buf.tobytes()
+def encode_jpeg(bgr: np.ndarray, quality: int | None = None) -> bytes:
+    """JPEG with 300 DPI metadata for Gosuslugi / print."""
+    from io import BytesIO
+
+    from PIL import Image
+
+    q = int(quality if quality is not None else config.JPEG_QUALITY)
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    img = Image.fromarray(rgb)
+    buf = BytesIO()
+    img.save(
+        buf,
+        format="JPEG",
+        quality=q,
+        dpi=(300, 300),
+        subsampling=0,
+        optimize=True,
+    )
+    return buf.getvalue()

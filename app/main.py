@@ -5,11 +5,13 @@ import logging
 from contextlib import asynccontextmanager
 
 import cv2
+import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from . import config
+from .bg import warmup_rembg, white_background_local
 from .compliance import measure_compliance
 from .crop import crop_passport, encode_jpeg
 from .gate import _decode_image, warmup, validate_image
@@ -44,15 +46,21 @@ def _guess_mime(filename: str | None, content_type: str | None) -> str:
 async def lifespan(_app: FastAPI):
     log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
     warmup()
+    try:
+        warmup_rembg()
+        log.info("Rembg ready model=%s", config.REMBG_MODEL)
+    except Exception as e:
+        log.warning("Rembg warmup failed (will retry on request): %s", e)
     log.info(
-        "Gate ready; OpenRouter model=%s key=%s",
-        config.OPENROUTER_IMAGE_MODEL,
+        "Gate ready; edit_backend=%s openrouter=%s model=%s",
+        config.EDIT_BACKEND,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
+        config.OPENROUTER_IMAGE_MODEL,
     )
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.2.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.3.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -67,8 +75,10 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
+        "edit_backend": config.EDIT_BACKEND,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
+        "rembg_model": config.REMBG_MODEL,
     }
 
 
@@ -107,9 +117,41 @@ def validate_info():
     }
 
 
+def _edit_to_white_bg(data: bytes, mime: str) -> tuple[np.ndarray, str]:
+    """Return BGR with white bg + backend name used."""
+    backend = config.EDIT_BACKEND
+    local_err: Exception | None = None
+
+    use_local = backend in ("local", "auto", "")
+    use_or = backend in ("openrouter", "auto") and bool(config.OPENROUTER_API_KEY)
+
+    if use_local:
+        try:
+            src = _decode_image(data)
+            if src is None:
+                raise RuntimeError("decode_error")
+            return white_background_local(src), "rembg"
+        except Exception as e:
+            local_err = e
+            log.warning("Local rembg failed: %s", e)
+            if backend == "local":
+                raise
+
+    if use_or:
+        edited = edit_selfie(data, mime=mime)
+        bgr = _decode_image(edited)
+        if bgr is None:
+            raise RuntimeError("Edited image decode failed")
+        return bgr, config.OPENROUTER_IMAGE_MODEL
+
+    if local_err:
+        raise local_err
+    raise RuntimeError(f"No edit backend available (EDIT_BACKEND={backend})")
+
+
 @app.post("/api/process")
 async def process(file: UploadFile = File(...), format: str = "json"):
-    """Gate → OpenRouter edit (white bg) → local passport crop."""
+    """Gate → white bg (local rembg / optional OpenRouter) → passport crop."""
     ct = (file.content_type or "").lower()
     if ct and ct not in ALLOWED_CT and not ct.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image uploads are allowed")
@@ -135,24 +177,17 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             }
         )
 
-    if not config.OPENROUTER_API_KEY:
-        raise HTTPException(
-            status_code=503,
-            detail="OPENROUTER_API_KEY not configured on server",
-        )
-
     mime = _guess_mime(file.filename, file.content_type)
     try:
-        edited = edit_selfie(data, mime=mime)
+        bgr, model_used = _edit_to_white_bg(data, mime=mime)
     except OpenRouterError as e:
         raise HTTPException(
             status_code=502,
             detail={"message": str(e), "provider_status": e.status, "body": e.body},
         ) from e
-
-    bgr = _decode_image(edited)
-    if bgr is None:
-        raise HTTPException(status_code=502, detail="Edited image decode failed")
+    except Exception as e:
+        log.exception("Background edit failed")
+        raise HTTPException(status_code=502, detail=f"Background edit failed: {e}") from e
 
     bgr = force_white_background(bgr)
 
@@ -178,7 +213,6 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         )
         crop_metrics = {"fallback": True, "error": str(e)}
 
-    # Whitening again after crop (edges may reintroduce gray)
     cropped = force_white_background(cropped, tol=55)
     compliance = measure_compliance(cropped)
 
@@ -195,7 +229,8 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "model": config.OPENROUTER_IMAGE_MODEL,
+            "model": model_used,
+            "edit_backend": config.EDIT_BACKEND,
             "gate": gate.metrics,
             "crop": crop_metrics,
             "compliance": compliance,
@@ -209,12 +244,14 @@ def process_info():
         "method": "POST multipart field 'file'",
         "pipeline": [
             "gate",
-            "openrouter_edit",
+            "white_bg (rembg local / optional openrouter)",
             "force_white_bg",
             "local_passport_crop",
             "compliance",
         ],
-        "model": config.OPENROUTER_IMAGE_MODEL,
+        "edit_backend": config.EDIT_BACKEND,
+        "rembg_model": config.REMBG_MODEL,
+        "openrouter_model": config.OPENROUTER_IMAGE_MODEL,
         "openrouter_configured": bool(config.OPENROUTER_API_KEY),
         "output": "json (image_base64) or ?format=jpeg",
     }

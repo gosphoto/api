@@ -16,9 +16,14 @@ RUN mkdir -p /app/models && \
       "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" \
       -o /app/models/face_landmarker.task
 
+# Prefetch rembg ONNX weights into image (offline at runtime)
+RUN python -c "from rembg import new_session; new_session('u2net_human_seg')"
+
 COPY app ./app
 
 ENV GATE_MODEL_PATH=/app/models/face_landmarker.task \
+    EDIT_BACKEND=local \
+    REMBG_MODEL=u2net_human_seg \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8091

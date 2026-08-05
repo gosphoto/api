@@ -36,7 +36,7 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
         }
 
     lm = result.face_landmarks[0]
-    crown = lm[_FOREHEAD].y * h - 0.35 * (lm[_CHIN].y - lm[_FOREHEAD].y) * h
+    crown = lm[_FOREHEAD].y * h - 0.45 * (lm[_CHIN].y - lm[_FOREHEAD].y) * h
     chin = lm[_CHIN].y * h
     face_h = max(chin - crown, 1.0)
     face_ratio = face_h / h

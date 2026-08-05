@@ -28,7 +28,13 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
-# OpenRouter edit
+# Background edit: local rembg by default (free, identity-preserving).
+# Set EDIT_BACKEND=openrouter|auto to spend OpenRouter credits.
+EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
+REMBG_MODEL = os.getenv("REMBG_MODEL", "u2net_human_seg").strip()
+MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
+
+# OpenRouter edit (optional / fallback)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
 OPENROUTER_BASE_URL = os.getenv(
     "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
@@ -44,4 +50,5 @@ PASSPORT_HEIGHT = int(os.getenv("PASSPORT_HEIGHT", "531"))
 # RF: face ~70–80% of height; top field ~5 mm of 45 mm ≈ 0.11
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.11"))
+JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "95"))
 
