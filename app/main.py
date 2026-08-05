@@ -4,19 +4,16 @@ import base64
 import logging
 from contextlib import asynccontextmanager
 
-import cv2
-import numpy as np
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from . import config
-from .bg import warmup_cutout, white_background_local
-from .compliance import measure_compliance
-from .crop import crop_passport, encode_jpeg
+from .bg import warmup_cutout
+from .crop import encode_jpeg, run_crop_stage
+from .edit import run_edit_stage
 from .gate import _decode_image, warmup, validate_image
-from .openrouter import OpenRouterError, edit_selfie
-from .whitening import force_white_background
+from .openrouter import OpenRouterError
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
@@ -42,6 +39,10 @@ def _guess_mime(filename: str | None, content_type: str | None) -> str:
     return "image/jpeg"
 
 
+def _b64_jpeg(bgr) -> str:
+    return base64.b64encode(encode_jpeg(bgr)).decode("ascii")
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
@@ -52,16 +53,15 @@ async def lifespan(_app: FastAPI):
     except Exception as e:
         log.warning("Cutout warmup failed (will retry on request): %s", e)
     log.info(
-        "Gate ready; edit_backend=%s cutout=%s openrouter=%s model=%s",
+        "Gate ready; edit_backend=%s cutout=%s openrouter=%s",
         config.EDIT_BACKEND,
         config.EDIT_CUTOUT,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
-        config.OPENROUTER_IMAGE_MODEL,
     )
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.3.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.4.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -76,6 +76,8 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
+        "version": "0.4.0",
+        "pipeline": ["gate", "edit", "crop"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
@@ -99,14 +101,15 @@ async def validate(file: UploadFile = File(...)):
         )
 
     result = validate_image(data)
-    body = {
-        "ok": result.ok,
-        "reason": result.reason,
-        "message": result.message,
-        "face_count": result.face_count,
-        "metrics": result.metrics,
-    }
-    return JSONResponse(content=body, status_code=200)
+    return JSONResponse(
+        {
+            "ok": result.ok,
+            "reason": result.reason,
+            "message": result.message,
+            "face_count": result.face_count,
+            "metrics": result.metrics,
+        }
+    )
 
 
 @app.get("/api/validate")
@@ -118,45 +121,10 @@ def validate_info():
     }
 
 
-def _edit_to_white_bg(data: bytes, mime: str) -> tuple[np.ndarray, str]:
-    """Return BGR with white bg + backend name used."""
-    backend = config.EDIT_BACKEND
-    local_err: Exception | None = None
-
-    use_local = backend in ("local", "auto", "")
-    use_or = backend in ("openrouter", "auto") and bool(config.OPENROUTER_API_KEY)
-
-    if use_local:
-        try:
-            src = _decode_image(data)
-            if src is None:
-                raise RuntimeError("decode_error")
-            return white_background_local(src), config.EDIT_CUTOUT or "mediapipe"
-        except Exception as e:
-            local_err = e
-            log.warning("Local cutout failed: %s", e)
-            if backend == "local":
-                raise
-
-    if use_or:
-        edited = edit_selfie(data, mime=mime)
-        bgr = _decode_image(edited)
-        if bgr is None:
-            raise RuntimeError("Edited image decode failed")
-        return bgr, config.OPENROUTER_IMAGE_MODEL
-
-    if local_err:
-        raise local_err
-    raise RuntimeError(f"No edit backend available (EDIT_BACKEND={backend})")
-
-
-@app.post("/api/process")
-async def process(file: UploadFile = File(...), format: str = "json"):
-    """Gate → white bg (local MediaPipe / optional OpenRouter) → passport crop."""
+async def _read_upload(file: UploadFile) -> bytes:
     ct = (file.content_type or "").lower()
     if ct and ct not in ALLOWED_CT and not ct.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image uploads are allowed")
-
     data = await file.read()
     if not data:
         raise HTTPException(status_code=400, detail="Empty file")
@@ -165,6 +133,93 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             status_code=413,
             detail=f"File too large (max {config.MAX_UPLOAD_BYTES} bytes)",
         )
+    return data
+
+
+@app.post("/api/edit")
+async def edit_only(file: UploadFile = File(...), format: str = "json"):
+    """Step 1: white background + normalize. No passport crop."""
+    data = await _read_upload(file)
+    gate = validate_image(data)
+    if not gate.ok:
+        return JSONResponse(
+            {
+                "ok": False,
+                "stage": "gate",
+                "reason": gate.reason,
+                "message": gate.message,
+                "metrics": gate.metrics,
+            }
+        )
+
+    mime = _guess_mime(file.filename, file.content_type)
+    try:
+        edited, edit_meta = run_edit_stage(data, mime=mime)
+    except OpenRouterError as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": str(e), "provider_status": e.status, "body": e.body},
+        ) from e
+    except Exception as e:
+        log.exception("Edit stage failed")
+        raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
+
+    jpeg = encode_jpeg(edited)
+    if format == "jpeg":
+        return Response(content=jpeg, media_type="image/jpeg")
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "stage": "edit",
+            "message": "Фон и свет подготовлены — можно кропать",
+            "mime": "image/jpeg",
+            "width": int(edited.shape[1]),
+            "height": int(edited.shape[0]),
+            "image_base64": base64.b64encode(jpeg).decode("ascii"),
+            "edit": edit_meta,
+            "gate": gate.metrics,
+        }
+    )
+
+
+@app.post("/api/crop")
+async def crop_only(file: UploadFile = File(...), format: str = "json"):
+    """Step 2: passport 35×45 crop from an already-edited (white bg) photo."""
+    data = await _read_upload(file)
+    bgr = _decode_image(data)
+    if bgr is None:
+        raise HTTPException(status_code=400, detail="Cannot decode image")
+
+    try:
+        cropped, crop_metrics, compliance = run_crop_stage(bgr)
+    except Exception as e:
+        log.exception("Crop stage failed")
+        raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
+
+    jpeg = encode_jpeg(cropped)
+    if format == "jpeg":
+        return Response(content=jpeg, media_type="image/jpeg")
+
+    return JSONResponse(
+        {
+            "ok": True,
+            "stage": "crop",
+            "message": "Кадр 35×45 готов",
+            "mime": "image/jpeg",
+            "width": config.PASSPORT_WIDTH,
+            "height": config.PASSPORT_HEIGHT,
+            "image_base64": base64.b64encode(jpeg).decode("ascii"),
+            "crop": crop_metrics,
+            "compliance": compliance,
+        }
+    )
+
+
+@app.post("/api/process")
+async def process(file: UploadFile = File(...), format: str = "json"):
+    """Full pipeline: gate → edit → crop (two explicit stages)."""
+    data = await _read_upload(file)
 
     gate = validate_image(data)
     if not gate.ok:
@@ -180,42 +235,21 @@ async def process(file: UploadFile = File(...), format: str = "json"):
 
     mime = _guess_mime(file.filename, file.content_type)
     try:
-        bgr, model_used = _edit_to_white_bg(data, mime=mime)
+        edited, edit_meta = run_edit_stage(data, mime=mime)
     except OpenRouterError as e:
         raise HTTPException(
             status_code=502,
             detail={"message": str(e), "provider_status": e.status, "body": e.body},
         ) from e
     except Exception as e:
-        log.exception("Background edit failed")
-        raise HTTPException(status_code=502, detail=f"Background edit failed: {e}") from e
-
-    bgr = force_white_background(bgr)
+        log.exception("Edit stage failed")
+        raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
 
     try:
-        cropped, crop_metrics = crop_passport(bgr)
-    except ValueError as e:
-        log.warning("Crop fallback after edit: %s", e)
-        h, w = bgr.shape[:2]
-        target_ratio = config.PASSPORT_WIDTH / config.PASSPORT_HEIGHT
-        cur = w / h
-        if cur > target_ratio:
-            new_w = int(h * target_ratio)
-            x0 = (w - new_w) // 2
-            patch = bgr[:, x0 : x0 + new_w]
-        else:
-            new_h = int(w / target_ratio)
-            y0 = (h - new_h) // 2
-            patch = bgr[y0 : y0 + new_h, :]
-        cropped = cv2.resize(
-            patch,
-            (config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT),
-            interpolation=cv2.INTER_AREA,
-        )
-        crop_metrics = {"fallback": True, "error": str(e)}
-
-    cropped = force_white_background(cropped, tol=55)
-    compliance = measure_compliance(cropped)
+        cropped, crop_metrics, compliance = run_crop_stage(edited)
+    except Exception as e:
+        log.exception("Crop stage failed")
+        raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
     if format == "jpeg":
@@ -230,9 +264,11 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "model": model_used,
+            "model": edit_meta.get("model"),
             "edit_backend": config.EDIT_BACKEND,
+            "edit_cutout": config.EDIT_CUTOUT,
             "gate": gate.metrics,
+            "edit": edit_meta,
             "crop": crop_metrics,
             "compliance": compliance,
         }
@@ -240,16 +276,20 @@ async def process(file: UploadFile = File(...), format: str = "json"):
 
 
 @app.get("/api/process")
+@app.get("/api/edit")
+@app.get("/api/crop")
 def process_info():
     return {
-        "method": "POST multipart field 'file'",
         "pipeline": [
-            "gate",
-            "white_bg (mediapipe local / optional openrouter)",
-            "force_white_bg",
-            "local_passport_crop",
-            "compliance",
+            "1. gate — face/pose/blur",
+            "2. edit (/api/edit) — white bg + light normalize, NO crop",
+            "3. crop (/api/crop) — roll-correct + 35×45 @300dpi + compliance retries",
         ],
+        "endpoints": {
+            "/api/process": "edit + crop together",
+            "/api/edit": "step 1 only",
+            "/api/crop": "step 2 only (pass edited photo)",
+        },
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter_model": config.OPENROUTER_IMAGE_MODEL,

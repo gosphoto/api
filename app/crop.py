@@ -1,4 +1,8 @@
-"""Local passport crop: MediaPipe geometry → 35×45 @ 300dpi."""
+"""Step 2 — passport crop: MediaPipe geometry → 35×45 @ 300dpi.
+
+Expects an already-edited white-background portrait from /api/edit.
+Retries crown/face-ratio variants until compliance is closest to pass.
+"""
 
 from __future__ import annotations
 
@@ -10,7 +14,9 @@ import mediapipe as mp
 import numpy as np
 
 from . import config
-from .gate import _landmarker  # reuse loaded model
+from .compliance import measure_compliance
+from .gate import _landmarker
+from .whitening import force_white_background
 
 _LEFT_EYE = 33
 _RIGHT_EYE = 263
@@ -18,11 +24,15 @@ _CHIN = 152
 _FOREHEAD = 10
 
 
-def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
-    """Align/roll-correct and crop to passport canvas. Returns BGR + metrics."""
+def _crop_once(
+    bgr: np.ndarray,
+    *,
+    crown_factor: float,
+    face_ratio: float,
+    top_margin: float,
+) -> tuple[np.ndarray, dict[str, Any]]:
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-    result = _landmarker().detect(mp_image)
+    result = _landmarker().detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
     if not result.face_landmarks:
         raise ValueError("no_face_after_edit")
 
@@ -34,7 +44,6 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     chin = lm[_CHIN]
     forehead = lm[_FOREHEAD]
 
-    # Roll from eye line
     dx = (re.x - le.x) * w
     dy = (re.y - le.y) * h
     roll_deg = math.degrees(math.atan2(dy, dx))
@@ -50,44 +59,33 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
         borderValue=(255, 255, 255),
     )
 
-    # Re-detect on rotated for accurate crop box
     rgb2 = cv2.cvtColor(rotated, cv2.COLOR_BGR2RGB)
-    mp2 = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb2)
-    result2 = _landmarker().detect(mp2)
-    if not result2.face_landmarks:
-        rotated_src = rotated
-        lm2 = lm
-        # map approx with same normalized coords (rough fallback)
-    else:
-        rotated_src = rotated
-        lm2 = result2.face_landmarks[0]
+    result2 = _landmarker().detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb2))
+    lm2 = result2.face_landmarks[0] if result2.face_landmarks else lm
+    rotated_src = rotated
 
     le = lm2[_LEFT_EYE]
     re = lm2[_RIGHT_EYE]
     chin = lm2[_CHIN]
     forehead = lm2[_FOREHEAD]
 
-    eye_y = ((le.y + re.y) / 2) * h
     chin_y = chin.y * h
     forehead_y = forehead.y * h
-    # crown ≈ above forehead (include typical hair volume)
-    crown_y = forehead_y - 0.45 * (chin_y - forehead_y)
+    crown_y = forehead_y - crown_factor * (chin_y - forehead_y)
     face_h = max(chin_y - crown_y, 1.0)
     mid_x = ((le.x + re.x) / 2) * w
 
     out_w = config.PASSPORT_WIDTH
     out_h = config.PASSPORT_HEIGHT
-    target_face = config.PASSPORT_FACE_RATIO * out_h
+    target_face = face_ratio * out_h
     scale = target_face / face_h
 
-    # crop window in source coords
     crop_h = out_h / scale
     crop_w = out_w / scale
-    top = crown_y - config.PASSPORT_TOP_MARGIN * crop_h
+    top = crown_y - top_margin * crop_h
     left = mid_x - crop_w / 2
 
-    # pad source with white so crop can go outside
-    pad = int(max(crop_w, crop_h))
+    pad = int(max(crop_w, crop_h)) + 8
     canvas = cv2.copyMakeBorder(
         rotated_src,
         pad,
@@ -99,20 +97,14 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     )
     left_p = left + pad
     top_p = top + pad
-    x0 = int(round(left_p))
-    y0 = int(round(top_p))
-    x1 = int(round(left_p + crop_w))
-    y1 = int(round(top_p + crop_h))
-
-    x0 = max(0, x0)
-    y0 = max(0, y0)
-    x1 = min(canvas.shape[1], x1)
-    y1 = min(canvas.shape[0], y1)
+    x0 = max(0, int(round(left_p)))
+    y0 = max(0, int(round(top_p)))
+    x1 = min(canvas.shape[1], int(round(left_p + crop_w)))
+    y1 = min(canvas.shape[0], int(round(top_p + crop_h)))
     patch = canvas[y0:y1, x0:x1]
     if patch.size == 0:
         raise ValueError("empty_crop")
 
-    # Upscale with cubic, downscale with area — sharper passport output
     ph, pw = patch.shape[:2]
     interp = cv2.INTER_AREA if (pw > out_w or ph > out_h) else cv2.INTER_CUBIC
     out = cv2.resize(patch, (out_w, out_h), interpolation=interp)
@@ -120,10 +112,101 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
         "roll_corrected_deg": round(roll_deg, 2),
         "width": out_w,
         "height": out_h,
-        "face_ratio_target": config.PASSPORT_FACE_RATIO,
+        "face_ratio_target": face_ratio,
+        "crown_factor": crown_factor,
+        "top_margin_target": top_margin,
         "face_ratio_est": round(float(face_h * scale / out_h), 3),
     }
     return out, metrics
+
+
+def _score_compliance(comp: dict[str, Any]) -> float:
+    """Higher is better. Prefer full pass, else proximity to targets."""
+    if comp.get("pass"):
+        return 1000.0
+    checks = comp.get("checks") or {}
+    score = 0.0
+    for k in ("size_ok", "face_ratio_ok", "top_margin_ok", "bg_white_ok", "single_face_ok"):
+        if checks.get(k):
+            score += 100.0
+    fr = float(comp.get("face_ratio") or 0)
+    tm = float(comp.get("top_margin") or 0)
+    score -= abs(fr - 0.75) * 200
+    score -= abs(tm - 0.11) * 300
+    return score
+
+
+def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
+    """Backward-compatible single-shot crop (default geometry)."""
+    return _crop_once(
+        bgr,
+        crown_factor=0.45,
+        face_ratio=config.PASSPORT_FACE_RATIO,
+        top_margin=config.PASSPORT_TOP_MARGIN,
+    )
+
+
+def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
+    """
+    Stage 2: edited portrait → 413×531 passport JPEG-ready BGR + metrics + compliance.
+
+    Tries several crown/face geometries and keeps the best compliance result.
+    """
+    attempts: list[tuple[float, float, float]] = [
+        (0.45, config.PASSPORT_FACE_RATIO, config.PASSPORT_TOP_MARGIN),
+        (0.55, 0.74, 0.11),
+        (0.35, 0.76, 0.12),
+        (0.65, 0.72, 0.10),
+        (0.50, 0.78, 0.09),
+        (0.40, 0.73, 0.13),
+    ]
+
+    best: tuple[np.ndarray, dict[str, Any], dict[str, Any], float] | None = None
+    errors: list[str] = []
+
+    for crown_f, face_r, top_m in attempts:
+        try:
+            cropped, metrics = _crop_once(
+                bgr, crown_factor=crown_f, face_ratio=face_r, top_margin=top_m
+            )
+            cropped = force_white_background(cropped, tol=55)
+            comp = measure_compliance(cropped)
+            score = _score_compliance(comp)
+            metrics = {**metrics, "attempt_score": round(score, 2)}
+            if best is None or score > best[3]:
+                best = (cropped, metrics, comp, score)
+            if comp.get("pass"):
+                break
+        except Exception as e:
+            errors.append(f"{crown_f}/{face_r}: {e}")
+
+    if best is None:
+        # Last-resort center crop to 35×45
+        h, w = bgr.shape[:2]
+        target_ratio = config.PASSPORT_WIDTH / config.PASSPORT_HEIGHT
+        cur = w / max(h, 1)
+        if cur > target_ratio:
+            new_w = int(h * target_ratio)
+            x0 = (w - new_w) // 2
+            patch = bgr[:, x0 : x0 + new_w]
+        else:
+            new_h = int(w / target_ratio)
+            y0 = (h - new_h) // 2
+            patch = bgr[y0 : y0 + new_h, :]
+        cropped = cv2.resize(
+            patch,
+            (config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT),
+            interpolation=cv2.INTER_AREA,
+        )
+        cropped = force_white_background(cropped, tol=55)
+        comp = measure_compliance(cropped)
+        metrics = {"fallback": True, "errors": errors[:4]}
+        return cropped, metrics, comp
+
+    cropped, metrics, comp, _ = best
+    if errors:
+        metrics["skipped_errors"] = errors[:3]
+    return cropped, metrics, comp
 
 
 def encode_jpeg(bgr: np.ndarray, quality: int | None = None) -> bytes:

@@ -66,9 +66,23 @@ def warmup() -> None:
 
 
 def _decode_image(data: bytes) -> np.ndarray | None:
-    arr = np.frombuffer(data, dtype=np.uint8)
-    bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
-    return bgr
+    """Decode image bytes with EXIF orientation applied (phone selfies)."""
+    from io import BytesIO
+
+    from PIL import Image, ImageOps
+
+    try:
+        pil = Image.open(BytesIO(data))
+        pil = ImageOps.exif_transpose(pil)
+        if pil.mode not in ("RGB", "L"):
+            pil = pil.convert("RGB")
+        elif pil.mode == "L":
+            pil = pil.convert("RGB")
+        rgb = np.array(pil)
+        return cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    except Exception:
+        arr = np.frombuffer(data, dtype=np.uint8)
+        return cv2.imdecode(arr, cv2.IMREAD_COLOR)
 
 
 def _resize_max_side(bgr: np.ndarray, max_side: int) -> np.ndarray:
