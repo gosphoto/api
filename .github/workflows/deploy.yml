@@ -94,6 +94,8 @@ jobs:
           {
             echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
             echo "OPENROUTER_IMAGE_MODEL=${MODEL}"
+            echo "EDIT_BACKEND=local"
+            echo "REMBG_MODEL=u2net_human_seg"
           } | ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "umask 077; cat > ${API_PATH}/.env"
