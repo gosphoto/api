@@ -89,14 +89,17 @@ jobs:
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_IMAGE_MODEL: ${{ secrets.OPENROUTER_IMAGE_MODEL }}
         run: |
+          set -euo pipefail
           MODEL="${OPENROUTER_IMAGE_MODEL:-google/gemini-2.5-flash-image}"
+          {
+            echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
+            echo "OPENROUTER_IMAGE_MODEL=${MODEL}"
+          } | ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "umask 077; cat > ${API_PATH}/.env"
           ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "umask 077; cat > ${API_PATH}/.env <<EOF
-OPENROUTER_API_KEY=${OPENROUTER_API_KEY}
-OPENROUTER_IMAGE_MODEL=${MODEL}
-EOF
-cd ${API_PATH} && docker compose up -d --build"
+            "cd ${API_PATH} && docker compose up -d --build"
 
       - name: Smoke health
         env:
