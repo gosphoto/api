@@ -14,7 +14,7 @@ MAX_IMAGE_SIDE = int(os.getenv("GATE_MAX_IMAGE_SIDE", "1600"))
 # Reject if |angle| exceeds these (degrees)
 MAX_YAW_DEG = float(os.getenv("GATE_MAX_YAW_DEG", "25"))
 MAX_PITCH_DEG = float(os.getenv("GATE_MAX_PITCH_DEG", "25"))
-MAX_ROLL_DEG = float(os.getenv("GATE_MAX_ROLL_DEG", "20"))
+MAX_ROLL_DEG = float(os.getenv("GATE_MAX_ROLL_DEG", "28"))
 
 # Laplacian variance below this → blur
 MIN_BLUR_VARIANCE = float(os.getenv("GATE_MIN_BLUR_VARIANCE", "50"))
@@ -41,5 +41,7 @@ OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "120"))
 # Passport crop output (35×45 mm @ 300 dpi)
 PASSPORT_WIDTH = int(os.getenv("PASSPORT_WIDTH", "413"))
 PASSPORT_HEIGHT = int(os.getenv("PASSPORT_HEIGHT", "531"))
+# RF: face ~70–80% of height; top field ~5 mm of 45 mm ≈ 0.11
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
-PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.08"))
+PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.11"))
+

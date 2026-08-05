@@ -10,9 +10,11 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from . import config
+from .compliance import measure_compliance
 from .crop import crop_passport, encode_jpeg
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError, edit_selfie
+from .whitening import force_white_background
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
@@ -150,13 +152,13 @@ async def process(file: UploadFile = File(...), format: str = "json"):
 
     bgr = _decode_image(edited)
     if bgr is None:
-        # try treat as already decoded path
         raise HTTPException(status_code=502, detail="Edited image decode failed")
+
+    bgr = force_white_background(bgr)
 
     try:
         cropped, crop_metrics = crop_passport(bgr)
     except ValueError as e:
-        # fallback: center resize to passport if face lost after edit
         log.warning("Crop fallback after edit: %s", e)
         h, w = bgr.shape[:2]
         target_ratio = config.PASSPORT_WIDTH / config.PASSPORT_HEIGHT
@@ -176,6 +178,10 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         )
         crop_metrics = {"fallback": True, "error": str(e)}
 
+    # Whitening again after crop (edges may reintroduce gray)
+    cropped = force_white_background(cropped, tol=55)
+    compliance = measure_compliance(cropped)
+
     jpeg = encode_jpeg(cropped)
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
@@ -192,6 +198,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             "model": config.OPENROUTER_IMAGE_MODEL,
             "gate": gate.metrics,
             "crop": crop_metrics,
+            "compliance": compliance,
         }
     )
 
@@ -200,7 +207,13 @@ async def process(file: UploadFile = File(...), format: str = "json"):
 def process_info():
     return {
         "method": "POST multipart field 'file'",
-        "pipeline": ["gate", "openrouter_edit", "local_passport_crop"],
+        "pipeline": [
+            "gate",
+            "openrouter_edit",
+            "force_white_bg",
+            "local_passport_crop",
+            "compliance",
+        ],
         "model": config.OPENROUTER_IMAGE_MODEL,
         "openrouter_configured": bool(config.OPENROUTER_API_KEY),
         "output": "json (image_base64) or ?format=jpeg",

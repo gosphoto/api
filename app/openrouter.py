@@ -13,12 +13,12 @@ from . import config
 log = logging.getLogger("gosphoto-gate")
 
 EDIT_PROMPT = (
-    "Create a Russian biometric passport ID photo from this selfie. "
-    "Plain pure white seamless background, even soft lighting, no shadows on the wall. "
-    "Keep the person's exact face identity, skin, hair, and facial features unchanged — "
-    "no beauty retouch, no face morphing, no makeup. "
-    "Frontal head-and-shoulders portrait, neutral expression, mouth closed, eyes open. "
-    "Document photo style only."
+    "Edit this photo into a Russian passport / Gosuslugi ID photograph. "
+    "Background must be solid pure white #FFFFFF only — no gray, no beige, no gradient, no shadows. "
+    "Keep the person's exact face identity, skin texture, hair, and features unchanged: "
+    "no beauty filter, no face morphing, no makeup changes. "
+    "Frontal head-and-shoulders, eyes open looking at camera, mouth closed, neutral expression. "
+    "Even soft lighting on the face. Document photo style."
 )
 
 
