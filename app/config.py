@@ -28,12 +28,23 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
-# Background edit: local rembg by default (free, identity-preserving).
+# Background edit: local MediaPipe cutout by default (free, VPS-safe).
 # Set EDIT_BACKEND=openrouter|auto to spend OpenRouter credits.
+# EDIT_CUTOUT=mediapipe|rembg — rembg is heavier; only on bigger hosts.
 EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
-# u2netp ≈4MB — fits small VPS; u2net_human_seg is sharper but heavy
+EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "mediapipe").strip().lower()
 REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
+SELFIE_SEGMENTER_PATH = Path(
+    os.getenv(
+        "SELFIE_SEGMENTER_PATH",
+        str(
+            Path(__file__).resolve().parent.parent
+            / "models"
+            / "selfie_segmenter.tflite"
+        ),
+    )
+)
 
 # OpenRouter edit (optional / fallback)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
@@ -52,4 +63,3 @@ PASSPORT_HEIGHT = int(os.getenv("PASSPORT_HEIGHT", "531"))
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.11"))
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "95"))
-

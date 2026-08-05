@@ -10,6 +10,7 @@ services:
       - .env
     environment:
       GATE_MODEL_PATH: /app/models/face_landmarker.task
+      SELFIE_SEGMENTER_PATH: /app/models/selfie_segmenter.tflite
       GATE_CORS_ORIGINS: "https://gosphoto.ru,https://www.gosphoto.ru"
       GATE_MAX_UPLOAD_BYTES: "20971520"
       GATE_MIN_BLUR_VARIANCE: "50"
@@ -17,13 +18,13 @@ services:
       GATE_MAX_PITCH_DEG: "25"
       GATE_MAX_ROLL_DEG: "28"
       EDIT_BACKEND: ${EDIT_BACKEND:-local}
-      REMBG_MODEL: ${REMBG_MODEL:-u2netp}
+      EDIT_CUTOUT: ${EDIT_CUTOUT:-mediapipe}
       OPENROUTER_IMAGE_MODEL: ${OPENROUTER_IMAGE_MODEL:-google/gemini-2.5-flash-image}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-    mem_limit: 1024m
+    mem_limit: 768m
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8091/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 60s
+      start_period: 45s

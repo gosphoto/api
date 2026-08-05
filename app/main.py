@@ -11,7 +11,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from . import config
-from .bg import warmup_rembg, white_background_local
+from .bg import warmup_cutout, white_background_local
 from .compliance import measure_compliance
 from .crop import crop_passport, encode_jpeg
 from .gate import _decode_image, warmup, validate_image
@@ -47,13 +47,14 @@ async def lifespan(_app: FastAPI):
     log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
     warmup()
     try:
-        warmup_rembg()
-        log.info("Rembg ready model=%s", config.REMBG_MODEL)
+        warmup_cutout()
+        log.info("Cutout ready backend=%s", config.EDIT_CUTOUT)
     except Exception as e:
-        log.warning("Rembg warmup failed (will retry on request): %s", e)
+        log.warning("Cutout warmup failed (will retry on request): %s", e)
     log.info(
-        "Gate ready; edit_backend=%s openrouter=%s model=%s",
+        "Gate ready; edit_backend=%s cutout=%s openrouter=%s model=%s",
         config.EDIT_BACKEND,
+        config.EDIT_CUTOUT,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
         config.OPENROUTER_IMAGE_MODEL,
     )
@@ -76,9 +77,9 @@ def health():
         "status": "ok",
         "service": "gosphoto-gate",
         "edit_backend": config.EDIT_BACKEND,
+        "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "rembg_model": config.REMBG_MODEL,
     }
 
 
@@ -130,10 +131,10 @@ def _edit_to_white_bg(data: bytes, mime: str) -> tuple[np.ndarray, str]:
             src = _decode_image(data)
             if src is None:
                 raise RuntimeError("decode_error")
-            return white_background_local(src), "rembg"
+            return white_background_local(src), config.EDIT_CUTOUT or "mediapipe"
         except Exception as e:
             local_err = e
-            log.warning("Local rembg failed: %s", e)
+            log.warning("Local cutout failed: %s", e)
             if backend == "local":
                 raise
 
@@ -151,7 +152,7 @@ def _edit_to_white_bg(data: bytes, mime: str) -> tuple[np.ndarray, str]:
 
 @app.post("/api/process")
 async def process(file: UploadFile = File(...), format: str = "json"):
-    """Gate → white bg (local rembg / optional OpenRouter) → passport crop."""
+    """Gate → white bg (local MediaPipe / optional OpenRouter) → passport crop."""
     ct = (file.content_type or "").lower()
     if ct and ct not in ALLOWED_CT and not ct.startswith("image/"):
         raise HTTPException(status_code=400, detail="Only image uploads are allowed")
@@ -244,13 +245,13 @@ def process_info():
         "method": "POST multipart field 'file'",
         "pipeline": [
             "gate",
-            "white_bg (rembg local / optional openrouter)",
+            "white_bg (mediapipe local / optional openrouter)",
             "force_white_bg",
             "local_passport_crop",
             "compliance",
         ],
         "edit_backend": config.EDIT_BACKEND,
-        "rembg_model": config.REMBG_MODEL,
+        "edit_cutout": config.EDIT_CUTOUT,
         "openrouter_model": config.OPENROUTER_IMAGE_MODEL,
         "openrouter_configured": bool(config.OPENROUTER_API_KEY),
         "output": "json (image_base64) or ?format=jpeg",
