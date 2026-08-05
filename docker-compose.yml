@@ -17,13 +17,13 @@ services:
       GATE_MAX_PITCH_DEG: "25"
       GATE_MAX_ROLL_DEG: "28"
       EDIT_BACKEND: ${EDIT_BACKEND:-local}
-      REMBG_MODEL: ${REMBG_MODEL:-u2net_human_seg}
+      REMBG_MODEL: ${REMBG_MODEL:-u2netp}
       OPENROUTER_IMAGE_MODEL: ${OPENROUTER_IMAGE_MODEL:-google/gemini-2.5-flash-image}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
-    mem_limit: 1536m
+    mem_limit: 1024m
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8091/health"]
       interval: 30s
       timeout: 5s
       retries: 3
-      start_period: 90s
+      start_period: 60s

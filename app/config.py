@@ -31,7 +31,8 @@ CORS_ORIGINS = [
 # Background edit: local rembg by default (free, identity-preserving).
 # Set EDIT_BACKEND=openrouter|auto to spend OpenRouter credits.
 EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
-REMBG_MODEL = os.getenv("REMBG_MODEL", "u2net_human_seg").strip()
+# u2netp ≈4MB — fits small VPS; u2net_human_seg is sharper but heavy
+REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
 
 # OpenRouter edit (optional / fallback)
