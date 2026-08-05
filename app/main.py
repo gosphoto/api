@@ -39,10 +39,6 @@ def _guess_mime(filename: str | None, content_type: str | None) -> str:
     return "image/jpeg"
 
 
-def _b64_jpeg(bgr) -> str:
-    return base64.b64encode(encode_jpeg(bgr)).decode("ascii")
-
-
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
