@@ -1,0 +1,93 @@
+name: Batch passport samples
+
+on:
+  workflow_dispatch:
+
+jobs:
+  batch:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install deps
+        run: |
+          pip install -r requirements.txt
+          mkdir -p models
+          curl -fsSL \
+            "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" \
+            -o models/face_landmarker.task
+          python -c "from rembg import new_session; new_session('u2netp')"
+
+      - name: Download sample selfies
+        run: |
+          mkdir -p samples/in samples/out samples/rejected
+          cd samples/in
+          for n in 3 8 17 25 41 52 63 74 86 97 11 19 28 36 48; do
+            curl -fsSL --max-time 20 -o "w$n.jpg" "https://randomuser.me/api/portraits/women/$n.jpg" || true
+            curl -fsSL --max-time 20 -o "m$n.jpg" "https://randomuser.me/api/portraits/men/$n.jpg" || true
+          done
+          curl -fsSL --max-time 30 -o lena.jpg \
+            "https://raw.githubusercontent.com/opencv/opencv/4.x/samples/data/lena.jpg" || true
+          ls -la
+
+      - name: Process
+        env:
+          GATE_MODEL_PATH: ${{ github.workspace }}/models/face_landmarker.task
+          EDIT_BACKEND: local
+          REMBG_MODEL: u2netp
+          PYTHONPATH: ${{ github.workspace }}
+        run: |
+          python <<'PY'
+          import json, time
+          from pathlib import Path
+          import cv2
+          import numpy as np
+          from app.gate import validate_image, warmup
+          from app.bg import white_background_local, warmup_rembg
+          from app.whitening import force_white_background
+          from app.crop import crop_passport, encode_jpeg
+          from app.compliance import measure_compliance
+
+          warmup(); warmup_rembg()
+          IN, OUT, REJ = Path('samples/in'), Path('samples/out'), Path('samples/rejected')
+          rows=[]
+          for path in sorted(IN.iterdir()):
+              if path.suffix.lower() not in {'.jpg','.jpeg','.png'}: continue
+              data=path.read_bytes()
+              if len(data)<800 or data[:2]!=b'\xff\xd8' or data[-2:]!=b'\xff\xd9':
+                  rows.append({'file':path.name,'ok':False,'reason':'bad_jpeg'}); continue
+              t0=time.time()
+              gate=validate_image(data)
+              if not gate.ok:
+                  (REJ/path.name).write_bytes(data)
+                  rows.append({'file':path.name,'ok':False,'stage':'gate','reason':gate.reason,'dt':round(time.time()-t0,2)})
+                  print(rows[-1]); continue
+              try:
+                  bgr=cv2.imdecode(np.frombuffer(data,np.uint8), cv2.IMREAD_COLOR)
+                  bgr=white_background_local(bgr)
+                  bgr=force_white_background(bgr)
+                  cropped,_=crop_passport(bgr)
+                  cropped=force_white_background(cropped, tol=55)
+                  comp=measure_compliance(cropped)
+                  jpeg=encode_jpeg(cropped)
+                  (OUT/path.name).write_bytes(jpeg)
+                  rows.append({'file':path.name,'ok':True,'pass':comp.get('pass'),'compliance':comp,'dt':round(time.time()-t0,2)})
+                  print(path.name, 'pass', comp.get('pass'), comp.get('face_ratio'), comp.get('top_margin'))
+              except Exception as e:
+                  rows.append({'file':path.name,'ok':False,'reason':str(e)})
+                  print(rows[-1])
+          Path('samples/report.json').write_text(json.dumps(rows,ensure_ascii=False,indent=2))
+          print('pass', sum(1 for r in rows if r.get('pass')), '/', len(rows))
+          PY
+
+      - name: Upload results
+        uses: actions/upload-artifact@v4
+        with:
+          name: passport-results
+          path: samples/
