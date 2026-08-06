@@ -1,7 +1,7 @@
 """Local person cutout → solid white background (no paid API).
 
-Prefer ONNX u2netp (sharp edges, VPS-safe). Fall back to MediaPipe.
-Optional: rembg if EDIT_CUTOUT=rembg.
+Default: ONNX silueta + morph-close silhouette (lab winner 2026-08-06).
+Fallbacks: u2netp → MediaPipe. Optional rembg.
 """
 
 from __future__ import annotations
@@ -20,7 +20,9 @@ from . import config
 
 log = logging.getLogger("gosphoto-gate")
 
-_U2NETP_SIZE = 320
+_ONNX_SIZE = 320
+
+last_cutout_backend: str = "silueta"
 
 
 def prepare_for_cutout(bgr: np.ndarray) -> np.ndarray:
@@ -52,14 +54,14 @@ def _segmenter() -> vision.ImageSegmenter:
     return vision.ImageSegmenter.create_from_options(options)
 
 
-@lru_cache(maxsize=1)
-def _u2netp_session():
+@lru_cache(maxsize=4)
+def _onnx_session(path_str: str):
     import onnxruntime as ort
 
-    path = Path(config.U2NETP_MODEL_PATH)
+    path = Path(path_str)
     if not path.is_file():
-        raise FileNotFoundError(f"u2netp model missing: {path}")
-    log.info("Loading u2netp ONNX from %s", path)
+        raise FileNotFoundError(f"ONNX cutout model missing: {path}")
+    log.info("Loading ONNX cutout from %s", path)
     opts = ort.SessionOptions()
     opts.inter_op_num_threads = 1
     opts.intra_op_num_threads = 2
@@ -70,90 +72,114 @@ def _u2netp_session():
     )
 
 
+def _onnx_model_path(name: str) -> Path:
+    name = name.lower()
+    if name == "silueta":
+        return Path(config.SILUETA_MODEL_PATH)
+    if name == "u2net":
+        return Path(config.U2NET_MODEL_PATH)
+    return Path(config.U2NETP_MODEL_PATH)
+
+
 def warmup_cutout() -> None:
-    backend = config.EDIT_CUTOUT
+    backend = (config.EDIT_CUTOUT or "silueta").strip().lower()
     if backend == "rembg":
         _rembg_session()
-    elif backend in ("u2netp", "auto", ""):
+        return
+    if backend == "mediapipe":
+        _segmenter()
+        return
+    for cand in (backend, "silueta", "u2netp"):
         try:
-            _u2netp_session()
+            _onnx_session(str(_onnx_model_path(cand)))
             return
         except Exception as e:
-            log.warning("u2netp warmup failed, will use mediapipe: %s", e)
-            _segmenter()
-    else:
-        _segmenter()
+            log.warning("cutout warmup %s failed: %s", cand, e)
+    _segmenter()
 
 
 def _resize_mask(mask: np.ndarray, size: tuple[int, int]) -> np.ndarray:
-    """size = (w, h)."""
     w, h = size
     if mask.shape[0] == h and mask.shape[1] == w:
         return mask.astype(np.float32)
     return cv2.resize(mask.astype(np.float32), (w, h), interpolation=cv2.INTER_CUBIC)
 
 
-def _largest_component_soft(m8: np.ndarray) -> np.ndarray:
-    """Keep largest blob; preserve soft edges near it."""
-    hard = (m8 > 120).astype(np.uint8)
+def _largest_component(m8: np.ndarray) -> np.ndarray:
+    hard = (m8 > 0).astype(np.uint8)
     num, labels, stats, _ = cv2.connectedComponentsWithStats(hard, connectivity=8)
     if num <= 1:
         return m8
     largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-    keep = (labels == largest).astype(np.uint8)
-    keep = cv2.dilate(keep, np.ones((11, 11), np.uint8), iterations=1)
-    return cv2.bitwise_and(m8, keep * 255)
+    keep = (labels == largest).astype(np.uint8) * 255
+    return keep
 
 
-def _soft_matte_from_confidence(mask: np.ndarray) -> np.ndarray:
-    """Turn a confidence map into a clean soft alpha."""
-    mask = np.clip(mask.astype(np.float32), 0.0, 1.0)
-    mask = np.clip((mask - 0.15) / 0.55, 0.0, 1.0)
-    m8 = (mask * 255.0).astype(np.uint8)
-    m8 = cv2.bilateralFilter(m8, d=7, sigmaColor=40, sigmaSpace=7)
-    m8 = cv2.morphologyEx(m8, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8), iterations=1)
-    m8 = cv2.morphologyEx(m8, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8), iterations=1)
-    m8 = _largest_component_soft(m8)
-    # Inward bias then feather — kills colour fringe without stair-steps
-    m8 = cv2.erode(m8, np.ones((3, 3), np.uint8), iterations=1)
-    m8 = cv2.GaussianBlur(m8, (0, 0), sigmaX=1.2)
-    a = np.clip(m8.astype(np.float32) / 255.0, 0.0, 1.0)
-    return a * a * (3.0 - 2.0 * a)
+def _face_lock_mask(bgr: np.ndarray) -> np.ndarray:
+    """Dilated face/hair/upper-torso lock so cutout never eats the face."""
+    from .face_restore import _face_mask, _landmarks_xy
+
+    lm = _landmarks_xy(bgr)
+    if lm is None:
+        return np.zeros(bgr.shape[:2], np.uint8)
+    m = (_face_mask(bgr.shape[:2], lm) * 255.0).astype(np.uint8)
+    m = cv2.dilate(m, np.ones((31, 31), np.uint8), iterations=2)
+    return m
 
 
-def _composite_on_white(bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    """Alpha over #FFFFFF with mid-tone decontamination (anti colour fringe)."""
-    a = np.clip(mask.astype(np.float32), 0.0, 1.0)
-    a3 = a[:, :, None]
-    fg = bgr.astype(np.float32)
-    white = np.full_like(fg, 255.0)
-    soft = ((a > 0.04) & (a < 0.92)).astype(np.float32)[:, :, None]
-    fg = fg * (1.0 - 0.60 * soft) + white * (0.60 * soft)
-    out = fg * a3 + white * (1.0 - a3)
-    return np.clip(out, 0, 255).astype(np.uint8)
-
-
-def _u2netp_mask(bgr: np.ndarray) -> np.ndarray:
-    sess = _u2netp_session()
+def _onnx_confidence(bgr: np.ndarray, model: str) -> np.ndarray:
+    path = _onnx_model_path(model)
+    sess = _onnx_session(str(path))
     h, w = bgr.shape[:2]
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    im = cv2.resize(rgb, (_U2NETP_SIZE, _U2NETP_SIZE)).astype(np.float32) / 255.0
+    im = cv2.resize(rgb, (_ONNX_SIZE, _ONNX_SIZE)).astype(np.float32) / 255.0
     mean = np.array([0.485, 0.456, 0.406], dtype=np.float32)
     std = np.array([0.229, 0.224, 0.225], dtype=np.float32)
     im = (im - mean) / std
     tensor = im.transpose(2, 0, 1)[None, ...].astype(np.float32)
-    inp_name = sess.get_inputs()[0].name
-    out = sess.run(None, {inp_name: tensor})[0]
+    out = sess.run(None, {sess.get_inputs()[0].name: tensor})[0]
     pred = out[0][0] if out.ndim == 4 else out[0]
     pred = pred.astype(np.float32)
     pred = (pred - pred.min()) / (float(pred.max() - pred.min()) + 1e-8)
     return _resize_mask(pred, (w, h))
 
 
-def _white_bg_u2netp(bgr: np.ndarray) -> np.ndarray:
+def _silhouette_alpha(
+    conf: np.ndarray,
+    face_lock: np.ndarray,
+    *,
+    thr: float = 0.52,
+    close_k: int = 41,
+    erode: int = 2,
+    feather: float = 1.1,
+) -> np.ndarray:
+    """Hard person matte with morph-close to seal neck/shoulder caves."""
+    m = (conf >= thr).astype(np.uint8) * 255
+    if face_lock is not None and face_lock.any():
+        m = cv2.bitwise_or(m, face_lock)
+    m = _largest_component(m)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (close_k, close_k))
+    m = cv2.morphologyEx(m, cv2.MORPH_CLOSE, k)
+    if erode > 0:
+        m = cv2.erode(m, np.ones((3, 3), np.uint8), iterations=erode)
+        if face_lock is not None and face_lock.any():
+            m = cv2.bitwise_or(m, cv2.erode(face_lock, np.ones((7, 7), np.uint8)))
+    a = cv2.GaussianBlur(m, (0, 0), feather).astype(np.float32) / 255.0
+    return np.clip(a, 0.0, 1.0)
+
+
+def _composite_on_white(bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
+    a = np.clip(mask.astype(np.float32), 0.0, 1.0)[:, :, None]
+    out = bgr.astype(np.float32) * a + 255.0 * (1.0 - a)
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def _white_bg_onnx(bgr: np.ndarray, model: str) -> np.ndarray:
     bgr = prepare_for_cutout(bgr)
-    mask = _soft_matte_from_confidence(_u2netp_mask(bgr))
-    return _composite_on_white(bgr, mask)
+    conf = _onnx_confidence(bgr, model)
+    face = _face_lock_mask(bgr)
+    alpha = _silhouette_alpha(conf, face)
+    return _composite_on_white(bgr, alpha)
 
 
 def _white_bg_mediapipe(bgr: np.ndarray) -> np.ndarray:
@@ -163,32 +189,12 @@ def _white_bg_mediapipe(bgr: np.ndarray) -> np.ndarray:
     result = _segmenter().segment(mp_image)
     if not result.confidence_masks:
         raise RuntimeError("selfie_segmenter_no_mask")
-    raw = _resize_mask(result.confidence_masks[0].numpy_view(), (bgr.shape[1], bgr.shape[0]))
-    # Optional GrabCut tighten for MP only (u2netp already sharp)
-    gc = _grabcut_refine(bgr, np.clip((raw - 0.18) / 0.52, 0, 1))
-    blended = np.maximum(gc * 0.75, raw * 0.55)
-    mask = _soft_matte_from_confidence(blended)
-    return _composite_on_white(bgr, mask)
-
-
-def _grabcut_refine(bgr: np.ndarray, mask: np.ndarray) -> np.ndarray:
-    h, w = mask.shape[:2]
-    gc = np.full((h, w), cv2.GC_BGD, np.uint8)
-    gc[mask >= 0.80] = cv2.GC_FGD
-    gc[(mask >= 0.35) & (mask < 0.80)] = cv2.GC_PR_FGD
-    gc[(mask >= 0.12) & (mask < 0.35)] = cv2.GC_PR_BGD
-    if int((gc == cv2.GC_FGD).sum()) < 64 or int((gc == cv2.GC_BGD).sum()) < 64:
-        return mask
-    bgd = np.zeros((1, 65), np.float64)
-    fgd = np.zeros((1, 65), np.float64)
-    try:
-        cv2.grabCut(bgr, gc, None, bgd, fgd, 2, cv2.GC_INIT_WITH_MASK)
-    except cv2.error as e:
-        log.warning("grabCut refine skipped: %s", e)
-        return mask
-    return np.where(
-        (gc == cv2.GC_FGD) | (gc == cv2.GC_PR_FGD), 1.0, 0.0
-    ).astype(np.float32)
+    conf = _resize_mask(
+        result.confidence_masks[0].numpy_view(), (bgr.shape[1], bgr.shape[0])
+    )
+    face = _face_lock_mask(bgr)
+    alpha = _silhouette_alpha(conf, face, thr=0.35, close_k=35, erode=1)
+    return _composite_on_white(bgr, alpha)
 
 
 @lru_cache(maxsize=1)
@@ -220,17 +226,15 @@ def _white_bg_rembg(bgr: np.ndarray) -> np.ndarray:
         alpha = out[:, :, 3]
     else:
         return out
-    a = _soft_matte_from_confidence(alpha.astype(np.float32) / 255.0)
+    face = _face_lock_mask(rgb)
+    a = _silhouette_alpha(alpha.astype(np.float32) / 255.0, face, thr=0.45)
     return _composite_on_white(rgb, a)
 
 
-last_cutout_backend: str = "u2netp"
-
-
 def white_background_local(bgr: np.ndarray) -> np.ndarray:
-    """Replace background with #FFFFFF. Sets last_cutout_backend for metadata."""
+    """Replace background with #FFFFFF. Sets last_cutout_backend."""
     global last_cutout_backend
-    backend = (config.EDIT_CUTOUT or "u2netp").strip().lower()
+    backend = (config.EDIT_CUTOUT or "silueta").strip().lower()
 
     if backend == "rembg":
         try:
@@ -240,18 +244,32 @@ def white_background_local(bgr: np.ndarray) -> np.ndarray:
         except Exception as e:
             log.warning("rembg failed, falling back: %s", e)
 
-    if backend in ("u2netp", "auto", "", "rembg"):
+    if backend == "mediapipe":
+        last_cutout_backend = "mediapipe"
+        return _white_bg_mediapipe(bgr)
+
+    # Preferred ONNX chain
+    chain: list[str]
+    if backend in ("silueta", "u2netp", "u2net"):
+        chain = [backend, "silueta", "u2netp"]
+    else:  # auto / unknown
+        chain = ["silueta", "u2netp"]
+
+    seen: set[str] = set()
+    for cand in chain:
+        if cand in seen:
+            continue
+        seen.add(cand)
         try:
-            out = _white_bg_u2netp(bgr)
-            last_cutout_backend = "u2netp"
+            out = _white_bg_onnx(bgr, cand)
+            last_cutout_backend = cand
             return out
         except Exception as e:
-            log.warning("u2netp failed, falling back to mediapipe: %s", e)
+            log.warning("%s cutout failed: %s", cand, e)
 
     last_cutout_backend = "mediapipe"
     return _white_bg_mediapipe(bgr)
 
 
-# Back-compat aliases used by main.py
 def warmup_rembg() -> None:
     warmup_cutout()

@@ -34,17 +34,21 @@ def _gentle_face_light(bgr: np.ndarray) -> np.ndarray:
 
 
 def edit_selfie_local(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
-    """Local edit path: upscale → white bg → whitening → gentle light."""
+    """Local edit: white bg cutout → face restore → light whitening."""
     src = prepare_for_cutout(bgr)
     src = _resize_max_side(src, config.MAX_IMAGE_SIDE)
     edited = white_background_local(src)
-    edited = force_white_background(edited, tol=52)
-    edited = _gentle_face_light(edited)
-    # whitening again after light tweak (CLAHE can tint near-white)
+    # Keep original face pixels (cutout may soften skin near edges)
+    edited, face_restored = restore_face_from_original(src, edited)
     edited = force_white_background(edited, tol=48)
+    edited, _ = restore_face_from_original(src, edited)
+    edited = _gentle_face_light(edited)
+    edited = force_white_background(edited, tol=45)
+    edited, _ = restore_face_from_original(src, edited)
     cutout = last_cutout_backend
     return edited, {
         "cutout": cutout,
+        "face_restored": face_restored,
         "width": int(edited.shape[1]),
         "height": int(edited.shape[0]),
     }

@@ -20,15 +20,19 @@ RUN mkdir -p /app/models && \
       -o /app/models/selfie_segmenter.tflite && \
     curl -fsSL \
       "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx" \
-      -o /app/models/u2netp.onnx
+      -o /app/models/u2netp.onnx && \
+    curl -fsSL \
+      "https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx" \
+      -o /app/models/silueta.onnx
 
 COPY app ./app
 
 ENV GATE_MODEL_PATH=/app/models/face_landmarker.task \
     SELFIE_SEGMENTER_PATH=/app/models/selfie_segmenter.tflite \
     U2NETP_MODEL_PATH=/app/models/u2netp.onnx \
+    SILUETA_MODEL_PATH=/app/models/silueta.onnx \
     EDIT_BACKEND=local \
-    EDIT_CUTOUT=u2netp \
+    EDIT_CUTOUT=silueta \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8091

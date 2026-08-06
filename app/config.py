@@ -28,11 +28,9 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
-# Background edit: local cutout by default (identity-safe).
-# Set EDIT_BACKEND=openrouter only for optional /api/edit generative path.
-# EDIT_CUTOUT=u2netp|mediapipe|rembg|auto — u2netp is sharpest VPS-safe default.
+# EDIT_CUTOUT=silueta|u2netp|u2net|mediapipe|rembg|auto
 EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
-EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "u2netp").strip().lower()
+EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "silueta").strip().lower()
 REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
 SELFIE_SEGMENTER_PATH = Path(
@@ -49,6 +47,18 @@ U2NETP_MODEL_PATH = Path(
     os.getenv(
         "U2NETP_MODEL_PATH",
         str(Path(__file__).resolve().parent.parent / "models" / "u2netp.onnx"),
+    )
+)
+SILUETA_MODEL_PATH = Path(
+    os.getenv(
+        "SILUETA_MODEL_PATH",
+        str(Path(__file__).resolve().parent.parent / "models" / "silueta.onnx"),
+    )
+)
+U2NET_MODEL_PATH = Path(
+    os.getenv(
+        "U2NET_MODEL_PATH",
+        str(Path(__file__).resolve().parent.parent / "models" / "u2net.onnx"),
     )
 )
 
