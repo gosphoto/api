@@ -61,13 +61,8 @@ def _subject_mask(bgr: np.ndarray) -> np.ndarray | None:
         255,
         -1,
     )
-    # Keep corner chips bleachable for compliance (subject never lives there
-    # on a correct 35×45 crop).
-    n = max(10, int(0.03 * min(h, w)))
-    mask[:n, :n] = 0
-    mask[:n, -n:] = 0
-    mask[-n:, :n] = 0
-    mask[-n:, -n:] = 0
+    # Do NOT punch corners out of the subject mask — on a tight 35×45 crop
+    # shoulders/clothes often reach the bottom corners.
     return mask
 
 
@@ -94,8 +89,33 @@ def defringe_near_white(
     return out
 
 
+def _bleach_corner_chips(
+    bgr: np.ndarray,
+    subject: np.ndarray,
+    n: int | None = None,
+) -> np.ndarray:
+    """Whiten background-like corner pixels only — never paint over subject/clothes."""
+    h, w = bgr.shape[:2]
+    if n is None:
+        n = max(10, int(0.03 * min(h, w)))
+    out = bgr.copy()
+    luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    regions = (
+        (slice(0, n), slice(0, n)),
+        (slice(0, n), slice(w - n, w)),
+        (slice(h - n, h), slice(0, n)),
+        (slice(h - n, h), slice(w - n, w)),
+    )
+    for ys, xs in regions:
+        bleach = (subject[ys, xs] == 0) & (luma[ys, xs] >= 180)
+        chip = out[ys, xs]
+        chip[bleach] = 255
+        out[ys, xs] = chip
+    return out
+
+
 def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
-    """Whiten bg-like pixels outside the subject; force white corners only."""
+    """Whiten bg-like pixels outside the subject; soft-clean corners."""
     h, w = bgr.shape[:2]
     if h < 8 or w < 8:
         return bgr
@@ -145,29 +165,36 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     out = bgr.astype(np.float32)
     out = out * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
 
-    # Pure white corner chips only — not full edge bands (those ate side hair)
-    n = max(10, int(0.03 * min(h, w)))
-    out[:n, :n] = 255
-    out[:n, -n:] = 255
-    out[-n:, :n] = 255
-    out[-n:, -n:] = 255
-
     out[subject > 0] = bgr[subject > 0]
     cleaned = defringe_near_white(np.clip(out, 0, 255).astype(np.uint8))
     protect = subject > 0
+    cleaned[protect] = bgr[protect]
+    cleaned = _bleach_corner_chips(cleaned, subject)
     cleaned[protect] = bgr[protect]
     return cleaned
 
 
 def corner_whiteness(bgr: np.ndarray) -> dict:
+    """Score background whiteness; skip clothing-dominated bottom corners."""
     n = 12
-    corners = [
+    chips = [
         bgr[:n, :n],
         bgr[:n, -n:],
         bgr[-n:, :n],
         bgr[-n:, -n:],
     ]
-    means = [c.reshape(-1, 3).mean(axis=0) for c in corners]
+    means: list[np.ndarray] = []
+    for i, c in enumerate(chips):
+        pix = c.reshape(-1, 3).astype(np.float32)
+        luma = pix.mean(axis=1)
+        if i >= 2:
+            keep = luma >= 210
+            if int(keep.sum()) < max(4, pix.shape[0] // 4):
+                continue
+            pix = pix[keep]
+        means.append(pix.mean(axis=0))
+    if not means:
+        means = [c.reshape(-1, 3).mean(axis=0) for c in chips[:2]]
     avg = np.mean(means, axis=0)
     return {
         "bgr": [round(float(x), 1) for x in avg],
