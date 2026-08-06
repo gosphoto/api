@@ -82,3 +82,17 @@ REJECTEDS_ENABLED = os.getenv("REJECTEDS_ENABLED", "1").strip().lower() in (
     "yes",
     "on",
 )
+
+# Successful /api/process pairs: pairs/<ts>_name/{in.*,out.jpg,meta.json}
+PAIRS_DIR = Path(
+    os.getenv(
+        "PAIRS_DIR",
+        str(Path(__file__).resolve().parent.parent / "pairs"),
+    )
+)
+PAIRS_ENABLED = os.getenv("PAIRS_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)

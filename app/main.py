@@ -14,6 +14,7 @@ from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError
+from .pairs import save_pair
 from .rejecteds import save_rejected
 
 logging.basicConfig(level=logging.INFO)
@@ -271,6 +272,18 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
+    save_pair(
+        data,
+        jpeg,
+        filename=file.filename,
+        meta={
+            "gate": gate.metrics,
+            "edit": edit_meta,
+            "crop": crop_metrics,
+            "compliance": compliance,
+            "model": edit_meta.get("model"),
+        },
+    )
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
 

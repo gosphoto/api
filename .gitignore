@@ -9,4 +9,5 @@ models/
 *.log
 testdata/
 rejecteds/
+pairs/
 tmp-smoke/
