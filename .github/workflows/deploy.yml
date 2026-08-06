@@ -94,8 +94,8 @@ jobs:
         run: |
           set -euo pipefail
           MODEL="${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}"
-          # Identity-first: local cutout by default (OpenRouter only if EDIT_BACKEND forced).
-          EDIT_BACKEND_VAL="${EDIT_BACKEND:-local}"
+          # OpenRouter for clean bg; local silueta is fallback inside the app.
+          EDIT_BACKEND_VAL="${EDIT_BACKEND:-openrouter}"
           {
             echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
             echo "OPENROUTER_IMAGE_MODEL=${MODEL}"

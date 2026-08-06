@@ -31,7 +31,7 @@ ENV GATE_MODEL_PATH=/app/models/face_landmarker.task \
     SELFIE_SEGMENTER_PATH=/app/models/selfie_segmenter.tflite \
     U2NETP_MODEL_PATH=/app/models/u2netp.onnx \
     SILUETA_MODEL_PATH=/app/models/silueta.onnx \
-    EDIT_BACKEND=local \
+    EDIT_BACKEND=openrouter \
     EDIT_CUTOUT=silueta \
     PYTHONUNBUFFERED=1
 

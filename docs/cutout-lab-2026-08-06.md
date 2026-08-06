@@ -17,7 +17,8 @@
 | [`tmp-smoke/cutout-lab/r2/board-best.jpg`](../tmp-smoke/cutout-lab/r2/board-best.jpg) | Round2: face-protect (метрики ≠ визуал) |
 | [`tmp-smoke/cutout-lab/r4/board-best.jpg`](../tmp-smoke/cutout-lab/r4/board-best.jpg) | Round4: INPUT / PROD / BEST |
 | [`tmp-smoke/cutout-lab/r4/champion_crop.jpg`](../tmp-smoke/cutout-lab/r4/champion_crop.jpg) | Чемпион 35×45 |
-| [`tmp-smoke/cutout-lab/final/board-final.jpg`](../tmp-smoke/cutout-lab/final/board-final.jpg) | Итоговое сравнение |
+| [`tmp-smoke/cutout-lab/final/board-live.jpg`](../tmp-smoke/cutout-lab/final/board-live.jpg) | LIVE после деплоя: INPUT / OLD / silueta |
+| [`tmp-smoke/cutout-lab/final/live-crop.jpg`](../tmp-smoke/cutout-lab/final/live-crop.jpg) | Live 35×45 с gosphoto.ru |
 | [`tmp-smoke/cutout-lab/scores.json`](../tmp-smoke/cutout-lab/scores.json) | Сырые скоры Round1 |
 | [`scripts/cutout_lab.py`](../scripts/cutout_lab.py) | Матрица вариантов |
 
@@ -70,18 +71,19 @@ Post: `soft1/soft2/dist/guided`. С/без face restore.
 - Агрессивный edge-purge по luma — ест блики кожи  
 - OpenRouter generative edit в `/api/process` — искажает лицо  
 
-## Прод-настройки
+## Прод-настройки (актуально после OR-return)
 
 ```text
-EDIT_CUTOUT=silueta
-SILUETA_MODEL_PATH=/app/models/silueta.onnx
-U2NETP_MODEL_PATH=/app/models/u2netp.onnx   # fallback
+EDIT_BACKEND=openrouter          # generative bg; figure OK to edit
+EDIT_CUTOUT=silueta              # fallback if OR fails
+OPENROUTER_TRANSPARENT_BG=1
 ```
 
-VPS ~1.8 GiB: `silueta` ~42 MB — ок; полный `u2net` ~168 MB лучше не держать в контейнере без нужды.
+`/api/process`: OpenRouter → composite white → **face_restore** (original face) → crop.
 
 ## История правок
 
 | Дата | Что изменили |
 |------|----------------|
 | 2026-08-06 | Лаб R1–R4, чемпион silueta+close, док + прод default |
+| 2026-08-06 | Возврат OpenRouter для фона + усиленный face_restore |

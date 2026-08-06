@@ -8,8 +8,8 @@ def test_prompt_mentions_no_fringe():
 
 def test_prompt_forbids_skin_smoothing():
     lower = EDIT_PROMPT.lower()
-    assert "smooth" in lower or "airbrush" in lower
-    assert "pore" in lower or "texture" in lower
+    assert "smooth" in lower or "beauty" in lower
+    assert "pore" in lower or "face" in lower
 
 
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):

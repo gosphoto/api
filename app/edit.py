@@ -64,13 +64,20 @@ def _edit_openrouter(
     mime: str,
     src: np.ndarray,
 ) -> tuple[np.ndarray, dict[str, Any]]:
+    """Generative white/transparent bg; face locked back from original pixels."""
     raw = edit_selfie(data, mime=mime)
     decoded = _decode_any(raw)
     if decoded is None:
         raise RuntimeError("Edited image decode failed")
     edited = composite_on_white(decoded)
-    edited, face_restored = restore_face_from_original(src, edited)
-    edited = force_white_background(edited, tol=52)
+    # Align size for restore if OR changed resolution
+    if edited.shape[:2] != src.shape[:2]:
+        src_rs = cv2.resize(src, (edited.shape[1], edited.shape[0]), interpolation=cv2.INTER_AREA)
+    else:
+        src_rs = src
+    edited, face_restored = restore_face_from_original(src_rs, edited)
+    edited = force_white_background(edited, tol=48)
+    edited, _ = restore_face_from_original(src_rs, edited)
     return edited, {
         "model": config.OPENROUTER_IMAGE_MODEL,
         "cutout": "openrouter",
@@ -87,17 +94,32 @@ def run_edit_stage(
     """
     Stage 1 entry: bytes → edited BGR (white bg, not cropped).
 
-    Strategy (identity-first):
-      1) local MediaPipe/rembg cutout (keeps original face pixels)
-      2) OpenRouter only if local fails and backend is auto|openrouter
-         (or backend=openrouter prefers OR first)
+    Strategy:
+      Prefer OpenRouter for clean white/transparent bg (figure may change).
+      Always face-restore from original after OR.
+      Fallback to local silueta/u2netp cutout if OR unavailable/fails.
     """
     backend = config.EDIT_BACKEND
     has_or_key = bool(config.OPENROUTER_API_KEY)
-    prefer_local = backend in ("local", "auto", "")
-    prefer_or = backend == "openrouter"
+    prefer_or = backend in ("openrouter", "auto") and has_or_key
+    # empty / openrouter without key → local
+    prefer_local = backend in ("local", "") or (backend == "auto" and not has_or_key)
     allow_or = has_or_key and backend in ("openrouter", "auto")
     allow_local = backend in ("local", "auto", "openrouter", "")
+
+    # Default when unset: openrouter if key else local
+    if backend not in ("local", "openrouter", "auto", ""):
+        prefer_or = has_or_key
+        prefer_local = not prefer_or
+    elif backend == "openrouter":
+        prefer_or = has_or_key
+        prefer_local = True  # fallback after OR
+    elif backend == "auto":
+        prefer_or = has_or_key
+        prefer_local = True
+    elif backend in ("local", ""):
+        prefer_or = False
+        prefer_local = True
 
     meta: dict[str, Any] = {"stage": "edit"}
     local_err: Exception | None = None

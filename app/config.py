@@ -29,7 +29,7 @@ CORS_ORIGINS = [
 ]
 
 # EDIT_CUTOUT=silueta|u2netp|u2net|mediapipe|rembg|auto
-EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
+EDIT_BACKEND = os.getenv("EDIT_BACKEND", "openrouter").strip().lower()
 EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "silueta").strip().lower()
 REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))

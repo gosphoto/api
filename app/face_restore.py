@@ -27,16 +27,16 @@ def _landmarks_xy(bgr: np.ndarray) -> np.ndarray | None:
 
 
 def _face_mask(shape: tuple[int, int], pts: np.ndarray) -> np.ndarray:
-    """Soft oval over cheeks/forehead/nose — avoids hair fringe and neck hem."""
+    """Soft oval covering full face interior — leave outer hair for edited silhouette."""
     h, w = shape
     xs, ys = pts[:, 0], pts[:, 1]
     face_h = float(max(ys.max() - ys.min(), 1.0))
     face_w = float(max(xs.max() - xs.min(), 1.0))
     cx = float(xs.mean())
-    cy = float((ys.min() + ys.max()) * 0.48)
+    cy = float((ys.min() + ys.max()) * 0.50)
     mask = np.zeros((h, w), np.float32)
-    # Slightly inset so OR-cleaned hair edges stay
-    axes = (max(int(face_w * 0.42), 8), max(int(face_h * 0.55), 8))
+    # Cover cheeks/forehead/chin; stay inside hairline so OR fringe cleanup remains
+    axes = (max(int(face_w * 0.58), 10), max(int(face_h * 0.72), 10))
     cv2.ellipse(
         mask,
         (int(cx), int(cy)),
@@ -47,7 +47,7 @@ def _face_mask(shape: tuple[int, int], pts: np.ndarray) -> np.ndarray:
         1.0,
         -1,
     )
-    k = max(15, (int(0.04 * min(h, w)) | 1))
+    k = max(21, (int(0.05 * min(h, w)) | 1))
     mask = cv2.GaussianBlur(mask, (k, k), 0)
     return np.clip(mask, 0.0, 1.0)
 
@@ -83,7 +83,6 @@ def restore_face_from_original(
             dst_lm[_NOSE],
         ]
     )
-    # similarity from eyes + chin (partial affine)
     M, _ = cv2.estimateAffinePartial2D(src_pts[:3], dst_pts[:3], method=cv2.LMEDS)
     if M is None:
         return edited_bgr, False
@@ -97,8 +96,10 @@ def restore_face_from_original(
         borderMode=cv2.BORDER_REFLECT101,
     )
     alpha = _face_mask((h, w), dst_lm)
-    # Keep most original texture; leave a little of edit for lighting match
-    strength = 0.92
-    a = (alpha * strength)[:, :, None]
+    # Full identity lock in the face core; soft blend only at oval edge
+    core = (alpha >= 0.55).astype(np.float32)
+    edge = np.clip((alpha - 0.15) / 0.40, 0.0, 1.0)
+    mix = np.maximum(core, edge * 0.95)
+    a = mix[:, :, None]
     out = edited_bgr.astype(np.float32) * (1.0 - a) + warped.astype(np.float32) * a
     return np.clip(out, 0, 255).astype(np.uint8), True
