@@ -14,6 +14,7 @@ from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError
+from .rejecteds import save_rejected
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
@@ -97,6 +98,14 @@ async def validate(file: UploadFile = File(...)):
         )
 
     result = validate_image(data)
+    if not result.ok:
+        save_rejected(
+            data,
+            reason=result.reason,
+            message=result.message,
+            metrics=result.metrics,
+            filename=file.filename,
+        )
     return JSONResponse(
         {
             "ok": result.ok,
@@ -138,6 +147,13 @@ async def edit_only(file: UploadFile = File(...), format: str = "json"):
     data = await _read_upload(file)
     gate = validate_image(data)
     if not gate.ok:
+        save_rejected(
+            data,
+            reason=gate.reason,
+            message=gate.message,
+            metrics=gate.metrics,
+            filename=file.filename,
+        )
         return JSONResponse(
             {
                 "ok": False,
@@ -219,6 +235,13 @@ async def process(file: UploadFile = File(...), format: str = "json"):
 
     gate = validate_image(data)
     if not gate.ok:
+        save_rejected(
+            data,
+            reason=gate.reason,
+            message=gate.message,
+            metrics=gate.metrics,
+            filename=file.filename,
+        )
         return JSONResponse(
             {
                 "ok": False,

@@ -76,6 +76,8 @@ jobs:
             --exclude '__pycache__' \
             --exclude '.venv' \
             --exclude 'models' \
+            --exclude 'rejecteds' \
+            --exclude 'tmp-smoke' \
             --exclude 'README.md' \
             --exclude '.gitignore' \
             --exclude '.env.example' \

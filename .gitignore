@@ -8,3 +8,5 @@ models/
 .idea/
 *.log
 testdata/
+rejecteds/
+tmp-smoke/

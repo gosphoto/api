@@ -22,6 +22,9 @@ services:
       OPENROUTER_IMAGE_MODEL: ${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}
       OPENROUTER_TRANSPARENT_BG: ${OPENROUTER_TRANSPARENT_BG:-1}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      REJECTEDS_DIR: /app/rejecteds
+    volumes:
+      - ./rejecteds:/app/rejecteds
     mem_limit: 768m
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8091/health"]

@@ -68,3 +68,17 @@ PASSPORT_HEIGHT = int(os.getenv("PASSPORT_HEIGHT", "531"))
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.11"))
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "95"))
+
+# Failed gate uploads land here for review (mounted as a volume in compose).
+REJECTEDS_DIR = Path(
+    os.getenv(
+        "REJECTEDS_DIR",
+        str(Path(__file__).resolve().parent.parent / "rejecteds"),
+    )
+)
+REJECTEDS_ENABLED = os.getenv("REJECTEDS_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
