@@ -12,7 +12,7 @@ import cv2
 import numpy as np
 
 from . import config
-from .bg import prepare_for_cutout, white_background_local
+from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
 from .face_restore import restore_face_from_original
 from .gate import _decode_image, _resize_max_side
@@ -42,8 +42,9 @@ def edit_selfie_local(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     edited = _gentle_face_light(edited)
     # whitening again after light tweak (CLAHE can tint near-white)
     edited = force_white_background(edited, tol=48)
+    cutout = last_cutout_backend
     return edited, {
-        "cutout": config.EDIT_CUTOUT or "mediapipe",
+        "cutout": cutout,
         "width": int(edited.shape[1]),
         "height": int(edited.shape[0]),
     }

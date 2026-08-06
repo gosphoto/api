@@ -17,14 +17,18 @@ RUN mkdir -p /app/models && \
       -o /app/models/face_landmarker.task && \
     curl -fsSL \
       "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_segmenter/float16/latest/selfie_segmenter.tflite" \
-      -o /app/models/selfie_segmenter.tflite
+      -o /app/models/selfie_segmenter.tflite && \
+    curl -fsSL \
+      "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx" \
+      -o /app/models/u2netp.onnx
 
 COPY app ./app
 
 ENV GATE_MODEL_PATH=/app/models/face_landmarker.task \
     SELFIE_SEGMENTER_PATH=/app/models/selfie_segmenter.tflite \
+    U2NETP_MODEL_PATH=/app/models/u2netp.onnx \
     EDIT_BACKEND=local \
-    EDIT_CUTOUT=mediapipe \
+    EDIT_CUTOUT=u2netp \
     PYTHONUNBUFFERED=1
 
 EXPOSE 8091

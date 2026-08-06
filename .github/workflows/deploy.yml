@@ -101,7 +101,7 @@ jobs:
             echo "OPENROUTER_IMAGE_MODEL=${MODEL}"
             echo "OPENROUTER_TRANSPARENT_BG=1"
             echo "EDIT_BACKEND=${EDIT_BACKEND_VAL}"
-            echo "EDIT_CUTOUT=mediapipe"
+            echo "EDIT_CUTOUT=u2netp"
           } | ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "umask 077; cat > ${API_PATH}/.env"
