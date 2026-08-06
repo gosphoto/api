@@ -14,6 +14,7 @@ import numpy as np
 from . import config
 from .bg import prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
+from .face_restore import restore_face_from_original
 from .gate import _decode_image, _resize_max_side
 from .openrouter import edit_selfie
 from .whitening import force_white_background
@@ -72,16 +73,21 @@ def run_edit_stage(
 
     if use_or:
         try:
+            src = _decode_image(data)
+            if src is None:
+                raise RuntimeError("decode_error")
             raw = edit_selfie(data, mime=mime)
             decoded = _decode_any(raw)
             if decoded is None:
                 raise RuntimeError("Edited image decode failed")
             edited = composite_on_white(decoded)
+            edited, face_restored = restore_face_from_original(src, edited)
             edited = force_white_background(edited, tol=52)
             meta.update(
                 {
                     "model": config.OPENROUTER_IMAGE_MODEL,
                     "cutout": "openrouter",
+                    "face_restored": face_restored,
                     "width": int(edited.shape[1]),
                     "height": int(edited.shape[0]),
                 }

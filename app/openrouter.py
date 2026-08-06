@@ -13,13 +13,16 @@ from . import config
 log = logging.getLogger("gosphoto-gate")
 
 EDIT_PROMPT = (
-    "Replace ONLY the background with a transparent alpha channel "
-    "(or solid pure white #FFFFFF if transparency is unavailable). "
-    "Do not change the person's face, skin, hair, eyes, mouth, clothes, or identity. "
-    "No beauty filter, no morphing, no retouching, no makeup. "
-    "Keep original sharpness. Remove any coloured fringe, color spill, or halo "
-    "along hair and shoulders. Studio ID / Russian passport style, "
-    "frontal head-and-shoulders."
+    "Background replacement ONLY. Put the exact same person on a transparent "
+    "alpha background (or solid #FFFFFF if alpha is unavailable). "
+    "CRITICAL — identity lock: copy the face PIXEL-FOR-PIXEL from the input. "
+    "Do NOT smooth, airbrush, blur, soften, or retouch skin. "
+    "Keep every pore, wrinkle, freckle, mole, beard stubble, and natural texture. "
+    "Do NOT change face shape, eyes, nose, mouth, teeth, skin tone, makeup, "
+    "hair, clothes, or expression. No beauty filter, no morphing, no CGI look. "
+    "Keep original sharpness and sensor noise. "
+    "Remove coloured fringe / color spill / halo only along the silhouette. "
+    "Studio ID / Russian passport style, frontal head-and-shoulders."
 )
 
 

@@ -6,6 +6,12 @@ def test_prompt_mentions_no_fringe():
     assert "fringe" in lower or "spill" in lower or "halo" in lower
 
 
+def test_prompt_forbids_skin_smoothing():
+    lower = EDIT_PROMPT.lower()
+    assert "smooth" in lower or "airbrush" in lower
+    assert "pore" in lower or "texture" in lower
+
+
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1")
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", True)
