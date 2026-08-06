@@ -90,11 +90,17 @@ jobs:
           OPENROUTER_IMAGE_MODEL: ${{ secrets.OPENROUTER_IMAGE_MODEL }}
         run: |
           set -euo pipefail
-          MODEL="${OPENROUTER_IMAGE_MODEL:-google/gemini-2.5-flash-image}"
+          MODEL="${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}"
+          if [ -n "${OPENROUTER_API_KEY}" ]; then
+            EDIT_BACKEND_VAL=openrouter
+          else
+            EDIT_BACKEND_VAL=local
+          fi
           {
             echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
             echo "OPENROUTER_IMAGE_MODEL=${MODEL}"
-            echo "EDIT_BACKEND=local"
+            echo "OPENROUTER_TRANSPARENT_BG=1"
+            echo "EDIT_BACKEND=${EDIT_BACKEND_VAL}"
             echo "EDIT_CUTOUT=mediapipe"
           } | ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
