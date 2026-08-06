@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, Response
 from . import config
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import run_edit_stage
+from .edit import edit_selfie_local, run_edit_stage
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError
 from .pairs import save_pair
@@ -59,7 +59,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.4.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.5.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -74,12 +74,13 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.4.0",
-        "pipeline": ["gate", "edit", "crop"],
-        "edit_backend": config.EDIT_BACKEND,
+        "version": "0.5.0",
+        "pipeline": ["gate", "local_white_bg", "crop"],
+        "edit_backend": "local",
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
+        "note": "/api/process never uses generative OpenRouter; optional /api/edit may",
     }
 
 
@@ -231,7 +232,10 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
 
 @app.post("/api/process")
 async def process(file: UploadFile = File(...), format: str = "json"):
-    """Full pipeline: gate → edit → crop (two explicit stages)."""
+    """RF passport: gate → local white bg (pixels kept) → align/fit/crop 35×45.
+
+    Never calls generative OpenRouter — identity-safe cutout only.
+    """
     data = await _read_upload(file)
 
     gate = validate_image(data)
@@ -253,16 +257,15 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             }
         )
 
-    mime = _guess_mime(file.filename, file.content_type)
+    bgr = _decode_image(data)
+    if bgr is None:
+        raise HTTPException(status_code=400, detail="Cannot decode image")
+
     try:
-        edited, edit_meta = run_edit_stage(data, mime=mime)
-    except OpenRouterError as e:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": str(e), "provider_status": e.status, "body": e.body},
-        ) from e
+        edited, edit_meta = edit_selfie_local(bgr)
+        edit_meta = {**edit_meta, "stage": "edit", "model": edit_meta.get("cutout", "mediapipe")}
     except Exception as e:
-        log.exception("Edit stage failed")
+        log.exception("Local white-bg edit failed")
         raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
 
     try:
@@ -281,7 +284,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             "edit": edit_meta,
             "crop": crop_metrics,
             "compliance": compliance,
-            "model": edit_meta.get("model"),
+            "pipeline": ["gate", "local_white_bg", "crop"],
         },
     )
     if format == "jpeg":
@@ -291,13 +294,14 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         {
             "ok": True,
             "stage": "done",
-            "message": "Фото обработано",
+            "message": "Фото на белом фоне, 35×45",
             "mime": "image/jpeg",
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
+            "pipeline": ["gate", "local_white_bg", "crop"],
             "model": edit_meta.get("model"),
-            "edit_backend": config.EDIT_BACKEND,
+            "edit_backend": "local",
             "edit_cutout": config.EDIT_CUTOUT,
             "gate": gate.metrics,
             "edit": edit_meta,
@@ -314,13 +318,13 @@ def process_info():
     return {
         "pipeline": [
             "1. gate — face/pose/blur",
-            "2. edit (/api/edit) — white bg + light normalize, NO crop",
-            "3. crop (/api/crop) — roll-correct + 35×45 @300dpi + compliance retries",
+            "2. local_white_bg — MediaPipe/rembg cutout → #FFFFFF (no generative rewrite)",
+            "3. crop — roll-correct + fit face/margins + 35×45 @300dpi",
         ],
         "endpoints": {
-            "/api/process": "edit + crop together",
-            "/api/edit": "step 1 only",
-            "/api/crop": "step 2 only (pass edited photo)",
+            "/api/process": "gate + local white bg + crop (never OpenRouter)",
+            "/api/edit": "white-bg only; may use OpenRouter if EDIT_BACKEND=openrouter",
+            "/api/crop": "crop only",
         },
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,

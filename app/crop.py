@@ -1,6 +1,6 @@
-"""Step 2 — passport crop: MediaPipe geometry → 35×45 @ 300dpi.
+"""Passport crop: roll-align → fit face/margins → 35×45 @ 300dpi.
 
-Expects an already-edited white-background portrait from /api/edit.
+Expects a white-background portrait (local cutout). No generative rewrite.
 Retries crown/face-ratio variants until compliance is closest to pass.
 """
 
@@ -34,7 +34,7 @@ def _crop_once(
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     result = _landmarker().detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
     if not result.face_landmarks:
-        raise ValueError("no_face_after_edit")
+        raise ValueError("no_face")
 
     lm = result.face_landmarks[0]
     h, w = bgr.shape[:2]
@@ -121,7 +121,7 @@ def _crop_once(
 
 
 def _score_compliance(comp: dict[str, Any]) -> float:
-    """Higher is better. Prefer full pass, else proximity to targets."""
+    """Higher is better. Prefer full RF pass, else proximity to targets."""
     if comp.get("pass"):
         return 1000.0
     checks = comp.get("checks") or {}
@@ -148,7 +148,7 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
 
 def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """
-    Stage 2: edited portrait → 413×531 passport JPEG-ready BGR + metrics + compliance.
+    White-bg portrait → 413×531 passport BGR + metrics + compliance.
 
     Tries several crown/face geometries and keeps the best compliance result.
     """

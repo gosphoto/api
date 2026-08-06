@@ -58,8 +58,9 @@ OPENROUTER_IMAGE_MODEL = os.getenv(
 OPENROUTER_TRANSPARENT_BG = os.getenv(
     "OPENROUTER_TRANSPARENT_BG", "1"
 ).strip().lower() in ("1", "true", "yes", "on")
+# /api/process always uses local cutout. OpenRouter only via /api/edit if EDIT_BACKEND=openrouter.
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "120"))
-# Production with a key should set EDIT_BACKEND=openrouter (see compose/deploy).
+# Prefer EDIT_BACKEND=local so /api/edit stays identity-safe too.
 
 # Passport crop output (35×45 mm @ 300 dpi)
 PASSPORT_WIDTH = int(os.getenv("PASSPORT_WIDTH", "413"))
