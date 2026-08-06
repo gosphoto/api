@@ -71,6 +71,29 @@ def _subject_mask(bgr: np.ndarray) -> np.ndarray | None:
     return mask
 
 
+def defringe_near_white(
+    bgr: np.ndarray,
+    *,
+    luma_min: int = 200,
+    chroma_max: float = 18.0,
+) -> np.ndarray:
+    """Bleach near-white tinted pixels (classic cutout fringe) to #FFFFFF."""
+    if bgr.size == 0:
+        return bgr
+    out = bgr.copy()
+    f = bgr.astype(np.float32)
+    luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    mean_c = f.mean(axis=2, keepdims=True)
+    chroma = np.linalg.norm(f - mean_c, axis=2)
+    mask = (luma >= float(luma_min)) & (chroma >= 1.0) & (
+        chroma <= float(chroma_max) * 3
+    )
+    near = (luma >= float(luma_min)) & (np.min(f, axis=2) < 250)
+    mask = mask | near
+    out[mask] = 255
+    return out
+
+
 def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     """Whiten bg-like pixels outside the subject; force white corners only."""
     h, w = bgr.shape[:2]
@@ -102,7 +125,6 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     work = (bg > 0).astype(np.uint8)
     padded = np.zeros((h + 2, w + 2), np.uint8)
     padded[1:-1, 1:-1] = work
-    ff = np.zeros((h + 4, w + 4), np.uint8)
     seeds = [(1, 1), (w, 1), (1, h), (w, h)]
     for sx, sy in seeds:
         img = padded.copy()
@@ -131,7 +153,10 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     out[-n:, -n:] = 255
 
     out[subject > 0] = bgr[subject > 0]
-    return np.clip(out, 0, 255).astype(np.uint8)
+    cleaned = defringe_near_white(np.clip(out, 0, 255).astype(np.uint8))
+    protect = subject > 0
+    cleaned[protect] = bgr[protect]
+    return cleaned
 
 
 def corner_whiteness(bgr: np.ndarray) -> dict:
