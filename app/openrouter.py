@@ -35,12 +35,21 @@ def _data_url(image_bytes: bytes, mime: str = "image/jpeg") -> str:
     return f"data:{mime};base64,{b64}"
 
 
+def _aspect_ratio_for_model(model: str) -> str:
+    """gpt-image-* accepts 1:1|3:2|2:3|auto — not 3:4 (causes HTTP 400)."""
+    m = (model or "").lower()
+    if "gpt-image" in m:
+        return "2:3"
+    return "3:4"
+
+
 def build_edit_payload(image_bytes: bytes, mime: str = "image/jpeg") -> dict[str, Any]:
     transparent = bool(config.OPENROUTER_TRANSPARENT_BG)
+    model = config.OPENROUTER_IMAGE_MODEL
     payload: dict[str, Any] = {
-        "model": config.OPENROUTER_IMAGE_MODEL,
+        "model": model,
         "prompt": EDIT_PROMPT,
-        "aspect_ratio": "3:4",
+        "aspect_ratio": _aspect_ratio_for_model(model),
         "output_format": "png" if transparent else "jpeg",
         "input_references": [
             {
