@@ -39,3 +39,23 @@ def test_or_path_composites_alpha(monkeypatch):
     assert meta.get("face_restored") is False
     assert out.shape[2] == 3
     assert np.all(out[0, 0] == 255)
+
+
+def test_local_preferred_over_openrouter(monkeypatch):
+    monkeypatch.setattr(edit_mod.config, "EDIT_BACKEND", "local")
+    monkeypatch.setattr(edit_mod.config, "OPENROUTER_API_KEY", "test-key")
+
+    local_img = np.full((20, 20, 3), 200, np.uint8)
+    with patch.object(edit_mod, "_decode_image", return_value=local_img):
+        with patch.object(
+            edit_mod,
+            "edit_selfie_local",
+            return_value=(local_img, {"cutout": "mediapipe", "width": 20, "height": 20}),
+        ) as local_mock:
+            with patch.object(edit_mod, "edit_selfie") as or_mock:
+                out, meta = edit_mod.run_edit_stage(b"jpeg-bytes", "image/jpeg")
+    assert meta.get("cutout") == "mediapipe"
+    assert meta.get("model") == "mediapipe"
+    local_mock.assert_called_once()
+    or_mock.assert_not_called()
+    assert out.shape == (20, 20, 3)

@@ -94,11 +94,8 @@ jobs:
         run: |
           set -euo pipefail
           MODEL="${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}"
-          if [ -n "${OPENROUTER_API_KEY}" ]; then
-            EDIT_BACKEND_VAL=openrouter
-          else
-            EDIT_BACKEND_VAL=local
-          fi
+          # Identity-first: local cutout by default (OpenRouter only if EDIT_BACKEND forced).
+          EDIT_BACKEND_VAL="${EDIT_BACKEND:-local}"
           {
             echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
             echo "OPENROUTER_IMAGE_MODEL=${MODEL}"

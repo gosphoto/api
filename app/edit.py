@@ -54,6 +54,27 @@ def _decode_any(raw: bytes) -> np.ndarray | None:
     return cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
 
 
+def _edit_openrouter(
+    data: bytes,
+    mime: str,
+    src: np.ndarray,
+) -> tuple[np.ndarray, dict[str, Any]]:
+    raw = edit_selfie(data, mime=mime)
+    decoded = _decode_any(raw)
+    if decoded is None:
+        raise RuntimeError("Edited image decode failed")
+    edited = composite_on_white(decoded)
+    edited, face_restored = restore_face_from_original(src, edited)
+    edited = force_white_background(edited, tol=52)
+    return edited, {
+        "model": config.OPENROUTER_IMAGE_MODEL,
+        "cutout": "openrouter",
+        "face_restored": face_restored,
+        "width": int(edited.shape[1]),
+        "height": int(edited.shape[0]),
+    }
+
+
 def run_edit_stage(
     data: bytes,
     mime: str = "image/jpeg",
@@ -61,47 +82,62 @@ def run_edit_stage(
     """
     Stage 1 entry: bytes → edited BGR (white bg, not cropped).
 
-    Strategy:
-      1) OpenRouter when EDIT_BACKEND=openrouter|auto and key is set
-      2) local MediaPipe/rembg cutout as fallback / default
+    Strategy (identity-first):
+      1) local MediaPipe/rembg cutout (keeps original face pixels)
+      2) OpenRouter only if local fails and backend is auto|openrouter
+         (or backend=openrouter prefers OR first)
     """
     backend = config.EDIT_BACKEND
-    use_or = backend in ("openrouter", "auto") and bool(config.OPENROUTER_API_KEY)
-    use_local = backend in ("local", "auto", "openrouter", "")
+    has_or_key = bool(config.OPENROUTER_API_KEY)
+    prefer_local = backend in ("local", "auto", "")
+    prefer_or = backend == "openrouter"
+    allow_or = has_or_key and backend in ("openrouter", "auto")
+    allow_local = backend in ("local", "auto", "openrouter", "")
+
     meta: dict[str, Any] = {"stage": "edit"}
+    local_err: Exception | None = None
     or_err: Exception | None = None
 
-    if use_or:
+    src = _decode_image(data)
+    if src is None:
+        raise RuntimeError("decode_error")
+
+    if prefer_or and allow_or:
         try:
-            src = _decode_image(data)
-            if src is None:
-                raise RuntimeError("decode_error")
-            raw = edit_selfie(data, mime=mime)
-            decoded = _decode_any(raw)
-            if decoded is None:
-                raise RuntimeError("Edited image decode failed")
-            edited = composite_on_white(decoded)
-            edited, face_restored = restore_face_from_original(src, edited)
-            edited = force_white_background(edited, tol=52)
-            meta.update(
-                {
-                    "model": config.OPENROUTER_IMAGE_MODEL,
-                    "cutout": "openrouter",
-                    "face_restored": face_restored,
-                    "width": int(edited.shape[1]),
-                    "height": int(edited.shape[0]),
-                }
-            )
+            edited, or_meta = _edit_openrouter(data, mime, src)
+            meta.update(or_meta)
             return edited, meta
         except Exception as e:
             or_err = e
             log.warning("OpenRouter edit failed, falling back to local: %s", e)
 
-    if use_local:
+    if prefer_local and allow_local:
         try:
-            src = _decode_image(data)
-            if src is None:
-                raise RuntimeError("decode_error")
+            edited, local_meta = edit_selfie_local(src)
+            meta.update(local_meta)
+            meta["model"] = local_meta.get("cutout", "mediapipe")
+            return edited, meta
+        except Exception as e:
+            local_err = e
+            log.warning("Local edit failed: %s", e)
+            if backend == "local" or not allow_or:
+                raise
+
+    # auto: local failed → try OpenRouter
+    if allow_or and prefer_local:
+        try:
+            edited, or_meta = _edit_openrouter(data, mime, src)
+            meta.update(or_meta)
+            if local_err is not None:
+                meta["local_fallback"] = str(local_err)[:200]
+            return edited, meta
+        except Exception as e:
+            or_err = e
+            log.warning("OpenRouter fallback failed: %s", e)
+
+    # openrouter path already tried OR; finish with local if not done
+    if prefer_or and allow_local:
+        try:
             edited, local_meta = edit_selfie_local(src)
             meta.update(local_meta)
             meta["model"] = local_meta.get("cutout", "mediapipe")
@@ -115,4 +151,6 @@ def run_edit_stage(
 
     if or_err:
         raise or_err
+    if local_err:
+        raise local_err
     raise RuntimeError(f"No edit backend available (EDIT_BACKEND={backend})")

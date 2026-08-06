@@ -28,8 +28,8 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
-# Background edit: local MediaPipe cutout by default (free, VPS-safe).
-# Set EDIT_BACKEND=openrouter|auto to spend OpenRouter credits.
+# Background edit: local MediaPipe cutout by default (identity-safe).
+# Set EDIT_BACKEND=openrouter to force generative edit; auto = local then OR.
 # EDIT_CUTOUT=mediapipe|rembg — rembg is heavier; only on bigger hosts.
 EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
 EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "mediapipe").strip().lower()
