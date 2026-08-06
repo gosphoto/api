@@ -1,0 +1,24 @@
+from app.openrouter import EDIT_PROMPT, build_edit_payload
+
+
+def test_prompt_mentions_no_fringe():
+    lower = EDIT_PROMPT.lower()
+    assert "fringe" in lower or "spill" in lower or "halo" in lower
+
+
+def test_payload_uses_transparent_png_when_enabled(monkeypatch):
+    monkeypatch.setattr("app.openrouter.config.OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1")
+    monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", True)
+    payload = build_edit_payload(b"fake", "image/jpeg")
+    assert payload["model"] == "openai/gpt-image-1"
+    assert payload["output_format"] == "png"
+    assert payload["background"] == "transparent"
+    assert payload["aspect_ratio"] == "3:4"
+    assert payload["input_references"]
+
+
+def test_payload_omits_transparent_when_disabled(monkeypatch):
+    monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", False)
+    payload = build_edit_payload(b"fake", "image/jpeg")
+    assert "background" not in payload
+    assert payload["output_format"] == "jpeg"

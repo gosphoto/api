@@ -52,9 +52,14 @@ OPENROUTER_BASE_URL = os.getenv(
     "OPENROUTER_BASE_URL", "https://openrouter.ai/api/v1"
 ).rstrip("/")
 OPENROUTER_IMAGE_MODEL = os.getenv(
-    "OPENROUTER_IMAGE_MODEL", "google/gemini-2.5-flash-image"
+    "OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1"
 )
+# When true, request transparent PNG then composite locally onto white.
+OPENROUTER_TRANSPARENT_BG = os.getenv(
+    "OPENROUTER_TRANSPARENT_BG", "1"
+).strip().lower() in ("1", "true", "yes", "on")
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "120"))
+# Production with a key should set EDIT_BACKEND=openrouter (see compose/deploy).
 
 # Passport crop output (35×45 mm @ 300 dpi)
 PASSPORT_WIDTH = int(os.getenv("PASSPORT_WIDTH", "413"))

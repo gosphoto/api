@@ -1,4 +1,4 @@
-"""OpenRouter Image API — cheap edit (white background), no precise crop."""
+"""OpenRouter Image API — white/transparent background edit, no precise crop."""
 
 from __future__ import annotations
 
@@ -13,10 +13,13 @@ from . import config
 log = logging.getLogger("gosphoto-gate")
 
 EDIT_PROMPT = (
-    "Replace ONLY the background with solid pure white #FFFFFF. "
+    "Replace ONLY the background with a transparent alpha channel "
+    "(or solid pure white #FFFFFF if transparency is unavailable). "
     "Do not change the person's face, skin, hair, eyes, mouth, clothes, or identity. "
     "No beauty filter, no morphing, no retouching, no makeup. "
-    "Keep original sharpness. Studio ID / Russian passport style, frontal head-and-shoulders."
+    "Keep original sharpness. Remove any coloured fringe, color spill, or halo "
+    "along hair and shoulders. Studio ID / Russian passport style, "
+    "frontal head-and-shoulders."
 )
 
 
@@ -32,16 +35,13 @@ def _data_url(image_bytes: bytes, mime: str = "image/jpeg") -> str:
     return f"data:{mime};base64,{b64}"
 
 
-def edit_selfie(image_bytes: bytes, mime: str = "image/jpeg") -> bytes:
-    if not config.OPENROUTER_API_KEY:
-        raise OpenRouterError("OPENROUTER_API_KEY is not configured")
-
-    url = f"{config.OPENROUTER_BASE_URL}/images"
+def build_edit_payload(image_bytes: bytes, mime: str = "image/jpeg") -> dict[str, Any]:
+    transparent = bool(config.OPENROUTER_TRANSPARENT_BG)
     payload: dict[str, Any] = {
         "model": config.OPENROUTER_IMAGE_MODEL,
         "prompt": EDIT_PROMPT,
         "aspect_ratio": "3:4",
-        "output_format": "jpeg",
+        "output_format": "png" if transparent else "jpeg",
         "input_references": [
             {
                 "type": "image_url",
@@ -49,6 +49,17 @@ def edit_selfie(image_bytes: bytes, mime: str = "image/jpeg") -> bytes:
             }
         ],
     }
+    if transparent:
+        payload["background"] = "transparent"
+    return payload
+
+
+def edit_selfie(image_bytes: bytes, mime: str = "image/jpeg") -> bytes:
+    if not config.OPENROUTER_API_KEY:
+        raise OpenRouterError("OPENROUTER_API_KEY is not configured")
+
+    url = f"{config.OPENROUTER_BASE_URL}/images"
+    payload = build_edit_payload(image_bytes, mime)
     headers = {
         "Authorization": f"Bearer {config.OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
