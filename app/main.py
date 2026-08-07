@@ -15,6 +15,7 @@ from .edit import edit_selfie_local, run_edit_stage
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError
 from .pairs import save_pair
+from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
 
 logging.basicConfig(level=logging.INFO)
@@ -27,6 +28,24 @@ ALLOWED_CT = {
     "image/webp",
     "application/octet-stream",
 }
+
+
+def _print_payload(passport_bgr) -> tuple[bytes, dict]:
+    sheet_bgr, sheet_meta = make_print_sheet_bgr(passport_bgr)
+    sheet_jpeg = encode_print_jpeg(sheet_bgr)
+    payload = {
+        "mime": "image/jpeg",
+        "width": sheet_meta["width"],
+        "height": sheet_meta["height"],
+        "dpi": sheet_meta["dpi"],
+        "size_cm": sheet_meta["size_cm"],
+        "copies": sheet_meta["copies"],
+        "layout": sheet_meta["layout"],
+        "bytes": len(sheet_jpeg),
+        "image_base64": base64.b64encode(sheet_jpeg).decode("ascii"),
+        "meta": sheet_meta,
+    }
+    return sheet_jpeg, payload
 
 
 def _guess_mime(filename: str | None, content_type: str | None) -> str:
@@ -59,7 +78,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.7.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.7.1", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -74,13 +93,13 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.7.0",
-        "pipeline": ["gate", "local_person", "crop"],
+        "version": "0.7.1",
+        "pipeline": ["gate", "local_person", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "note": "/api/process: local cutout only — no face paste/align",
+        "note": "/api/process: digital 35×45 + print sheet 10×15 (4 copies)",
     }
 
 
@@ -212,6 +231,7 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
+    print_jpeg, print_sheet = _print_payload(cropped)
     compliance = {
         **compliance,
         "jpeg_bytes": len(jpeg),
@@ -220,17 +240,20 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
     }
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
+    if format == "print":
+        return Response(content=print_jpeg, media_type="image/jpeg")
 
     return JSONResponse(
         {
             "ok": True,
             "stage": "crop",
-            "message": "Кадр 35×45 готов (600 dpi, FMS §34.3)",
+            "message": "Кадр 35×45 + лист 10×15 (4 фото)",
             "mime": "image/jpeg",
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
             "dpi": config.PASSPORT_DPI,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
+            "print_sheet": print_sheet,
             "crop": crop_metrics,
             "compliance": compliance,
         }
@@ -284,6 +307,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
+    print_jpeg, print_sheet = _print_payload(cropped)
     compliance = {
         **compliance,
         "jpeg_bytes": len(jpeg),
@@ -299,23 +323,44 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             "edit": edit_meta,
             "crop": crop_metrics,
             "compliance": compliance,
-            "pipeline": ["gate", "openrouter_bg", "local_person", "face_protect", "crop"],
+            "print_sheet": {
+                k: print_sheet[k]
+                for k in ("width", "height", "dpi", "copies", "bytes", "size_cm")
+            },
+            "pipeline": [
+                "gate",
+                "openrouter_bg",
+                "local_person",
+                "face_protect",
+                "crop",
+                "print_10x15",
+            ],
         },
     )
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
+    if format == "print":
+        return Response(content=print_jpeg, media_type="image/jpeg")
 
     return JSONResponse(
         {
             "ok": True,
             "stage": "done",
-            "message": "Фото на белом фоне, 35×45 @600 dpi (≤300 КБ)",
+            "message": "Фото 35×45 для Госуслуг + лист 10×15 (4 фото)",
             "mime": "image/jpeg",
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
             "dpi": config.PASSPORT_DPI,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "pipeline": ["gate", "openrouter_bg", "local_person", "face_protect", "crop"],
+            "print_sheet": print_sheet,
+            "pipeline": [
+                "gate",
+                "openrouter_bg",
+                "local_person",
+                "face_protect",
+                "crop",
+                "print_10x15",
+            ],
             "model": edit_meta.get("model"),
             "edit_backend": config.EDIT_BACKEND,
             "edit_cutout": config.EDIT_CUTOUT,
@@ -337,11 +382,12 @@ def process_info():
             "2. openrouter_bg — white bg + shoulders (face forbidden)",
             "3. face_protect — MediaPipe no-retouch face zone from original",
             "4. crop — roll-correct + 35×45 @600dpi (FMS §34.3)",
+            "5. print_sheet — 10×15 cm @300dpi with 4 copies",
         ],
         "endpoints": {
-            "/api/process": "OR bg + face_protect + crop (local fallback)",
+            "/api/process": "digital 35×45 + print 10×15 (4 copies)",
             "/api/edit": "white-bg edit only",
-            "/api/crop": "crop only",
+            "/api/crop": "crop + print sheet",
         },
         "passport": {
             "size_mm": [35, 45],
@@ -355,9 +401,15 @@ def process_info():
             "jpeg_max_bytes": config.JPEG_MAX_BYTES,
             "source": "https://rg.ru/documents/2011/08/22/pasport-dok.html",
         },
+        "print_sheet": {
+            "size_cm": [10, 15],
+            "dpi": 300,
+            "copies": 4,
+            "layout": "2x2",
+        },
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter_model": config.OPENROUTER_IMAGE_MODEL,
         "openrouter_configured": bool(config.OPENROUTER_API_KEY),
-        "output": "json (image_base64) or ?format=jpeg",
+        "output": "json (image_base64 + print_sheet) or ?format=jpeg|print",
     }

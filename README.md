@@ -3,8 +3,8 @@
 Бэкенд для https://gosphoto.ru
 
 - `POST /api/validate` — gate (MediaPipe Face Landmarker)
-- `POST /api/process` — gate → **локальный** белый фон (cutout) → 35×45 crop  
-  (без generative OpenRouter — лицо из исходных пикселей)
+- `POST /api/process` — gate → белый фон → 35×45 crop → **лист 10×15 (4 фото)**  
+  JSON: `image_base64` (Госуслуги) + `print_sheet.image_base64` (печать)
 - `POST /api/edit` — только белый фон; может использовать OpenRouter если `EDIT_BACKEND=openrouter`
 - `GET /health`
 
