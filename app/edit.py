@@ -6,6 +6,7 @@ No passport crop here. Output is a cleaned full-frame portrait ready for /api/cr
 from __future__ import annotations
 
 import logging
+import os
 from typing import Any
 
 import cv2
@@ -14,7 +15,7 @@ import numpy as np
 from . import config
 from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
-from .face_restore import restore_face_from_original
+from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
 from .openrouter import edit_selfie
 from .whitening import force_white_background
@@ -22,33 +23,40 @@ from .whitening import force_white_background
 log = logging.getLogger("gosphoto-gate")
 
 
-def _gentle_face_light(bgr: np.ndarray) -> np.ndarray:
-    """Mild local contrast on L channel — keeps identity, helps dull phone selfies."""
+def _gentle_light_outside_face(bgr: np.ndarray) -> np.ndarray:
+    """Mild CLAHE only outside the face zone — never paste/align another frame."""
     lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
     l, a, b = cv2.split(lab)
     clahe = cv2.createCLAHE(clipLimit=1.6, tileGridSize=(8, 8))
     l2 = clahe.apply(l)
-    # blend so we don't overcook skin
     l_out = cv2.addWeighted(l, 0.55, l2, 0.45, 0)
-    return cv2.cvtColor(cv2.merge([l_out, a, b]), cv2.COLOR_LAB2BGR)
+    lit = cv2.cvtColor(cv2.merge([l_out, a, b]), cv2.COLOR_LAB2BGR)
+    protect = face_protect_mask(bgr)
+    if protect is None:
+        return bgr
+    m = protect[:, :, None]
+    return (bgr.astype(np.float32) * m + lit.astype(np.float32) * (1.0 - m)).astype(
+        np.uint8
+    )
 
 
 def edit_selfie_local(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
-    """Local edit: white bg cutout → face restore → light whitening."""
+    """Local cutout on white. No face paste/align — that shifts features off the head."""
     src = prepare_for_cutout(bgr)
     src = _resize_max_side(src, config.MAX_IMAGE_SIDE)
     edited = white_background_local(src)
-    # Keep original face pixels (cutout may soften skin near edges)
-    edited, face_restored = restore_face_from_original(src, edited)
     edited = force_white_background(edited, tol=48)
-    edited, _ = restore_face_from_original(src, edited)
-    edited = _gentle_face_light(edited)
+    edited = _gentle_light_outside_face(edited)
     edited = force_white_background(edited, tol=45)
-    edited, _ = restore_face_from_original(src, edited)
-    cutout = last_cutout_backend
     return edited, {
-        "cutout": cutout,
-        "face_restored": face_restored,
+        "cutout": last_cutout_backend,
+        "face_protected": True,
+        "face_protect": {
+            "model": "local_person",
+            "applied": True,
+            "align": "none",
+            "composite": "local_person_white_bg",
+        },
         "width": int(edited.shape[1]),
         "height": int(edited.shape[0]),
     }
@@ -59,31 +67,92 @@ def _decode_any(raw: bytes) -> np.ndarray | None:
     return cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
 
 
+def _person_alpha_on_white(local_bgr: np.ndarray) -> np.ndarray:
+    """Soft 0..1 person matte from a white-bg cutout (no landmark warp)."""
+    gray = cv2.cvtColor(local_bgr, cv2.COLOR_BGR2GRAY)
+    f = local_bgr.astype(np.float32)
+    chroma = np.linalg.norm(f - f.mean(axis=2, keepdims=True), axis=2)
+    hard = ((gray < 248) | (chroma > 10)).astype(np.uint8) * 255
+    hard = cv2.morphologyEx(hard, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(
+        (hard > 0).astype(np.uint8), connectivity=8
+    )
+    if num > 1:
+        largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
+        hard = ((labels == largest).astype(np.uint8)) * 255
+    # Slight erode so silueta fringe/bg crumbs don't stick
+    hard = cv2.erode(hard, np.ones((3, 3), np.uint8), iterations=1)
+    alpha = cv2.GaussianBlur(hard, (0, 0), 1.2).astype(np.float32) / 255.0
+    return np.clip(alpha, 0.0, 1.0)
+
+
 def _edit_openrouter(
     data: bytes,
     mime: str,
     src: np.ndarray,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """Generative white/transparent bg; face locked back from original pixels."""
-    raw = edit_selfie(data, mime=mime)
-    decoded = _decode_any(raw)
-    if decoded is None:
-        raise RuntimeError("Edited image decode failed")
-    edited = composite_on_white(decoded)
-    # Align size for restore if OR changed resolution
-    if edited.shape[:2] != src.shape[:2]:
-        src_rs = cv2.resize(src, (edited.shape[1], edited.shape[0]), interpolation=cv2.INTER_AREA)
+    """
+    Identity-safe white bg: full local person, never paste/warp a face layer.
+
+    OpenRouter redraws the head in a different place in-frame; compositing it
+    under/over the local face always looks 'съехало'. Keep OR available for
+    labs via EDIT_USE_OR_PIXELS=1, default off.
+    """
+    src_p = prepare_for_cutout(src)
+    src_p = _resize_max_side(src_p, config.MAX_IMAGE_SIDE)
+    local = white_background_local(src_p)
+
+    use_or_pixels = os.getenv("EDIT_USE_OR_PIXELS", "").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
+    or_meta: dict[str, Any] = {"or_pixels": False}
+    if use_or_pixels:
+        raw = edit_selfie(data, mime=mime)
+        decoded = _decode_any(raw)
+        if decoded is None:
+            raise RuntimeError("Edited image decode failed")
+        edited = composite_on_white(decoded)
+        aligned, did_align = align_edit_to_original(local, edited)
+        person = _person_alpha_on_white(local)
+        # Hard matte — no soft OR ghost at edges
+        hard = (person >= 0.55).astype(np.float32)
+        hard = cv2.GaussianBlur(hard, (0, 0), 0.6)
+        a = hard[:, :, None]
+        white = np.full_like(local, 255, dtype=np.float32)
+        # Background = white (not OR person ghosts); person = local only
+        out = (white * (1.0 - a) + local.astype(np.float32) * a).astype(np.uint8)
+        or_meta = {
+            "or_pixels": True,
+            "or_aligned": did_align,
+            "note": "OR aligned but discarded outside hard local matte",
+        }
     else:
-        src_rs = src
-    edited, face_restored = restore_face_from_original(src_rs, edited)
-    edited = force_white_background(edited, tol=48)
-    edited, _ = restore_face_from_original(src_rs, edited)
-    return edited, {
-        "model": config.OPENROUTER_IMAGE_MODEL,
-        "cutout": "openrouter",
-        "face_restored": face_restored,
-        "width": int(edited.shape[1]),
-        "height": int(edited.shape[0]),
+        # Pure local person on white — face cannot shift relative to head
+        person = _person_alpha_on_white(local)
+        hard = (person >= 0.45).astype(np.float32)
+        hard = cv2.GaussianBlur(hard, (0, 0), 0.8)
+        a = hard[:, :, None]
+        white = np.full_like(local, 255, dtype=np.float32)
+        out = (white * (1.0 - a) + local.astype(np.float32) * a).astype(np.uint8)
+
+    out = force_white_background(out, tol=48)
+    return out, {
+        "model": config.OPENROUTER_IMAGE_MODEL if use_or_pixels else last_cutout_backend,
+        "cutout": "openrouter+local" if use_or_pixels else last_cutout_backend,
+        "face_protected": True,
+        "face_protect": {
+            "model": "local_person_matte",
+            "applied": True,
+            "align": "none",
+            "composite": "local_person_white_bg",
+            **or_meta,
+        },
+        "face_source": last_cutout_backend,
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
     }
 
 
@@ -95,25 +164,22 @@ def run_edit_stage(
     Stage 1 entry: bytes → edited BGR (white bg, not cropped).
 
     Strategy:
-      Prefer OpenRouter for clean white/transparent bg (figure may change).
-      Always face-restore from original after OR.
-      Fallback to local silueta/u2netp cutout if OR unavailable/fails.
+      Default: local person on white (no face paste/align → no shift).
+      Optional OR path via EDIT_BACKEND=openrouter (still local matte by default).
     """
     backend = config.EDIT_BACKEND
     has_or_key = bool(config.OPENROUTER_API_KEY)
     prefer_or = backend in ("openrouter", "auto") and has_or_key
-    # empty / openrouter without key → local
     prefer_local = backend in ("local", "") or (backend == "auto" and not has_or_key)
     allow_or = has_or_key and backend in ("openrouter", "auto")
     allow_local = backend in ("local", "auto", "openrouter", "")
 
-    # Default when unset: openrouter if key else local
     if backend not in ("local", "openrouter", "auto", ""):
         prefer_or = has_or_key
         prefer_local = not prefer_or
     elif backend == "openrouter":
         prefer_or = has_or_key
-        prefer_local = True  # fallback after OR
+        prefer_local = True
     elif backend == "auto":
         prefer_or = has_or_key
         prefer_local = True
@@ -150,7 +216,6 @@ def run_edit_stage(
             if backend == "local" or not allow_or:
                 raise
 
-    # auto: local failed → try OpenRouter
     if allow_or and prefer_local:
         try:
             edited, or_meta = _edit_openrouter(data, mime, src)
@@ -162,7 +227,6 @@ def run_edit_stage(
             or_err = e
             log.warning("OpenRouter fallback failed: %s", e)
 
-    # openrouter path already tried OR; finish with local if not done
     if prefer_or and allow_local:
         try:
             edited, local_meta = edit_selfie_local(src)

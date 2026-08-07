@@ -17,7 +17,7 @@ services:
       GATE_MAX_YAW_DEG: "25"
       GATE_MAX_PITCH_DEG: "25"
       GATE_MAX_ROLL_DEG: "28"
-      EDIT_BACKEND: ${EDIT_BACKEND:-openrouter}
+      EDIT_BACKEND: ${EDIT_BACKEND:-local}
       EDIT_CUTOUT: ${EDIT_CUTOUT:-silueta}
       U2NETP_MODEL_PATH: /app/models/u2netp.onnx
       SILUETA_MODEL_PATH: /app/models/silueta.onnx

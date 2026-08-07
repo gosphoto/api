@@ -149,7 +149,8 @@ def face_l1(orig: np.ndarray, out: np.ndarray) -> float:
     lm = _landmarks_xy(o)
     if lm is None:
         return 999.0
-    m = _face_mask((h, w), lm)
+    m_face, m_hair = _face_mask((h, w), lm)
+    m = np.maximum(m_face, m_hair)
     diff = np.abs(o.astype(np.float32) - out.astype(np.float32)).mean(axis=2)
     vals = diff[m > 0.5]
     return float(vals.mean()) if vals.size else 999.0

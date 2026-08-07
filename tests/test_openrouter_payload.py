@@ -12,6 +12,14 @@ def test_prompt_forbids_skin_smoothing():
     assert "pore" in lower or "face" in lower
 
 
+def test_prompt_allows_only_shoulders_and_bg():
+    lower = EDIT_PROMPT.lower()
+    assert "shoulder" in lower
+    assert "forbidden" in lower
+    assert "head" in lower
+    assert "identity" in lower
+
+
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1")
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", True)

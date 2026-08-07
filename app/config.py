@@ -29,7 +29,7 @@ CORS_ORIGINS = [
 ]
 
 # EDIT_CUTOUT=silueta|u2netp|u2net|mediapipe|rembg|auto
-EDIT_BACKEND = os.getenv("EDIT_BACKEND", "openrouter").strip().lower()
+EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
 EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "silueta").strip().lower()
 REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
@@ -78,13 +78,34 @@ OPENROUTER_TRANSPARENT_BG = os.getenv(
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "120"))
 # Prefer EDIT_BACKEND=local so /api/edit stays identity-safe too.
 
-# Passport crop output (35×45 mm @ 300 dpi)
-PASSPORT_WIDTH = int(os.getenv("PASSPORT_WIDTH", "413"))
-PASSPORT_HEIGHT = int(os.getenv("PASSPORT_HEIGHT", "531"))
-# RF: face ~70–80% of height; top field ~5 mm of 45 mm ≈ 0.11
-PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
-PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.11"))
-JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "95"))
+# Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
+# https://rg.ru/documents/2011/08/22/pasport-dok.html
+# 35×45 mm @ ≥600 dpi → 827×1063 px; JPEG ≤300 KB
+PASSPORT_WIDTH_MM = 35.0
+PASSPORT_HEIGHT_MM = 45.0
+PASSPORT_DPI = int(os.getenv("PASSPORT_DPI", "600"))
+PASSPORT_WIDTH = int(
+    os.getenv(
+        "PASSPORT_WIDTH",
+        str(round(PASSPORT_WIDTH_MM / 25.4 * PASSPORT_DPI)),
+    )
+)
+PASSPORT_HEIGHT = int(
+    os.getenv(
+        "PASSPORT_HEIGHT",
+        str(round(PASSPORT_HEIGHT_MM / 25.4 * PASSPORT_DPI)),
+    )
+)
+# Овал лица ≥80%; голова в длину 32–36 мм → целевая доля ~0.80 (36/45)
+PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.80"))
+# Верхнее поле ~4.5 мм из 45 мм
+PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.10"))
+HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "32"))
+HEAD_HEIGHT_MM_MAX = float(os.getenv("HEAD_HEIGHT_MM_MAX", "36"))
+HEAD_WIDTH_MM_MIN = float(os.getenv("HEAD_WIDTH_MM_MIN", "18"))
+HEAD_WIDTH_MM_MAX = float(os.getenv("HEAD_WIDTH_MM_MAX", "25"))
+JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "92"))
+JPEG_MAX_BYTES = int(os.getenv("JPEG_MAX_BYTES", str(300 * 1024)))
 
 # Failed gate uploads land here for review (mounted as a volume in compose).
 REJECTEDS_DIR = Path(

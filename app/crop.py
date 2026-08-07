@@ -1,4 +1,4 @@
-"""Passport crop: roll-align → fit face/margins → 35×45 @ 300dpi.
+"""Passport crop: roll-align → fit face/margins → 35×45 @ 600dpi (FMS §34.3).
 
 Expects a white-background portrait (local cutout). No generative rewrite.
 Retries crown/face-ratio variants until compliance is closest to pass.
@@ -126,13 +126,22 @@ def _score_compliance(comp: dict[str, Any]) -> float:
         return 1000.0
     checks = comp.get("checks") or {}
     score = 0.0
-    for k in ("size_ok", "face_ratio_ok", "top_margin_ok", "bg_white_ok", "single_face_ok"):
+    for k in (
+        "size_ok",
+        "face_oval_ok",
+        "head_height_mm_ok",
+        "head_width_mm_ok",
+        "face_ratio_ok",
+        "top_margin_ok",
+        "bg_white_ok",
+        "single_face_ok",
+    ):
         if checks.get(k):
             score += 100.0
     fr = float(comp.get("face_ratio") or 0)
     tm = float(comp.get("top_margin") or 0)
-    score -= abs(fr - 0.75) * 200
-    score -= abs(tm - 0.11) * 300
+    score -= abs(fr - config.PASSPORT_FACE_RATIO) * 200
+    score -= abs(tm - config.PASSPORT_TOP_MARGIN) * 300
     return score
 
 
@@ -148,17 +157,18 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
 
 def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """
-    White-bg portrait → 413×531 passport BGR + metrics + compliance.
+    White-bg portrait → 35×45 @600dpi passport BGR + metrics + compliance.
 
     Tries several crown/face geometries and keeps the best compliance result.
+    Targets FMS §34.3: face oval ≥80%, head 32–36 mm.
     """
     attempts: list[tuple[float, float, float]] = [
         (0.45, config.PASSPORT_FACE_RATIO, config.PASSPORT_TOP_MARGIN),
-        (0.55, 0.74, 0.11),
-        (0.35, 0.76, 0.12),
-        (0.65, 0.72, 0.10),
-        (0.50, 0.78, 0.09),
-        (0.40, 0.73, 0.13),
+        (0.50, 0.80, 0.10),
+        (0.55, 0.78, 0.09),
+        (0.40, 0.80, 0.11),
+        (0.60, 0.79, 0.08),
+        (0.35, 0.81, 0.10),
     ]
 
     best: tuple[np.ndarray, dict[str, Any], dict[str, Any], float] | None = None
@@ -209,22 +219,33 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
     return cropped, metrics, comp
 
 
-def encode_jpeg(bgr: np.ndarray, quality: int | None = None) -> bytes:
-    """JPEG with 300 DPI metadata for Gosuslugi / print."""
+def encode_jpeg(
+    bgr: np.ndarray,
+    quality: int | None = None,
+    max_bytes: int | None = None,
+) -> bytes:
+    """JPEG with ≥600 DPI metadata; shrink quality until ≤300 KB (FMS §34.3)."""
     from io import BytesIO
 
     from PIL import Image
 
-    q = int(quality if quality is not None else config.JPEG_QUALITY)
+    q0 = int(quality if quality is not None else config.JPEG_QUALITY)
+    limit = int(max_bytes if max_bytes is not None else config.JPEG_MAX_BYTES)
+    dpi = (config.PASSPORT_DPI, config.PASSPORT_DPI)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     img = Image.fromarray(rgb)
-    buf = BytesIO()
-    img.save(
-        buf,
-        format="JPEG",
-        quality=q,
-        dpi=(300, 300),
-        subsampling=0,
-        optimize=True,
-    )
-    return buf.getvalue()
+
+    best = b""
+    for q in list(range(q0, 54, -4)) + [50]:
+        buf = BytesIO()
+        img.save(
+            buf,
+            format="JPEG",
+            quality=max(1, q),
+            dpi=dpi,
+            optimize=True,
+        )
+        best = buf.getvalue()
+        if len(best) <= limit:
+            return best
+    return best

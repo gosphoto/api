@@ -122,8 +122,10 @@ def _face_lock_mask(bgr: np.ndarray) -> np.ndarray:
     lm = _landmarks_xy(bgr)
     if lm is None:
         return np.zeros(bgr.shape[:2], np.uint8)
-    m = (_face_mask(bgr.shape[:2], lm) * 255.0).astype(np.uint8)
-    m = cv2.dilate(m, np.ones((31, 31), np.uint8), iterations=2)
+    m_face, m_hair = _face_mask(bgr.shape[:2], lm)
+    # Tight lock — large dilate pulled room bg into silueta (bookshelf blob)
+    m = (np.clip(m_face, 0.0, 1.0) * 255.0).astype(np.uint8)
+    m = cv2.dilate(m, np.ones((9, 9), np.uint8), iterations=1)
     return m
 
 

@@ -59,7 +59,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.5.1", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.7.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -74,13 +74,13 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.5.1",
-        "pipeline": ["gate", "openrouter_bg", "face_restore", "crop"],
+        "version": "0.7.0",
+        "pipeline": ["gate", "local_person", "crop"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "note": "/api/process: OpenRouter bg + original face restore; local cutout fallback",
+        "note": "/api/process: local cutout only — no face paste/align",
     }
 
 
@@ -212,6 +212,12 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
+    compliance = {
+        **compliance,
+        "jpeg_bytes": len(jpeg),
+        "jpeg_max_bytes": config.JPEG_MAX_BYTES,
+        "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
+    }
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
 
@@ -219,10 +225,11 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
         {
             "ok": True,
             "stage": "crop",
-            "message": "Кадр 35×45 готов",
+            "message": "Кадр 35×45 готов (600 dpi, FMS §34.3)",
             "mime": "image/jpeg",
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
+            "dpi": config.PASSPORT_DPI,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
             "crop": crop_metrics,
             "compliance": compliance,
@@ -232,10 +239,10 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
 
 @app.post("/api/process")
 async def process(file: UploadFile = File(...), format: str = "json"):
-    """RF passport: gate → OpenRouter white bg → face restore → 35×45 crop.
+    """RF passport: gate → OR white bg → MediaPipe face_protect → 35×45 crop.
 
-    Generative model may edit silhouette/bg; original face pixels are pasted back.
-    Falls back to local silueta cutout if OpenRouter fails.
+    Face zone is a no-retouch region: original selfie pixels only.
+    Falls back to local silueta if OpenRouter fails.
     """
     data = await _read_upload(file)
 
@@ -277,6 +284,12 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
+    compliance = {
+        **compliance,
+        "jpeg_bytes": len(jpeg),
+        "jpeg_max_bytes": config.JPEG_MAX_BYTES,
+        "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
+    }
     save_pair(
         data,
         jpeg,
@@ -286,7 +299,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             "edit": edit_meta,
             "crop": crop_metrics,
             "compliance": compliance,
-            "pipeline": ["gate", "openrouter_bg", "face_restore", "crop"],
+            "pipeline": ["gate", "openrouter_bg", "local_person", "face_protect", "crop"],
         },
     )
     if format == "jpeg":
@@ -296,12 +309,13 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         {
             "ok": True,
             "stage": "done",
-            "message": "Фото на белом фоне, 35×45",
+            "message": "Фото на белом фоне, 35×45 @600 dpi (≤300 КБ)",
             "mime": "image/jpeg",
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
+            "dpi": config.PASSPORT_DPI,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "pipeline": ["gate", "openrouter_bg", "face_restore", "crop"],
+            "pipeline": ["gate", "openrouter_bg", "local_person", "face_protect", "crop"],
             "model": edit_meta.get("model"),
             "edit_backend": config.EDIT_BACKEND,
             "edit_cutout": config.EDIT_CUTOUT,
@@ -320,14 +334,26 @@ def process_info():
     return {
         "pipeline": [
             "1. gate — face/pose/blur",
-            "2. openrouter_bg — generative white/transparent bg (figure OK to edit)",
-            "3. face_restore — original face pixels pasted back",
-            "4. crop — roll-correct + 35×45 @300dpi",
+            "2. openrouter_bg — white bg + shoulders (face forbidden)",
+            "3. face_protect — MediaPipe no-retouch face zone from original",
+            "4. crop — roll-correct + 35×45 @600dpi (FMS §34.3)",
         ],
         "endpoints": {
-            "/api/process": "OR bg + face restore + crop (local fallback)",
+            "/api/process": "OR bg + face_protect + crop (local fallback)",
             "/api/edit": "white-bg edit only",
             "/api/crop": "crop only",
+        },
+        "passport": {
+            "size_mm": [35, 45],
+            "dpi": config.PASSPORT_DPI,
+            "pixels": [config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT],
+            "face_ratio": config.PASSPORT_FACE_RATIO,
+            "head_height_mm": [
+                config.HEAD_HEIGHT_MM_MIN,
+                config.HEAD_HEIGHT_MM_MAX,
+            ],
+            "jpeg_max_bytes": config.JPEG_MAX_BYTES,
+            "source": "https://rg.ru/documents/2011/08/22/pasport-dok.html",
         },
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
