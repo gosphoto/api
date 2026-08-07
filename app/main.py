@@ -17,6 +17,7 @@ from .openrouter import OpenRouterError
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
+from .results import is_valid_result_id, load_file, load_meta, save_result
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
@@ -78,7 +79,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.7.1", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.8.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -93,13 +94,13 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.7.1",
+        "version": "0.8.0",
         "pipeline": ["gate", "local_person", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "note": "/api/process: digital 35×45 + print sheet 10×15 (4 copies)",
+        "note": "/api/process: digital 35×45 + print 10×15; GET /api/result/{id}",
     }
 
 
@@ -314,62 +315,111 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         "jpeg_max_bytes": config.JPEG_MAX_BYTES,
         "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
     }
+    print_meta = {
+        k: print_sheet[k]
+        for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
+        if k in print_sheet
+    }
+    pair_meta = {
+        "gate": gate.metrics,
+        "edit": edit_meta,
+        "crop": crop_metrics,
+        "compliance": compliance,
+        "print_sheet": print_meta,
+        "pipeline": [
+            "gate",
+            "openrouter_bg",
+            "local_person",
+            "face_protect",
+            "crop",
+            "print_10x15",
+        ],
+        "width": config.PASSPORT_WIDTH,
+        "height": config.PASSPORT_HEIGHT,
+        "dpi": config.PASSPORT_DPI,
+        "mime": "image/jpeg",
+    }
     save_pair(
         data,
         jpeg,
         filename=file.filename,
-        meta={
-            "gate": gate.metrics,
-            "edit": edit_meta,
-            "crop": crop_metrics,
-            "compliance": compliance,
-            "print_sheet": {
-                k: print_sheet[k]
-                for k in ("width", "height", "dpi", "copies", "bytes", "size_cm")
-            },
-            "pipeline": [
-                "gate",
-                "openrouter_bg",
-                "local_person",
-                "face_protect",
-                "crop",
-                "print_10x15",
-            ],
-        },
+        meta=pair_meta,
+    )
+    result_id = save_result(
+        jpeg,
+        print_jpeg,
+        meta=pair_meta,
     )
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
     if format == "print":
         return Response(content=print_jpeg, media_type="image/jpeg")
 
-    return JSONResponse(
-        {
-            "ok": True,
-            "stage": "done",
-            "message": "Фото 35×45 для Госуслуг + лист 10×15 (4 фото)",
-            "mime": "image/jpeg",
-            "width": config.PASSPORT_WIDTH,
-            "height": config.PASSPORT_HEIGHT,
-            "dpi": config.PASSPORT_DPI,
-            "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "print_sheet": print_sheet,
-            "pipeline": [
-                "gate",
-                "openrouter_bg",
-                "local_person",
-                "face_protect",
-                "crop",
-                "print_10x15",
-            ],
-            "model": edit_meta.get("model"),
-            "edit_backend": config.EDIT_BACKEND,
-            "edit_cutout": config.EDIT_CUTOUT,
-            "gate": gate.metrics,
-            "edit": edit_meta,
-            "crop": crop_metrics,
-            "compliance": compliance,
-        }
-    )
+    payload = {
+        "ok": True,
+        "stage": "done",
+        "message": "Фото 35×45 для Госуслуг + лист 10×15 (4 фото)",
+        "mime": "image/jpeg",
+        "width": config.PASSPORT_WIDTH,
+        "height": config.PASSPORT_HEIGHT,
+        "dpi": config.PASSPORT_DPI,
+        "image_base64": base64.b64encode(jpeg).decode("ascii"),
+        "print_sheet": print_sheet,
+        "pipeline": pair_meta["pipeline"],
+        "model": edit_meta.get("model"),
+        "edit_backend": config.EDIT_BACKEND,
+        "edit_cutout": config.EDIT_CUTOUT,
+        "gate": gate.metrics,
+        "edit": edit_meta,
+        "crop": crop_metrics,
+        "compliance": compliance,
+    }
+    if result_id:
+        payload["result_id"] = result_id
+        payload["result_path"] = f"/result/{result_id}"
+    return JSONResponse(payload)
+
+
+@app.get("/api/result/{result_id}")
+def get_result(result_id: str):
+    if not is_valid_result_id(result_id):
+        raise HTTPException(status_code=404, detail="Result not found")
+    meta = load_meta(result_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Result not found")
+    print_meta = meta.get("print_sheet") or {}
+    return {
+        "ok": True,
+        "result_id": result_id,
+        "result_path": f"/result/{result_id}",
+        "mime": meta.get("mime") or "image/jpeg",
+        "width": meta.get("width") or config.PASSPORT_WIDTH,
+        "height": meta.get("height") or config.PASSPORT_HEIGHT,
+        "dpi": meta.get("dpi") or config.PASSPORT_DPI,
+        "compliance": meta.get("compliance") or {},
+        "print_sheet": print_meta,
+        "digital_url": f"/api/result/{result_id}/digital.jpg",
+        "print_url": f"/api/result/{result_id}/print.jpg",
+        "gate": meta.get("gate"),
+        "crop": meta.get("crop"),
+        "saved_at": meta.get("saved_at"),
+    }
+
+
+@app.get("/api/result/{result_id}/digital.jpg")
+def get_result_digital(result_id: str):
+    data = load_file(result_id, "digital.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/print.jpg")
+def get_result_print(result_id: str):
+    data = load_file(result_id, "print.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
 
 
 @app.get("/api/process")

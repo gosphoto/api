@@ -10,4 +10,5 @@ models/
 testdata/
 rejecteds/
 pairs/
+results/
 tmp-smoke/

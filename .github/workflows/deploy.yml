@@ -78,6 +78,7 @@ jobs:
             --exclude 'models' \
             --exclude 'rejecteds' \
             --exclude 'pairs' \
+            --exclude 'results' \
             --exclude 'tmp-smoke' \
             --exclude 'README.md' \
             --exclude '.gitignore' \

@@ -26,9 +26,11 @@ services:
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
       REJECTEDS_DIR: /app/rejecteds
       PAIRS_DIR: /app/pairs
+      RESULTS_DIR: /app/results
     volumes:
       - ./rejecteds:/app/rejecteds
       - ./pairs:/app/pairs
+      - ./results:/app/results
     mem_limit: 1024m
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8091/health"]

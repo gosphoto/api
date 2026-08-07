@@ -134,3 +134,17 @@ PAIRS_ENABLED = os.getenv("PAIRS_ENABLED", "1").strip().lower() in (
     "yes",
     "on",
 )
+
+# Shareable result pages: results/<32-hex>/{digital.jpg,print.jpg,meta.json}
+RESULTS_DIR = Path(
+    os.getenv(
+        "RESULTS_DIR",
+        str(Path(__file__).resolve().parent.parent / "results"),
+    )
+)
+RESULTS_ENABLED = os.getenv("RESULTS_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
