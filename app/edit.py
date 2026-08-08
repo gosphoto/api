@@ -6,7 +6,6 @@ No passport crop here. Output is a cleaned full-frame portrait ready for /api/cr
 from __future__ import annotations
 
 import logging
-import os
 from typing import Any
 
 import cv2
@@ -15,9 +14,9 @@ import numpy as np
 from . import config
 from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
-from .face_protect import align_edit_to_original, face_protect_mask
+from .face_protect import apply_face_protect, face_protect_mask
 from .gate import _decode_image, _resize_max_side
-from .openrouter import edit_selfie
+from .openrouter import edit_selfie, edit_selfie_nano_banana
 from .whitening import force_white_background
 
 log = logging.getLogger("gosphoto-gate")
@@ -67,23 +66,18 @@ def _decode_any(raw: bytes) -> np.ndarray | None:
     return cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
 
 
-def _person_alpha_on_white(local_bgr: np.ndarray) -> np.ndarray:
-    """Soft 0..1 person matte from a white-bg cutout (no landmark warp)."""
-    gray = cv2.cvtColor(local_bgr, cv2.COLOR_BGR2GRAY)
-    f = local_bgr.astype(np.float32)
-    chroma = np.linalg.norm(f - f.mean(axis=2, keepdims=True), axis=2)
-    hard = ((gray < 248) | (chroma > 10)).astype(np.uint8) * 255
-    hard = cv2.morphologyEx(hard, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-    num, labels, stats, _ = cv2.connectedComponentsWithStats(
-        (hard > 0).astype(np.uint8), connectivity=8
+def _uniform_max_side(bgr: np.ndarray, max_side: int) -> np.ndarray:
+    """Scale preserving aspect — never squash to another frame's HxW."""
+    h, w = bgr.shape[:2]
+    m = max(h, w)
+    if m <= max_side:
+        return bgr
+    scale = max_side / float(m)
+    return cv2.resize(
+        bgr,
+        (max(1, int(round(w * scale))), max(1, int(round(h * scale)))),
+        interpolation=cv2.INTER_AREA,
     )
-    if num > 1:
-        largest = 1 + int(np.argmax(stats[1:, cv2.CC_STAT_AREA]))
-        hard = ((labels == largest).astype(np.uint8)) * 255
-    # Slight erode so silueta fringe/bg crumbs don't stick
-    hard = cv2.erode(hard, np.ones((3, 3), np.uint8), iterations=1)
-    alpha = cv2.GaussianBlur(hard, (0, 0), 1.2).astype(np.float32) / 255.0
-    return np.clip(alpha, 0.0, 1.0)
 
 
 def _edit_openrouter(
@@ -91,66 +85,69 @@ def _edit_openrouter(
     mime: str,
     src: np.ndarray,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """
-    Identity-safe white bg: full local person, never paste/warp a face layer.
-
-    OpenRouter redraws the head in a different place in-frame; compositing it
-    under/over the local face always looks 'съехало'. Keep OR available for
-    labs via EDIT_USE_OR_PIXELS=1, default off.
-    """
+    """Generative white-bg via OpenRouter + original-face protect."""
     src_p = prepare_for_cutout(src)
     src_p = _resize_max_side(src_p, config.MAX_IMAGE_SIDE)
-    local = white_background_local(src_p)
 
-    use_or_pixels = os.getenv("EDIT_USE_OR_PIXELS", "").strip().lower() in (
-        "1",
-        "true",
-        "yes",
-        "on",
-    )
-    or_meta: dict[str, Any] = {"or_pixels": False}
-    if use_or_pixels:
-        raw = edit_selfie(data, mime=mime)
-        decoded = _decode_any(raw)
-        if decoded is None:
-            raise RuntimeError("Edited image decode failed")
-        edited = composite_on_white(decoded)
-        aligned, did_align = align_edit_to_original(local, edited)
-        person = _person_alpha_on_white(local)
-        # Hard matte — no soft OR ghost at edges
-        hard = (person >= 0.55).astype(np.float32)
-        hard = cv2.GaussianBlur(hard, (0, 0), 0.6)
-        a = hard[:, :, None]
-        white = np.full_like(local, 255, dtype=np.float32)
-        # Background = white (not OR person ghosts); person = local only
-        out = (white * (1.0 - a) + local.astype(np.float32) * a).astype(np.uint8)
-        or_meta = {
-            "or_pixels": True,
-            "or_aligned": did_align,
-            "note": "OR aligned but discarded outside hard local matte",
-        }
-    else:
-        # Pure local person on white — face cannot shift relative to head
-        person = _person_alpha_on_white(local)
-        hard = (person >= 0.45).astype(np.float32)
-        hard = cv2.GaussianBlur(hard, (0, 0), 0.8)
-        a = hard[:, :, None]
-        white = np.full_like(local, 255, dtype=np.float32)
-        out = (white * (1.0 - a) + local.astype(np.float32) * a).astype(np.uint8)
+    raw = edit_selfie(data, mime=mime)
+    decoded = _decode_any(raw)
+    if decoded is None:
+        raise RuntimeError("Edited image decode failed")
+    edited = composite_on_white(decoded)
 
+    out, protected, fp_meta = apply_face_protect(src_p, edited)
     out = force_white_background(out, tol=48)
+    out = _gentle_light_outside_face(out)
+    out = force_white_background(out, tol=45)
+
     return out, {
-        "model": config.OPENROUTER_IMAGE_MODEL if use_or_pixels else last_cutout_backend,
-        "cutout": "openrouter+local" if use_or_pixels else last_cutout_backend,
-        "face_protected": True,
+        "model": config.OPENROUTER_IMAGE_MODEL,
+        "cutout": "openrouter",
+        "face_protected": bool(protected),
         "face_protect": {
-            "model": "local_person_matte",
-            "applied": True,
-            "align": "none",
-            "composite": "local_person_white_bg",
-            **or_meta,
+            **fp_meta,
+            "composite": "openrouter_bg_original_face",
         },
-        "face_source": last_cutout_backend,
+        "face_source": "original",
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
+    }
+
+
+def run_edit_nano_banana(
+    data: bytes,
+    mime: str = "image/jpeg",
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Nano Banana Pro: single pass white-bg. No face-protect, no pass2."""
+    src = _decode_image(data)
+    if src is None:
+        raise RuntimeError("decode_error")
+    src_p = prepare_for_cutout(src)
+    src_p = _resize_max_side(src_p, config.MAX_IMAGE_SIDE)
+
+    ok, buf = cv2.imencode(".jpg", src_p, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+    if not ok:
+        raise RuntimeError("encode_for_nano_banana_failed")
+    orig_jpg = buf.tobytes()
+
+    raw = edit_selfie_nano_banana(orig_jpg, mime="image/jpeg")
+    decoded = _decode_any(raw)
+    if decoded is None:
+        raise RuntimeError("Nano Banana decode failed")
+    out = composite_on_white(decoded)
+    # Keep model aspect (3:4). Squashing into src_p HxW stretches faces
+    # when the selfie is square/landscape (e.g. 513×480).
+    out = _uniform_max_side(out, config.MAX_IMAGE_SIDE)
+    out = force_white_background(out, tol=48)
+
+    return out, {
+        "model": config.NANO_BANANA_MODEL,
+        "cutout": "nano_banana",
+        "face_protected": False,
+        "passes": 1,
+        "prompt": "gosuslugi_nano",
+        "src_size": [int(src_p.shape[1]), int(src_p.shape[0])],
+        "kept_model_aspect": True,
         "width": int(out.shape[1]),
         "height": int(out.shape[0]),
     }
@@ -164,8 +161,8 @@ def run_edit_stage(
     Stage 1 entry: bytes → edited BGR (white bg, not cropped).
 
     Strategy:
-      Default: local person on white (no face paste/align → no shift).
-      Optional OR path via EDIT_BACKEND=openrouter (still local matte by default).
+      EDIT_BACKEND=openrouter|auto → generative OpenRouter, local cutout fallback.
+      EDIT_BACKEND=local → ONNX/MediaPipe cutout only.
     """
     backend = config.EDIT_BACKEND
     has_or_key = bool(config.OPENROUTER_API_KEY)

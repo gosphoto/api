@@ -11,14 +11,13 @@ from fastapi.responses import JSONResponse, Response
 from . import config
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import edit_selfie_local, run_edit_stage
+from .edit import edit_selfie_local, run_edit_nano_banana, run_edit_stage
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
 from .results import is_valid_result_id, load_file, load_meta, save_result
-
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
 
@@ -79,7 +78,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.6.9", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -94,13 +93,14 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.8.0",
-        "pipeline": ["gate", "local_person", "crop", "print_10x15"],
+        "version": "0.6.9",
+        "pipeline": ["gate", "openrouter_bg|local_person", "crop"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "note": "/api/process: digital 35×45 + print 10×15; GET /api/result/{id}",
+        "nano_banana_model": config.NANO_BANANA_MODEL,
+        "note": "/api/process: gpt-image+face-protect; /api/process/nano-banana: one-pass Nano Banana Pro",
     }
 
 
@@ -232,29 +232,18 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
-    print_jpeg, print_sheet = _print_payload(cropped)
-    compliance = {
-        **compliance,
-        "jpeg_bytes": len(jpeg),
-        "jpeg_max_bytes": config.JPEG_MAX_BYTES,
-        "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
-    }
     if format == "jpeg":
         return Response(content=jpeg, media_type="image/jpeg")
-    if format == "print":
-        return Response(content=print_jpeg, media_type="image/jpeg")
 
     return JSONResponse(
         {
             "ok": True,
             "stage": "crop",
-            "message": "Кадр 35×45 + лист 10×15 (4 фото)",
+            "message": "Кадр 35×45 готов",
             "mime": "image/jpeg",
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
-            "dpi": config.PASSPORT_DPI,
             "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "print_sheet": print_sheet,
             "crop": crop_metrics,
             "compliance": compliance,
         }
@@ -380,6 +369,121 @@ async def process(file: UploadFile = File(...), format: str = "json"):
     return JSONResponse(payload)
 
 
+@app.post("/api/process/nano-banana")
+async def process_nano_banana(file: UploadFile = File(...), format: str = "json"):
+    """Experiment: gate → one-pass Nano Banana Pro (Gosuslugi prompt) → crop.
+
+    Does not use face-protect or a second model pass. Default /api/process unchanged.
+    """
+    data = await _read_upload(file)
+
+    gate = validate_image(data)
+    if not gate.ok:
+        save_rejected(
+            data,
+            reason=gate.reason,
+            message=gate.message,
+            metrics=gate.metrics,
+            filename=file.filename,
+        )
+        return JSONResponse(
+            {
+                "ok": False,
+                "stage": "gate",
+                "reason": gate.reason,
+                "message": gate.message,
+                "metrics": gate.metrics,
+            }
+        )
+
+    mime = _guess_mime(file.filename, file.content_type)
+    try:
+        edited, edit_meta = run_edit_nano_banana(data, mime=mime)
+    except OpenRouterError as e:
+        raise HTTPException(
+            status_code=502,
+            detail={"message": str(e), "provider_status": e.status, "body": e.body},
+        ) from e
+    except Exception as e:
+        log.exception("Nano Banana edit failed")
+        raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
+
+    try:
+        cropped, crop_metrics, compliance = run_crop_stage(edited)
+    except Exception as e:
+        log.exception("Crop stage failed")
+        raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
+
+    jpeg = encode_jpeg(cropped)
+    print_jpeg, print_sheet = _print_payload(cropped)
+    compliance = {
+        **compliance,
+        "jpeg_bytes": len(jpeg),
+        "jpeg_max_bytes": config.JPEG_MAX_BYTES,
+        "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
+    }
+    print_meta = {
+        k: print_sheet[k]
+        for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
+        if k in print_sheet
+    }
+    pair_meta = {
+        "gate": gate.metrics,
+        "edit": edit_meta,
+        "crop": crop_metrics,
+        "compliance": compliance,
+        "print_sheet": print_meta,
+        "pipeline": [
+            "gate",
+            "nano_banana_pass1",
+            "crop",
+            "print_10x15",
+        ],
+        "width": config.PASSPORT_WIDTH,
+        "height": config.PASSPORT_HEIGHT,
+        "dpi": config.PASSPORT_DPI,
+        "mime": "image/jpeg",
+    }
+    save_pair(
+        data,
+        jpeg,
+        filename=file.filename,
+        meta=pair_meta,
+    )
+    result_id = save_result(
+        jpeg,
+        print_jpeg,
+        meta=pair_meta,
+    )
+    if format == "jpeg":
+        return Response(content=jpeg, media_type="image/jpeg")
+    if format == "print":
+        return Response(content=print_jpeg, media_type="image/jpeg")
+
+    payload = {
+        "ok": True,
+        "stage": "done",
+        "message": "Фото 35×45 (Nano Banana Pro, 2 прохода) + лист 10×15",
+        "mime": "image/jpeg",
+        "width": config.PASSPORT_WIDTH,
+        "height": config.PASSPORT_HEIGHT,
+        "dpi": config.PASSPORT_DPI,
+        "image_base64": base64.b64encode(jpeg).decode("ascii"),
+        "print_sheet": print_sheet,
+        "pipeline": pair_meta["pipeline"],
+        "model": edit_meta.get("model"),
+        "edit_backend": "nano_banana",
+        "gate": gate.metrics,
+        "edit": edit_meta,
+        "crop": crop_metrics,
+        "compliance": compliance,
+    }
+    if result_id:
+        payload["result_id"] = result_id
+        payload["result_path"] = f"/result/{result_id}"
+    return JSONResponse(payload)
+
+
 @app.get("/api/result/{result_id}")
 def get_result(result_id: str):
     if not is_valid_result_id(result_id):
@@ -431,35 +535,20 @@ def process_info():
             "1. gate — face/pose/blur",
             "2. openrouter_bg — white bg + shoulders (face forbidden)",
             "3. face_protect — MediaPipe no-retouch face zone from original",
-            "4. crop — roll-correct + 35×45 @600dpi (FMS §34.3)",
+            "4. crop — roll-correct + 35×45",
             "5. print_sheet — 10×15 cm @300dpi with 4 copies",
         ],
         "endpoints": {
-            "/api/process": "digital 35×45 + print 10×15 (4 copies)",
+            "/api/process": "digital 35×45 + print 10×15; gpt-image + face-protect",
+            "/api/process/nano-banana": "same crop; one-pass Nano Banana Pro (Gosuslugi prompt)",
             "/api/edit": "white-bg edit only",
-            "/api/crop": "crop + print sheet",
-        },
-        "passport": {
-            "size_mm": [35, 45],
-            "dpi": config.PASSPORT_DPI,
-            "pixels": [config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT],
-            "face_ratio": config.PASSPORT_FACE_RATIO,
-            "head_height_mm": [
-                config.HEAD_HEIGHT_MM_MIN,
-                config.HEAD_HEIGHT_MM_MAX,
-            ],
-            "jpeg_max_bytes": config.JPEG_MAX_BYTES,
-            "source": "https://rg.ru/documents/2011/08/22/pasport-dok.html",
-        },
-        "print_sheet": {
-            "size_cm": [10, 15],
-            "dpi": 300,
-            "copies": 4,
-            "layout": "2x2",
+            "/api/crop": "crop only",
+            "/api/result/{id}": "shareable result meta + image URLs",
         },
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter_model": config.OPENROUTER_IMAGE_MODEL,
+        "nano_banana_model": config.NANO_BANANA_MODEL,
         "openrouter_configured": bool(config.OPENROUTER_API_KEY),
-        "output": "json (image_base64 + print_sheet) or ?format=jpeg|print",
+        "output": "json (image_base64 + result_id + print_sheet) or ?format=jpeg|print",
     }
