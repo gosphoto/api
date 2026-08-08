@@ -1,3 +1,13 @@
+"""HTTP API used by https://gosphoto.ru
+
+Live surface:
+  GET  /health
+  POST /api/process/nano-banana
+  GET  /api/result/{id}
+  GET  /api/result/{id}/digital.jpg
+  GET  /api/result/{id}/print.jpg
+"""
+
 from __future__ import annotations
 
 import base64
@@ -9,15 +19,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from . import config
-from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import edit_selfie_local, run_edit_nano_banana, run_edit_stage
-from .gate import _decode_image, warmup, validate_image
+from .edit import run_edit_nano_banana
+from .gate import warmup, validate_image
 from .openrouter import OpenRouterError
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
 from .results import is_valid_result_id, load_file, load_meta, save_result
+
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
 
@@ -60,94 +70,6 @@ def _guess_mime(filename: str | None, content_type: str | None) -> str:
     return "image/jpeg"
 
 
-@asynccontextmanager
-async def lifespan(_app: FastAPI):
-    log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
-    warmup()
-    try:
-        warmup_cutout()
-        log.info("Cutout ready backend=%s", config.EDIT_CUTOUT)
-    except Exception as e:
-        log.warning("Cutout warmup failed (will retry on request): %s", e)
-    log.info(
-        "Gate ready; edit_backend=%s cutout=%s openrouter=%s",
-        config.EDIT_BACKEND,
-        config.EDIT_CUTOUT,
-        "set" if config.OPENROUTER_API_KEY else "MISSING",
-    )
-    yield
-
-
-app = FastAPI(title="Gosphoto photo gate", version="0.6.9", lifespan=lifespan)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=config.CORS_ORIGINS,
-    allow_credentials=False,
-    allow_methods=["GET", "POST", "OPTIONS"],
-    allow_headers=["*"],
-)
-
-
-@app.get("/health")
-def health():
-    return {
-        "status": "ok",
-        "service": "gosphoto-gate",
-        "version": "0.6.9",
-        "pipeline": ["gate", "openrouter_bg|local_person", "crop"],
-        "edit_backend": config.EDIT_BACKEND,
-        "edit_cutout": config.EDIT_CUTOUT,
-        "openrouter": bool(config.OPENROUTER_API_KEY),
-        "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "nano_banana_model": config.NANO_BANANA_MODEL,
-        "note": "/api/process: gpt-image+face-protect; /api/process/nano-banana: one-pass Nano Banana Pro",
-    }
-
-
-@app.post("/api/validate")
-async def validate(file: UploadFile = File(...)):
-    ct = (file.content_type or "").lower()
-    if ct and ct not in ALLOWED_CT and not ct.startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image uploads are allowed")
-
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="Empty file")
-    if len(data) > config.MAX_UPLOAD_BYTES:
-        raise HTTPException(
-            status_code=413,
-            detail=f"File too large (max {config.MAX_UPLOAD_BYTES} bytes)",
-        )
-
-    result = validate_image(data)
-    if not result.ok:
-        save_rejected(
-            data,
-            reason=result.reason,
-            message=result.message,
-            metrics=result.metrics,
-            filename=file.filename,
-        )
-    return JSONResponse(
-        {
-            "ok": result.ok,
-            "reason": result.reason,
-            "message": result.message,
-            "face_count": result.face_count,
-            "metrics": result.metrics,
-        }
-    )
-
-
-@app.get("/api/validate")
-def validate_info():
-    return {
-        "method": "POST multipart field 'file'",
-        "max_bytes": config.MAX_UPLOAD_BYTES,
-        "checks": ["face_count", "yaw", "pitch", "roll", "blur"],
-    }
-
-
 async def _read_upload(file: UploadFile) -> bytes:
     ct = (file.content_type or "").lower()
     if ct and ct not in ALLOWED_CT and not ct.startswith("image/"):
@@ -163,218 +85,44 @@ async def _read_upload(file: UploadFile) -> bytes:
     return data
 
 
-@app.post("/api/edit")
-async def edit_only(file: UploadFile = File(...), format: str = "json"):
-    """Step 1: white background + normalize. No passport crop."""
-    data = await _read_upload(file)
-    gate = validate_image(data)
-    if not gate.ok:
-        save_rejected(
-            data,
-            reason=gate.reason,
-            message=gate.message,
-            metrics=gate.metrics,
-            filename=file.filename,
-        )
-        return JSONResponse(
-            {
-                "ok": False,
-                "stage": "gate",
-                "reason": gate.reason,
-                "message": gate.message,
-                "metrics": gate.metrics,
-            }
-        )
-
-    mime = _guess_mime(file.filename, file.content_type)
-    try:
-        edited, edit_meta = run_edit_stage(data, mime=mime)
-    except OpenRouterError as e:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": str(e), "provider_status": e.status, "body": e.body},
-        ) from e
-    except Exception as e:
-        log.exception("Edit stage failed")
-        raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
-
-    jpeg = encode_jpeg(edited)
-    if format == "jpeg":
-        return Response(content=jpeg, media_type="image/jpeg")
-
-    return JSONResponse(
-        {
-            "ok": True,
-            "stage": "edit",
-            "message": "Фон и свет подготовлены — можно кропать",
-            "mime": "image/jpeg",
-            "width": int(edited.shape[1]),
-            "height": int(edited.shape[0]),
-            "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "edit": edit_meta,
-            "gate": gate.metrics,
-        }
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
+    warmup()
+    log.info(
+        "Gate ready; nano_banana=%s openrouter=%s",
+        config.NANO_BANANA_MODEL,
+        "set" if config.OPENROUTER_API_KEY else "MISSING",
     )
+    yield
 
 
-@app.post("/api/crop")
-async def crop_only(file: UploadFile = File(...), format: str = "json"):
-    """Step 2: passport 35×45 crop from an already-edited (white bg) photo."""
-    data = await _read_upload(file)
-    bgr = _decode_image(data)
-    if bgr is None:
-        raise HTTPException(status_code=400, detail="Cannot decode image")
-
-    try:
-        cropped, crop_metrics, compliance = run_crop_stage(bgr)
-    except Exception as e:
-        log.exception("Crop stage failed")
-        raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
-
-    jpeg = encode_jpeg(cropped)
-    if format == "jpeg":
-        return Response(content=jpeg, media_type="image/jpeg")
-
-    return JSONResponse(
-        {
-            "ok": True,
-            "stage": "crop",
-            "message": "Кадр 35×45 готов",
-            "mime": "image/jpeg",
-            "width": config.PASSPORT_WIDTH,
-            "height": config.PASSPORT_HEIGHT,
-            "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "crop": crop_metrics,
-            "compliance": compliance,
-        }
-    )
+app = FastAPI(title="Gosphoto photo gate", version="0.7.0", lifespan=lifespan)
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=config.CORS_ORIGINS,
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["*"],
+)
 
 
-@app.post("/api/process")
-async def process(file: UploadFile = File(...), format: str = "json"):
-    """RF passport: gate → OR white bg → MediaPipe face_protect → 35×45 crop.
-
-    Face zone is a no-retouch region: original selfie pixels only.
-    Falls back to local silueta if OpenRouter fails.
-    """
-    data = await _read_upload(file)
-
-    gate = validate_image(data)
-    if not gate.ok:
-        save_rejected(
-            data,
-            reason=gate.reason,
-            message=gate.message,
-            metrics=gate.metrics,
-            filename=file.filename,
-        )
-        return JSONResponse(
-            {
-                "ok": False,
-                "stage": "gate",
-                "reason": gate.reason,
-                "message": gate.message,
-                "metrics": gate.metrics,
-            }
-        )
-
-    mime = _guess_mime(file.filename, file.content_type)
-    try:
-        edited, edit_meta = run_edit_stage(data, mime=mime)
-    except OpenRouterError as e:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": str(e), "provider_status": e.status, "body": e.body},
-        ) from e
-    except Exception as e:
-        log.exception("Edit stage failed")
-        raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
-
-    try:
-        cropped, crop_metrics, compliance = run_crop_stage(edited)
-    except Exception as e:
-        log.exception("Crop stage failed")
-        raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
-
-    jpeg = encode_jpeg(cropped)
-    print_jpeg, print_sheet = _print_payload(cropped)
-    compliance = {
-        **compliance,
-        "jpeg_bytes": len(jpeg),
-        "jpeg_max_bytes": config.JPEG_MAX_BYTES,
-        "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
+@app.get("/health")
+def health():
+    return {
+        "status": "ok",
+        "service": "gosphoto-gate",
+        "version": "0.7.0",
+        "pipeline": ["gate", "nano_banana", "crop", "print_10x15"],
+        "nano_banana_model": config.NANO_BANANA_MODEL,
+        "openrouter": bool(config.OPENROUTER_API_KEY),
+        "note": "gosphoto.ru → POST /api/process/nano-banana + GET /api/result/{id}",
     }
-    print_meta = {
-        k: print_sheet[k]
-        for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
-        if k in print_sheet
-    }
-    pair_meta = {
-        "gate": gate.metrics,
-        "edit": edit_meta,
-        "crop": crop_metrics,
-        "compliance": compliance,
-        "print_sheet": print_meta,
-        "pipeline": [
-            "gate",
-            "openrouter_bg",
-            "local_person",
-            "face_protect",
-            "crop",
-            "print_10x15",
-        ],
-        "width": config.PASSPORT_WIDTH,
-        "height": config.PASSPORT_HEIGHT,
-        "dpi": config.PASSPORT_DPI,
-        "mime": "image/jpeg",
-    }
-    save_pair(
-        data,
-        jpeg,
-        filename=file.filename,
-        meta=pair_meta,
-    )
-    result_id = save_result(
-        jpeg,
-        print_jpeg,
-        meta=pair_meta,
-    )
-    if format == "jpeg":
-        return Response(content=jpeg, media_type="image/jpeg")
-    if format == "print":
-        return Response(content=print_jpeg, media_type="image/jpeg")
-
-    payload = {
-        "ok": True,
-        "stage": "done",
-        "message": "Фото 35×45 для Госуслуг + лист 10×15 (4 фото)",
-        "mime": "image/jpeg",
-        "width": config.PASSPORT_WIDTH,
-        "height": config.PASSPORT_HEIGHT,
-        "dpi": config.PASSPORT_DPI,
-        "image_base64": base64.b64encode(jpeg).decode("ascii"),
-        "print_sheet": print_sheet,
-        "pipeline": pair_meta["pipeline"],
-        "model": edit_meta.get("model"),
-        "edit_backend": config.EDIT_BACKEND,
-        "edit_cutout": config.EDIT_CUTOUT,
-        "gate": gate.metrics,
-        "edit": edit_meta,
-        "crop": crop_metrics,
-        "compliance": compliance,
-    }
-    if result_id:
-        payload["result_id"] = result_id
-        payload["result_path"] = f"/result/{result_id}"
-    return JSONResponse(payload)
 
 
 @app.post("/api/process/nano-banana")
 async def process_nano_banana(file: UploadFile = File(...), format: str = "json"):
-    """Experiment: gate → one-pass Nano Banana Pro (Gosuslugi prompt) → crop.
-
-    Does not use face-protect or a second model pass. Default /api/process unchanged.
-    """
+    """gate → Nano Banana Pro (Gosuslugi one-pass) → 35×45 crop → print sheet."""
     data = await _read_upload(file)
 
     gate = validate_image(data)
@@ -435,7 +183,7 @@ async def process_nano_banana(file: UploadFile = File(...), format: str = "json"
         "print_sheet": print_meta,
         "pipeline": [
             "gate",
-            "nano_banana_pass1",
+            "nano_banana",
             "crop",
             "print_10x15",
         ],
@@ -463,7 +211,7 @@ async def process_nano_banana(file: UploadFile = File(...), format: str = "json"
     payload = {
         "ok": True,
         "stage": "done",
-        "message": "Фото 35×45 (Nano Banana Pro, 2 прохода) + лист 10×15",
+        "message": "Фото 35×45 (Nano Banana Pro) + лист 10×15",
         "mime": "image/jpeg",
         "width": config.PASSPORT_WIDTH,
         "height": config.PASSPORT_HEIGHT,
@@ -524,31 +272,3 @@ def get_result_print(result_id: str):
     if not data:
         raise HTTPException(status_code=404, detail="Result not found")
     return Response(content=data, media_type="image/jpeg")
-
-
-@app.get("/api/process")
-@app.get("/api/edit")
-@app.get("/api/crop")
-def process_info():
-    return {
-        "pipeline": [
-            "1. gate — face/pose/blur",
-            "2. openrouter_bg — white bg + shoulders (face forbidden)",
-            "3. face_protect — MediaPipe no-retouch face zone from original",
-            "4. crop — roll-correct + 35×45",
-            "5. print_sheet — 10×15 cm @300dpi with 4 copies",
-        ],
-        "endpoints": {
-            "/api/process": "digital 35×45 + print 10×15; gpt-image + face-protect",
-            "/api/process/nano-banana": "same crop; one-pass Nano Banana Pro (Gosuslugi prompt)",
-            "/api/edit": "white-bg edit only",
-            "/api/crop": "crop only",
-            "/api/result/{id}": "shareable result meta + image URLs",
-        },
-        "edit_backend": config.EDIT_BACKEND,
-        "edit_cutout": config.EDIT_CUTOUT,
-        "openrouter_model": config.OPENROUTER_IMAGE_MODEL,
-        "nano_banana_model": config.NANO_BANANA_MODEL,
-        "openrouter_configured": bool(config.OPENROUTER_API_KEY),
-        "output": "json (image_base64 + result_id + print_sheet) or ?format=jpeg|print",
-    }

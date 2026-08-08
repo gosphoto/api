@@ -54,24 +54,6 @@ GOSUSLUGI_NANO_PROMPT = (
     "Без водяных знаков, текста, рамок, фильтров. Высокое качество, естественный вид."
 )
 
-# Pass 2 QC — kill residual room bg trapped in hair strands / ears.
-GOSUSLUGI_NANO_PASS2_PROMPT = (
-    "QC cleanup for a Russian Gosuslugi passport draft on white. Draft only. "
-    "BUG: gray/beige ROOM WALL crumbs in gaps between hair strands, soft halo "
-    "on the outer hair silhouette, AND leftover wall pixels behind ears / along "
-    "ear helix and concha edges. Inspect both ears and the whole hair mass "
-    "pixel-carefully. Replace only those leftover wall pixels with pure #FFFFFF. "
-    "CRITICAL: do NOT erase hair into white holes — keep full hair volume, "
-    "including light/blonde strands and flyaways. Do NOT flatten or cut the head. "
-    "Do NOT erase ear cartilage or invent new ear shape — only bleach trapped "
-    "background next to the ear. "
-    "FORBIDDEN: change face geometry, stretch/widen the face, alter skin, neck, "
-    "expression, makeup, clothing, jewelry, hair color. No beautify, no relight. "
-    "Keep the same aspect / proportions as the draft. "
-    "Output one cleaned photo on uniform pure #FFFFFF."
-)
-
-
 class OpenRouterError(RuntimeError):
     def __init__(self, message: str, status: int | None = None, body: Any = None):
         super().__init__(message)
@@ -274,20 +256,5 @@ def edit_selfie_nano_banana(
     image_bytes: bytes,
     mime: str = "image/jpeg",
 ) -> bytes:
-    """Pass 1: Nano Banana Pro for Gosuslugi white-bg."""
+    """Nano Banana Pro for Gosuslugi white-bg (one-pass)."""
     return _nano_banana_chat(GOSUSLUGI_NANO_PROMPT, [(image_bytes, mime)])
-
-
-def edit_selfie_nano_banana_pass2(
-    draft_bytes: bytes,
-    *,
-    original_bytes: bytes | None = None,
-    draft_mime: str = "image/jpeg",
-    original_mime: str = "image/jpeg",
-) -> bytes:
-    """Pass 2 QC: remove hair/bg halos; keep identity from draft/original."""
-    parts: list[tuple[bytes, str]] = []
-    if original_bytes is not None:
-        parts.append((original_bytes, original_mime))
-    parts.append((draft_bytes, draft_mime))
-    return _nano_banana_chat(GOSUSLUGI_NANO_PASS2_PROMPT, parts)

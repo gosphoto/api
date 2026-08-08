@@ -1,23 +1,18 @@
-from app.openrouter import EDIT_PROMPT, build_edit_payload
+from app.openrouter import EDIT_PROMPT, GOSUSLUGI_NANO_PROMPT, build_edit_payload
 
 
-def test_prompt_mentions_no_fringe():
+def test_edit_prompt_keeps_identity_and_blocks_hair_holes():
     lower = EDIT_PROMPT.lower()
-    assert "fringe" in lower or "spill" in lower or "halo" in lower
+    assert "identity" in lower or "original" in lower
+    assert "hair" in lower
+    assert "white holes" in lower or "swiss-cheese" in lower
+    assert "shoulder" in lower or "clothing" in lower
 
 
-def test_prompt_forbids_skin_smoothing():
-    lower = EDIT_PROMPT.lower()
-    assert "smooth" in lower or "beauty" in lower
-    assert "pore" in lower or "face" in lower
-
-
-def test_prompt_allows_only_shoulders_and_bg():
-    lower = EDIT_PROMPT.lower()
-    assert "shoulder" in lower
-    assert "forbidden" in lower
-    assert "head" in lower
-    assert "identity" in lower
+def test_gosuslugi_nano_prompt_blocks_holes_inside_hair():
+    assert "ВНУТРИ массы волос" in GOSUSLUGI_NANO_PROMPT
+    assert "#FFFFFF" in GOSUSLUGI_NANO_PROMPT
+    assert "ушам" in GOSUSLUGI_NANO_PROMPT or "ушей" in GOSUSLUGI_NANO_PROMPT
 
 
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):

@@ -1,12 +1,20 @@
-# Gosphoto API — photo gate + local white bg + crop
+# Gosphoto API
 
 Бэкенд для https://gosphoto.ru
 
-- `POST /api/validate` — gate (MediaPipe Face Landmarker)
-- `POST /api/process` — gate → белый фон → 35×45 crop → **лист 10×15 (4 фото)**  
-  JSON: `image_base64` (Госуслуги) + `print_sheet.image_base64` (печать)
-- `POST /api/edit` — только белый фон; может использовать OpenRouter если `EDIT_BACKEND=openrouter`
-- `GET /health`
+## Live API (сайт)
+
+| Метод | Путь | Назначение |
+|-------|------|------------|
+| `GET` | `/health` | liveness / config |
+| `POST` | `/api/process/nano-banana` | gate → Nano Banana white-bg → 35×45 + лист 10×15 |
+| `GET` | `/api/result/{id}` | meta + URL цифрового и печатного JPEG |
+| `GET` | `/api/result/{id}/digital.jpg` | 35×45 |
+| `GET` | `/api/result/{id}/print.jpg` | 10×15 (4 копии) |
+
+Удалены (сайт не вызывал): `/api/validate`, `/api/edit`, `/api/crop`, `/api/process` (gpt-image).
+
+JSON process: `ok`, `result_id`, `compliance`, `print_sheet`, …
 
 Требования кадра ([FMS §34.3 / rg.ru](https://rg.ru/documents/2011/08/22/pasport-dok.html)):
 
@@ -21,10 +29,10 @@
 
 ## Deploy
 
-VPS `91.207.75.72` → `/opt/gosphoto-api` (Docker `gosphoto-gate`, `127.0.0.1:8091`).  
+Production API: `80.87.196.33` (см. `docs/` / deploy workflow).  
 Nginx на лендинге проксирует `/api/` и `/health`.
 
-Push в `main` → GitHub Actions deploy.
+Push в `main` → GitHub Actions deploy (если настроено).
 
 ## Secrets
 
@@ -33,17 +41,15 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | Secret | Обязателен | Назначение |
 |--------|------------|------------|
 | `DEPLOY_SSH_PRIVATE_KEY` | да | SSH на VPS |
-| `DEPLOY_USER` | да | SSH user (обычно `root`) |
-| `OPENROUTER_API_KEY` | нет | только для опционального `/api/edit` |
-| `OPENROUTER_IMAGE_MODEL` | нет | default image model for `/api/edit` |
-
-Скопируй `DEPLOY_*` из [gosphoto/landing](https://github.com/gosphoto/landing/settings/secrets/actions).
+| `DEPLOY_USER` | да | SSH user |
+| `OPENROUTER_API_KEY` | да | Nano Banana / image edit |
+| `NANO_BANANA_MODEL` | нет | default `google/gemini-3-pro-image-preview` |
 
 ## Local
 
 ```bash
 cp .env.example .env
 docker compose up --build
-curl -F file=@selfie.jpg http://127.0.0.1:8091/api/validate
-curl -F file=@selfie.jpg "http://127.0.0.1:8091/api/process?format=jpeg" -o out.jpg
+curl http://127.0.0.1:8091/health
+curl -F file=@selfie.jpg "http://127.0.0.1:8091/api/process/nano-banana"
 ```
