@@ -587,12 +587,21 @@ async def tochka_webhook(request: Request):
     signature = request.headers.get("x-signature") or request.headers.get(
         "X-Signature"
     )
+    content_type = request.headers.get("content-type", "")
+    log.info(
+        "Tochka webhook received bytes=%s content_type=%s has_signature=%s body_prefix=%r",
+        len(raw),
+        content_type,
+        bool(signature),
+        raw[:96],
+    )
     # Always ACK 200 so Tochka does not retry forever on our processing bugs.
     try:
         result = payments_mod.handle_webhook(raw, signature)
     except Exception as e:
         log.exception("Tochka webhook handler error: %s", e)
         result = {"ok": True, "error": "internal"}
+    log.info("Tochka webhook result=%s", result)
     return result
 
 

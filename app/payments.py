@@ -219,7 +219,19 @@ def handle_webhook(raw_body: str, signature: str | None = None) -> dict[str, Any
     # Stub accepts plain JSON; HttpTochkaClient verifies JWT only.
     event = client.parse_webhook(raw_body, signature)
     if event is None:
+        log.warning(
+            "Tochka webhook parse failed (invalid JWT/JSON) bytes=%s",
+            len(raw_body or ""),
+        )
         return {"ok": True, "ignored": True, "reason": "invalid_webhook"}
+
+    log.info(
+        "Tochka webhook parsed type=%s status=%s operationId=%s paymentLinkId=%s",
+        event.webhook_type,
+        event.status,
+        event.operation_id,
+        event.payment_link_id,
+    )
 
     if event.webhook_type and event.webhook_type != "acquiringInternetPayment":
         log.info("Tochka webhook ignored type=%s", event.webhook_type)
@@ -248,13 +260,28 @@ def handle_webhook(raw_body: str, signature: str | None = None) -> dict[str, Any
         return {"ok": True, "ignored": True, "reason": "not_found"}
 
     if record.get("status") == "paid":
+        log.info(
+            "Tochka webhook already paid payment_id=%s result_id=%s",
+            record.get("payment_id"),
+            record.get("result_id"),
+        )
         return {"ok": True, "paid": True, "already": True}
 
     tochka_id = event.operation_id or record.get("tochka_operation_id")
     if not tochka_id:
+        log.warning(
+            "Tochka webhook missing operationId payment_id=%s",
+            record.get("payment_id"),
+        )
         return {"ok": True, "ignored": True, "reason": "no_operation_id"}
 
     mark_paid(record["payment_id"], tochka_operation_id=tochka_id)
+    log.info(
+        "Tochka webhook activated payment_id=%s result_id=%s operationId=%s",
+        record["payment_id"],
+        record["result_id"],
+        tochka_id,
+    )
     return {
         "ok": True,
         "paid": True,
