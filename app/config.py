@@ -163,6 +163,9 @@ FEEDBACK_MAX_PHOTO_BYTES = int(
 )
 FEEDBACK_MAX_MESSAGE_CHARS = int(os.getenv("FEEDBACK_MAX_MESSAGE_CHARS", "4000"))
 FEEDBACK_MIN_MESSAGE_CHARS = int(os.getenv("FEEDBACK_MIN_MESSAGE_CHARS", "10"))
+# Paid result → customer email (attachments)
+RESULT_EMAIL_RATE_LIMIT = int(os.getenv("RESULT_EMAIL_RATE_LIMIT", "5"))
+RESULT_EMAIL_RATE_WINDOW_SEC = int(os.getenv("RESULT_EMAIL_RATE_WINDOW_SEC", "600"))
 
 # Tochka acquiring — pay-per-result unlock
 TOCHKA_ACCESS_TOKEN = os.getenv("TOCHKA_ACCESS_TOKEN", "").strip()

@@ -8,10 +8,12 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response
+from pydantic import BaseModel, Field
 
 from . import config
 from . import feedback as feedback_mod
 from . import payments as payments_mod
+from . import result_email as result_email_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage
@@ -575,6 +577,47 @@ def get_result_print(result_id: str):
     return Response(content=data, media_type="image/jpeg")
 
 
+class ResultEmailBody(BaseModel):
+    email: str = Field(..., min_length=3, max_length=254)
+
+
+def _client_ip(request: Request) -> str:
+    ip = request.client.host if request.client else "unknown"
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        ip = xff.split(",")[0].strip() or ip
+    return ip
+
+
+@app.post("/api/result/{result_id}/email")
+async def email_result(result_id: str, body: ResultEmailBody, request: Request):
+    """Send digital + print JPEGs to the given email (paid results only)."""
+    _require_paid(result_id)
+    digital = load_file(result_id, "digital.jpg")
+    print_jpeg = load_file(result_id, "print.jpg")
+    if not digital or not print_jpeg:
+        raise HTTPException(status_code=404, detail="Result not found")
+    try:
+        result_email_mod.check_rate_limit(_client_ip(request))
+        email_n = result_email_mod.validate_email(body.email)
+        msg = result_email_mod.build_result_email(
+            email=email_n,
+            result_id=result_id,
+            digital_jpeg=digital,
+            print_jpeg=print_jpeg,
+        )
+        await asyncio.to_thread(result_email_mod.send_result_email, msg)
+    except result_email_mod.FeedbackRateLimitError as e:
+        raise HTTPException(status_code=429, detail=e.detail) from e
+    except result_email_mod.FeedbackValidationError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+    except result_email_mod.FeedbackConfigError as e:
+        raise HTTPException(status_code=503, detail=e.detail) from e
+    except result_email_mod.FeedbackSmtpError as e:
+        raise HTTPException(status_code=502, detail=e.detail) from e
+    return {"ok": True, "email": email_n, "result_id": result_id}
+
+
 @app.post("/api/feedback")
 async def post_feedback(
     request: Request,
@@ -582,10 +625,7 @@ async def post_feedback(
     message: str = Form(...),
     photo: UploadFile | None = File(None),
 ):
-    ip = request.client.host if request.client else "unknown"
-    xff = request.headers.get("x-forwarded-for")
-    if xff:
-        ip = xff.split(",")[0].strip() or ip
+    ip = _client_ip(request)
     ua = request.headers.get("user-agent", "")
     try:
         feedback_mod.check_rate_limit(ip)
@@ -647,6 +687,7 @@ def process_info():
             "/api/edit": "white-bg edit only",
             "/api/crop": "crop + print sheet",
             "/api/feedback": "contact form → SMTP email",
+            "/api/result/{id}/email": "POST {email} → send paid JPEGs",
         },
         "passport": {
             "size_mm": [35, 45],
@@ -676,5 +717,6 @@ def process_info():
             "price_rub": payments_mod.price_rub(),
             "pay": "POST /api/result/{id}/pay",
             "webhook": "POST /api/payments/tochka/webhook",
+            "email": "POST /api/result/{id}/email after paid",
         },
     }

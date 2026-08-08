@@ -8,6 +8,7 @@
 - `POST /api/result/{id}/pay` — Tochka checkout (100 ₽) → unlock download
 - `POST /api/payments/tochka/webhook` — webhook Точки
 - `GET /api/result/{id}/digital.jpg|print.jpg` — только после оплаты
+- `POST /api/result/{id}/email` — JSON `{ "email" }` → SMTP с вложениями (только после оплаты)
 - `POST /api/edit` — только белый фон; может использовать OpenRouter если `EDIT_BACKEND=openrouter`
 - `POST /api/feedback` — multipart: `email`, `message`, optional `photo` → SMTP to `FEEDBACK_TO`
 - `GET /health`
