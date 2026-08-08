@@ -23,7 +23,7 @@ services:
       # 33 IP blocked by OpenRouter — egress via nginx proxy on 91
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-http://91.207.75.72:8787/api/v1}
       OPENROUTER_TIMEOUT_SEC: ${OPENROUTER_TIMEOUT_SEC:-300}
-      RIVERFLOW_MODEL: ${RIVERFLOW_MODEL:-sourceful/riverflow-v2.5-fast}
+      RIVERFLOW_MODEL: ${RIVERFLOW_MODEL:-sourceful/riverflow-v2.5-pro}
       RIVERFLOW_BG_MODE: ${RIVERFLOW_BG_MODE:-solid}
       RIVERFLOW_BG_HEX: "${RIVERFLOW_BG_HEX:-#FFFFFF}"
       RIVERFLOW_IMAGE_SIZE: ${RIVERFLOW_IMAGE_SIZE:-1K}
