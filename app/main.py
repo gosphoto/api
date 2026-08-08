@@ -7,12 +7,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, RedirectResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import config
 from . import feedback as feedback_mod
 from . import payments as payments_mod
+from . import progress_events as progress_events_mod
 from . import result_email as result_email_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
@@ -162,7 +163,7 @@ async def lifespan(_app: FastAPI):
             pass
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.11.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.12.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -177,7 +178,7 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.11.0",
+        "version": "0.12.0",
         "pipeline": ["gate", "riverflow", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
         "riverflow_model": config.RIVERFLOW_MODEL,
@@ -188,7 +189,7 @@ def health():
         "payments": "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
         "price_rub": payments_mod.price_rub(),
         "free_download_unlock": config.FREE_DOWNLOAD_UNLOCK,
-        "note": "/api/process → Riverflow → result_id; pay then download",
+        "note": "/api/process/stream (SSE) or /api/process → Riverflow → result_id",
     }
 
 
@@ -356,14 +357,13 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
     )
 
 
-@app.post("/api/process")
-async def process(file: UploadFile = File(...), format: str = "json"):
-    """RF passport: gate → Riverflow v2.5 Pro (solid white) → 35×45 crop.
-
-    Falls back to local cutout if Riverflow/OpenRouter fails.
-    """
-    data = await _read_upload(file)
-
+def _run_process_pipeline(
+    data: bytes,
+    *,
+    filename: str | None,
+    mime: str,
+) -> dict:
+    """Sync gate → edit → crop → save. Returns ok/error dict (no HTTPException)."""
     gate = validate_image(data)
     if not gate.ok:
         save_rejected(
@@ -371,35 +371,36 @@ async def process(file: UploadFile = File(...), format: str = "json"):
             reason=gate.reason,
             message=gate.message,
             metrics=gate.metrics,
-            filename=file.filename,
+            filename=filename,
         )
-        return JSONResponse(
-            {
-                "ok": False,
-                "stage": "gate",
-                "reason": gate.reason,
-                "message": gate.message,
-                "metrics": gate.metrics,
-            }
-        )
+        return {
+            "ok": False,
+            "stage": "gate",
+            "reason": gate.reason,
+            "message": gate.message,
+            "metrics": gate.metrics,
+        }
 
-    mime = _guess_mime(file.filename, file.content_type)
     try:
         edited, edit_meta = run_edit_stage(data, mime=mime)
     except OpenRouterError as e:
-        raise HTTPException(
-            status_code=502,
-            detail={"message": str(e), "provider_status": e.status, "body": e.body},
-        ) from e
+        log.exception("Edit stage OpenRouter error")
+        return {
+            "ok": False,
+            "stage": "edit",
+            "message": str(e),
+            "provider_status": e.status,
+            "body": e.body,
+        }
     except Exception as e:
         log.exception("Edit stage failed")
-        raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
+        return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
 
     try:
         cropped, crop_metrics, compliance = run_crop_stage(edited)
     except Exception as e:
         log.exception("Crop stage failed")
-        raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
+        return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
 
     jpeg = encode_jpeg(cropped)
     print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
@@ -435,7 +436,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
     save_pair(
         data,
         jpeg,
-        filename=file.filename,
+        filename=filename,
         meta=pair_meta,
     )
     result_id = save_result(
@@ -443,16 +444,6 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         print_jpeg,
         meta=pair_meta,
     )
-    if format in ("jpeg", "print"):
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "message": "Прямое скачивание отключено. Откройте страницу результата и оплатите.",
-                "result_id": result_id,
-                "result_path": f"/result/{result_id}" if result_id else None,
-            },
-        )
-
     payload = {
         "ok": True,
         "stage": "done",
@@ -475,7 +466,83 @@ async def process(file: UploadFile = File(...), format: str = "json"):
     if result_id:
         payload["result_id"] = result_id
         payload["result_path"] = f"/result/{result_id}"
+    return payload
+
+
+@app.post("/api/process")
+async def process(file: UploadFile = File(...), format: str = "json"):
+    """RF passport: gate → Riverflow v2.5 Pro (solid white) → 35×45 crop.
+
+    Falls back to local cutout if Riverflow/OpenRouter fails.
+    Prefer /api/process/stream for UX progress events.
+    """
+    data = await _read_upload(file)
+    mime = _guess_mime(file.filename, file.content_type)
+    payload = await asyncio.to_thread(
+        _run_process_pipeline,
+        data,
+        filename=file.filename,
+        mime=mime,
+    )
+    if not payload.get("ok"):
+        if payload.get("stage") == "gate":
+            return JSONResponse(payload)
+        status = 502
+        detail = payload.get("message") or "Process failed"
+        if payload.get("provider_status") is not None:
+            raise HTTPException(
+                status_code=status,
+                detail={
+                    "message": detail,
+                    "provider_status": payload.get("provider_status"),
+                    "body": payload.get("body"),
+                },
+            )
+        raise HTTPException(status_code=status, detail=detail)
+
+    if format in ("jpeg", "print"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Прямое скачивание отключено. Откройте страницу результата и оплатите.",
+                "result_id": payload.get("result_id"),
+                "result_path": payload.get("result_path"),
+            },
+        )
     return JSONResponse(payload)
+
+
+@app.post("/api/process/stream")
+async def process_stream(file: UploadFile = File(...)):
+    """Same pipeline as /api/process, but SSE progress every ~4s until done/error."""
+    data = await _read_upload(file)
+    mime = _guess_mime(file.filename, file.content_type)
+    filename = file.filename
+
+    async def work():
+        return await asyncio.to_thread(
+            _run_process_pipeline,
+            data,
+            filename=filename,
+            mime=mime,
+        )
+
+    async def events():
+        async for frame in progress_events_mod.iter_process_sse(
+            work=work,
+            interval_sec=progress_events_mod.PROGRESS_INTERVAL_SEC,
+        ):
+            yield frame
+
+    return StreamingResponse(
+        events(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no",
+        },
+    )
 
 
 @app.get("/api/result/{result_id}")
@@ -683,7 +750,8 @@ def process_info():
             "5. print_sheet — 10×15 cm @300dpi with 4 copies",
         ],
         "endpoints": {
-            "/api/process": "digital 35×45 + print 10×15 (4 copies)",
+            "/api/process": "digital 35×45 + print 10×15 (JSON)",
+            "/api/process/stream": "same pipeline + SSE progress every 4s",
             "/api/edit": "white-bg edit only",
             "/api/crop": "crop + print sheet",
             "/api/feedback": "contact form → SMTP email",
