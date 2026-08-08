@@ -92,17 +92,35 @@ jobs:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           OPENROUTER_IMAGE_MODEL: ${{ secrets.OPENROUTER_IMAGE_MODEL }}
+          SMTP_HOST: ${{ secrets.SMTP_HOST }}
+          SMTP_PORT: ${{ secrets.SMTP_PORT }}
+          SMTP_USER: ${{ secrets.SMTP_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
+          SMTP_FROM: ${{ secrets.SMTP_FROM }}
+          FEEDBACK_TO: ${{ secrets.FEEDBACK_TO }}
         run: |
           set -euo pipefail
           MODEL="${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}"
           # OpenRouter for clean bg; local silueta is fallback inside the app.
           EDIT_BACKEND_VAL="${EDIT_BACKEND:-openrouter}"
+          SMTP_HOST_VAL="${SMTP_HOST:-mail.antonbutov.com}"
+          SMTP_PORT_VAL="${SMTP_PORT:-587}"
+          SMTP_USER_VAL="${SMTP_USER:-mail@antonbutov.com}"
+          SMTP_FROM_VAL="${SMTP_FROM:-mail@antonbutov.com}"
+          FEEDBACK_TO_VAL="${FEEDBACK_TO:-mail@antonbutov.com}"
+          test -n "${SMTP_PASSWORD}" || { echo "Add repository secret SMTP_PASSWORD"; exit 1; }
           {
             echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
             echo "OPENROUTER_IMAGE_MODEL=${MODEL}"
             echo "OPENROUTER_TRANSPARENT_BG=1"
             echo "EDIT_BACKEND=${EDIT_BACKEND_VAL}"
             echo "EDIT_CUTOUT=silueta"
+            echo "SMTP_HOST=${SMTP_HOST_VAL}"
+            echo "SMTP_PORT=${SMTP_PORT_VAL}"
+            echo "SMTP_USER=${SMTP_USER_VAL}"
+            echo "SMTP_PASSWORD=${SMTP_PASSWORD}"
+            echo "SMTP_FROM=${SMTP_FROM_VAL}"
+            echo "FEEDBACK_TO=${FEEDBACK_TO_VAL}"
           } | ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
             "umask 077; cat > ${API_PATH}/.env"

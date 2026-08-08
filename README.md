@@ -38,10 +38,10 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | `OPENROUTER_API_KEY` | нет | только для опционального `/api/edit` |
 | `OPENROUTER_IMAGE_MODEL` | нет | default image model for `/api/edit` |
 
-На API-хосте в `.env` (не в git) для `/api/feedback`:
+Для `/api/feedback` — GitHub Secrets (пишет deploy в `/opt/gosphoto-api/.env`):
 
-| Env | Default | Назначение |
-|-----|---------|------------|
+| Secret | Default если пусто | Назначение |
+|--------|-------------------|------------|
 | `SMTP_HOST` | `mail.antonbutov.com` | SMTP |
 | `SMTP_PORT` | `587` | STARTTLS |
 | `SMTP_USER` | `mail@antonbutov.com` | auth |
