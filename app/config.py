@@ -148,3 +148,18 @@ RESULTS_ENABLED = os.getenv("RESULTS_ENABLED", "1").strip().lower() in (
     "yes",
     "on",
 )
+
+# Feedback form → SMTP (mail.antonbutov.com)
+SMTP_HOST = os.getenv("SMTP_HOST", "mail.antonbutov.com").strip()
+SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
+SMTP_USER = os.getenv("SMTP_USER", "mail@antonbutov.com").strip()
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD", "").strip()
+SMTP_FROM = os.getenv("SMTP_FROM", "mail@antonbutov.com").strip()
+FEEDBACK_TO = os.getenv("FEEDBACK_TO", "mail@antonbutov.com").strip()
+FEEDBACK_RATE_LIMIT = int(os.getenv("FEEDBACK_RATE_LIMIT", "5"))
+FEEDBACK_RATE_WINDOW_SEC = int(os.getenv("FEEDBACK_RATE_WINDOW_SEC", "600"))
+FEEDBACK_MAX_PHOTO_BYTES = int(
+    os.getenv("FEEDBACK_MAX_PHOTO_BYTES", str(5 * 1024 * 1024))
+)
+FEEDBACK_MAX_MESSAGE_CHARS = int(os.getenv("FEEDBACK_MAX_MESSAGE_CHARS", "4000"))
+FEEDBACK_MIN_MESSAGE_CHARS = int(os.getenv("FEEDBACK_MIN_MESSAGE_CHARS", "10"))
