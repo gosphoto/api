@@ -152,7 +152,7 @@ jobs:
           # Sensible defaults if never set on this host
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
           data["EDIT_BACKEND"] = "riverflow"
-          data.setdefault("RIVERFLOW_MODEL", "sourceful/riverflow-v2.5-pro")
+          data["RIVERFLOW_MODEL"] = "sourceful/riverflow-v2.5-fast"
           data.setdefault("RIVERFLOW_BG_MODE", "solid")
           data.setdefault("RIVERFLOW_BG_HEX", "#FFFFFF")
           data.setdefault("OPENROUTER_TIMEOUT_SEC", "300")

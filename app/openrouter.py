@@ -237,7 +237,7 @@ def edit_selfie_riverflow(
     image_bytes: bytes,
     mime: str = "image/jpeg",
 ) -> bytes:
-    """Riverflow v2.5 Pro — solid/transparent bg via OpenRouter /images."""
+    """Riverflow v2.5 (fast/pro) — solid/transparent bg via OpenRouter /images."""
     payload = build_riverflow_images_payload(
         image_bytes, mime, prompt=GOSUSLUGI_EDIT_PROMPT
     )

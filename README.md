@@ -42,7 +42,7 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | `DEPLOY_SSH_PRIVATE_KEY` | да | SSH на VPS |
 | `DEPLOY_USER` | да | SSH user (обычно `root`) |
 | `OPENROUTER_API_KEY` | да | Riverflow / OpenRouter image edit |
-| `RIVERFLOW_MODEL` | нет | default `sourceful/riverflow-v2.5-pro` |
+| `RIVERFLOW_MODEL` | нет | default `sourceful/riverflow-v2.5-fast` |
 | `RIVERFLOW_BG_MODE` / `RIVERFLOW_BG_HEX` | нет | `solid` / `#FFFFFF` |
 | `OPENROUTER_IMAGE_MODEL` | нет | legacy model for non-Riverflow `/api/edit` |
 
