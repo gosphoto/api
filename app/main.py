@@ -1,14 +1,16 @@
 from __future__ import annotations
 
+import asyncio
 import base64
 import logging
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, Response
 
 from . import config
+from . import feedback as feedback_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
 from .edit import edit_selfie_local, run_edit_stage
@@ -79,7 +81,7 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.8.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.9.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -94,13 +96,14 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.8.0",
+        "version": "0.9.0",
         "pipeline": ["gate", "local_person", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
-        "note": "/api/process: digital 35×45 + print 10×15; GET /api/result/{id}",
+        "smtp": bool(config.SMTP_PASSWORD),
+        "note": "/api/process: digital 35×45 + print 10×15; POST /api/feedback",
     }
 
 
@@ -422,6 +425,61 @@ def get_result_print(result_id: str):
     return Response(content=data, media_type="image/jpeg")
 
 
+@app.post("/api/feedback")
+async def post_feedback(
+    request: Request,
+    email: str = Form(...),
+    message: str = Form(...),
+    photo: UploadFile | None = File(None),
+):
+    ip = request.client.host if request.client else "unknown"
+    xff = request.headers.get("x-forwarded-for")
+    if xff:
+        ip = xff.split(",")[0].strip() or ip
+    ua = request.headers.get("user-agent", "")
+    try:
+        feedback_mod.check_rate_limit(ip)
+        email_n = feedback_mod.validate_email(email)
+        message_n = feedback_mod.validate_message(message)
+        raw = await photo.read() if photo is not None else None
+        photo_n = feedback_mod.validate_photo(
+            photo.filename if photo else None,
+            photo.content_type if photo else None,
+            raw,
+        )
+        msg = feedback_mod.build_feedback_email(
+            email=email_n,
+            message=message_n,
+            client_ip=ip,
+            user_agent=ua,
+            photo=photo_n,
+        )
+        await asyncio.to_thread(feedback_mod.send_feedback_email, msg)
+    except feedback_mod.FeedbackRateLimitError as e:
+        raise HTTPException(status_code=429, detail=e.detail) from e
+    except feedback_mod.FeedbackValidationError as e:
+        raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+    except feedback_mod.FeedbackConfigError as e:
+        raise HTTPException(status_code=503, detail=e.detail) from e
+    except feedback_mod.FeedbackSmtpError as e:
+        raise HTTPException(status_code=502, detail=e.detail) from e
+    return {"ok": True}
+
+
+@app.get("/api/feedback")
+def feedback_info():
+    return {
+        "endpoint": "/api/feedback",
+        "method": "POST",
+        "fields": {
+            "email": "required, reply-to",
+            "message": "required, 10–4000 chars",
+            "photo": "optional, JPEG/PNG/WebP ≤5MB",
+        },
+        "to": config.FEEDBACK_TO,
+    }
+
+
 @app.get("/api/process")
 @app.get("/api/edit")
 @app.get("/api/crop")
@@ -438,6 +496,7 @@ def process_info():
             "/api/process": "digital 35×45 + print 10×15 (4 copies)",
             "/api/edit": "white-bg edit only",
             "/api/crop": "crop + print sheet",
+            "/api/feedback": "contact form → SMTP email",
         },
         "passport": {
             "size_mm": [35, 45],

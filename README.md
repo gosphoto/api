@@ -6,6 +6,7 @@
 - `POST /api/process` — gate → белый фон → 35×45 crop → **лист 10×15 (4 фото)**  
   JSON: `image_base64` (Госуслуги) + `print_sheet.image_base64` (печать)
 - `POST /api/edit` — только белый фон; может использовать OpenRouter если `EDIT_BACKEND=openrouter`
+- `POST /api/feedback` — multipart: `email`, `message`, optional `photo` → SMTP to `FEEDBACK_TO`
 - `GET /health`
 
 Требования кадра ([FMS §34.3 / rg.ru](https://rg.ru/documents/2011/08/22/pasport-dok.html)):
@@ -36,6 +37,16 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | `DEPLOY_USER` | да | SSH user (обычно `root`) |
 | `OPENROUTER_API_KEY` | нет | только для опционального `/api/edit` |
 | `OPENROUTER_IMAGE_MODEL` | нет | default image model for `/api/edit` |
+
+На API-хосте в `.env` (не в git) для `/api/feedback`:
+
+| Env | Default | Назначение |
+|-----|---------|------------|
+| `SMTP_HOST` | `mail.antonbutov.com` | SMTP |
+| `SMTP_PORT` | `587` | STARTTLS |
+| `SMTP_USER` | `mail@antonbutov.com` | auth |
+| `SMTP_PASSWORD` | _(required)_ | auth |
+| `SMTP_FROM` / `FEEDBACK_TO` | `mail@antonbutov.com` | From / To |
 
 Скопируй `DEPLOY_*` из [gosphoto/landing](https://github.com/gosphoto/landing/settings/secrets/actions).
 

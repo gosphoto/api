@@ -101,3 +101,111 @@ def test_send_feedback_smtp_ok(monkeypatch):
     smtp.starttls.assert_called_once()
     smtp.login.assert_called_once_with("mail@antonbutov.com", "secret")
     smtp.send_message.assert_called_once()
+
+
+def _mini_feedback_app():
+    import asyncio
+
+    from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+    from fastapi.testclient import TestClient  # noqa: F401 — imported by callers
+
+    app = FastAPI()
+
+    @app.post("/api/feedback")
+    async def post_feedback(
+        request: Request,
+        email: str = Form(...),
+        message: str = Form(...),
+        photo: UploadFile | None = File(None),
+    ):
+        ip = request.client.host if request.client else "unknown"
+        xff = request.headers.get("x-forwarded-for")
+        if xff:
+            ip = xff.split(",")[0].strip() or ip
+        ua = request.headers.get("user-agent", "")
+        try:
+            feedback.check_rate_limit(ip)
+            email_n = feedback.validate_email(email)
+            message_n = feedback.validate_message(message)
+            raw = await photo.read() if photo is not None else None
+            photo_n = feedback.validate_photo(
+                photo.filename if photo else None,
+                photo.content_type if photo else None,
+                raw,
+            )
+            msg = feedback.build_feedback_email(
+                email=email_n,
+                message=message_n,
+                client_ip=ip,
+                user_agent=ua,
+                photo=photo_n,
+            )
+            await asyncio.to_thread(feedback.send_feedback_email, msg)
+        except feedback.FeedbackRateLimitError as e:
+            raise HTTPException(status_code=429, detail=e.detail) from e
+        except feedback.FeedbackValidationError as e:
+            raise HTTPException(status_code=e.status_code, detail=e.detail) from e
+        except feedback.FeedbackConfigError as e:
+            raise HTTPException(status_code=503, detail=e.detail) from e
+        except feedback.FeedbackSmtpError as e:
+            raise HTTPException(status_code=502, detail=e.detail) from e
+        return {"ok": True}
+
+    @app.get("/api/feedback")
+    def feedback_info():
+        return {
+            "endpoint": "/api/feedback",
+            "method": "POST",
+            "fields": ["email", "message", "photo?"],
+        }
+
+    return app
+
+
+def test_http_feedback_ok(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    feedback._RATE.clear()
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
+    client = TestClient(_mini_feedback_app())
+    res = client.post(
+        "/api/feedback",
+        data={"email": "a@b.co", "message": "Hello, need help please"},
+    )
+    assert res.status_code == 200
+    assert res.json() == {"ok": True}
+
+
+def test_http_feedback_rate_limit(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    feedback._RATE.clear()
+    monkeypatch.setattr(config, "FEEDBACK_RATE_LIMIT", 1)
+    monkeypatch.setattr(config, "FEEDBACK_RATE_WINDOW_SEC", 600)
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
+    client = TestClient(_mini_feedback_app())
+    assert (
+        client.post(
+            "/api/feedback",
+            data={"email": "a@b.co", "message": "Hello, need help please"},
+        ).status_code
+        == 200
+    )
+    assert (
+        client.post(
+            "/api/feedback",
+            data={"email": "a@b.co", "message": "Hello, need help please"},
+        ).status_code
+        == 429
+    )
+
+
+def test_http_feedback_get_info():
+    from fastapi.testclient import TestClient
+
+    client = TestClient(_mini_feedback_app())
+    res = client.get("/api/feedback")
+    assert res.status_code == 200
+    assert res.json()["method"] == "POST"
