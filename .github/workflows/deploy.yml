@@ -161,4 +161,10 @@ jobs:
         run: |
           ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "curl -fsS http://127.0.0.1:8111/health && curl -fsS https://gosphoto.ru/health && curl -fsS https://gosphoto.ru/api/feedback"
+            'for i in $(seq 1 36); do
+               curl -fsS http://127.0.0.1:8111/health >/dev/null && break
+               sleep 5
+             done
+             curl -fsS http://127.0.0.1:8111/health
+             curl -fsS https://gosphoto.ru/health
+             curl -fsS https://gosphoto.ru/api/feedback'
