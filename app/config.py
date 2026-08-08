@@ -75,7 +75,7 @@ OPENROUTER_IMAGE_MODEL = os.getenv(
 OPENROUTER_TRANSPARENT_BG = os.getenv(
     "OPENROUTER_TRANSPARENT_BG", "1"
 ).strip().lower() in ("1", "true", "yes", "on")
-OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "180"))
+OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 
 # Live /api/process edit: Sourceful Riverflow v2.5 Pro (OpenRouter /images)
 RIVERFLOW_MODEL = os.getenv(

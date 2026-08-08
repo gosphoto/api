@@ -151,10 +151,12 @@ jobs:
                   data[k] = v
           # Sensible defaults if never set on this host
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
-          data.setdefault("EDIT_BACKEND", "riverflow")
+          data["EDIT_BACKEND"] = "riverflow"
           data.setdefault("RIVERFLOW_MODEL", "sourceful/riverflow-v2.5-pro")
           data.setdefault("RIVERFLOW_BG_MODE", "solid")
           data.setdefault("RIVERFLOW_BG_HEX", "#FFFFFF")
+          data.setdefault("OPENROUTER_TIMEOUT_SEC", "300")
+          data.setdefault("RIVERFLOW_TIMEOUT_SEC", "300")
           data.setdefault("PUBLIC_BASE_URL", "https://gosphoto.ru")
           data.setdefault("PRICE_KOPECKS", "10000")
           data.setdefault("FREE_DOWNLOAD_UNLOCK", "0")
