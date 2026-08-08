@@ -7,19 +7,21 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse, Response
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 
 from . import config
 from . import feedback as feedback_mod
+from . import payments as payments_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import edit_selfie_local, run_edit_stage
+from .edit import run_edit_stage
 from .gate import _decode_image, warmup, validate_image
 from .openrouter import OpenRouterError
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
-from .results import is_valid_result_id, load_file, load_meta, save_result
+from .results import is_paid, is_valid_result_id, load_file, load_meta, save_result
+from .tochka import TochkaError, get_tochka_client
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("gosphoto-gate")
@@ -33,7 +35,7 @@ ALLOWED_CT = {
 }
 
 
-def _print_payload(passport_bgr) -> tuple[bytes, dict]:
+def _print_payload(passport_bgr, *, include_base64: bool = True) -> tuple[bytes, dict]:
     sheet_bgr, sheet_meta = make_print_sheet_bgr(passport_bgr)
     sheet_jpeg = encode_print_jpeg(sheet_bgr)
     payload = {
@@ -45,10 +47,52 @@ def _print_payload(passport_bgr) -> tuple[bytes, dict]:
         "copies": sheet_meta["copies"],
         "layout": sheet_meta["layout"],
         "bytes": len(sheet_jpeg),
-        "image_base64": base64.b64encode(sheet_jpeg).decode("ascii"),
         "meta": sheet_meta,
     }
+    if include_base64:
+        payload["image_base64"] = base64.b64encode(sheet_jpeg).decode("ascii")
     return sheet_jpeg, payload
+
+
+def _require_paid(result_id: str) -> None:
+    if not is_valid_result_id(result_id) or not load_meta(result_id):
+        raise HTTPException(status_code=404, detail="Result not found")
+    if not is_paid(result_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Payment required. Pay via POST /api/result/{id}/pay",
+        )
+
+
+def _result_public_payload(result_id: str, meta: dict) -> dict:
+    paid = bool(meta.get("paid"))
+    print_meta = meta.get("print_sheet") or {}
+    body = {
+        "ok": True,
+        "result_id": result_id,
+        "result_path": f"/result/{result_id}",
+        "mime": meta.get("mime") or "image/jpeg",
+        "width": meta.get("width") or config.PASSPORT_WIDTH,
+        "height": meta.get("height") or config.PASSPORT_HEIGHT,
+        "dpi": meta.get("dpi") or config.PASSPORT_DPI,
+        "compliance": meta.get("compliance") or {},
+        "print_sheet": print_meta,
+        "preview_digital_url": f"/api/result/{result_id}/preview_digital.jpg",
+        "preview_print_url": f"/api/result/{result_id}/preview_print.jpg",
+        "paid": paid,
+        "price_kopecks": config.PRICE_KOPECKS,
+        "price_rub": payments_mod.price_rub(),
+        "gate": meta.get("gate"),
+        "crop": meta.get("crop"),
+        "saved_at": meta.get("saved_at"),
+    }
+    if paid:
+        body["digital_url"] = f"/api/result/{result_id}/digital.jpg"
+        body["print_url"] = f"/api/result/{result_id}/print.jpg"
+    else:
+        body["digital_url"] = None
+        body["print_url"] = None
+    return body
 
 
 def _guess_mime(filename: str | None, content_type: str | None) -> str:
@@ -63,6 +107,22 @@ def _guess_mime(filename: str | None, content_type: str | None) -> str:
     return "image/jpeg"
 
 
+async def _payment_sync_loop(stop: asyncio.Event) -> None:
+    interval = config.PAYMENT_SYNC_INTERVAL_SECONDS
+    if interval <= 0:
+        await stop.wait()
+        return
+    while not stop.is_set():
+        try:
+            await asyncio.to_thread(payments_mod.sync_all_pending)
+        except Exception as e:
+            log.warning("Payment sync failed: %s", e)
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=interval)
+        except asyncio.TimeoutError:
+            pass
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
@@ -73,15 +133,33 @@ async def lifespan(_app: FastAPI):
     except Exception as e:
         log.warning("Cutout warmup failed (will retry on request): %s", e)
     log.info(
-        "Gate ready; edit_backend=%s cutout=%s openrouter=%s",
+        "Gate ready; edit_backend=%s cutout=%s openrouter=%s payments=%s free_unlock=%s",
         config.EDIT_BACKEND,
         config.EDIT_CUTOUT,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
+        "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
+        config.FREE_DOWNLOAD_UNLOCK,
     )
-    yield
+    if config.TOCHKA_ACCESS_TOKEN:
+        try:
+            code = await asyncio.to_thread(get_tochka_client().resolve_customer_code)
+            log.info("Tochka customerCode ready: %s", code)
+        except Exception as e:
+            log.warning("Tochka customerCode resolve failed at startup: %s", e)
+    stop = asyncio.Event()
+    sync_task = asyncio.create_task(_payment_sync_loop(stop))
+    try:
+        yield
+    finally:
+        stop.set()
+        sync_task.cancel()
+        try:
+            await sync_task
+        except asyncio.CancelledError:
+            pass
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.9.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.10.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -96,14 +174,17 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.9.0",
+        "version": "0.10.0",
         "pipeline": ["gate", "local_person", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
         "edit_model": config.OPENROUTER_IMAGE_MODEL,
         "smtp": bool(config.SMTP_PASSWORD),
-        "note": "/api/process: digital 35×45 + print 10×15; POST /api/feedback",
+        "payments": "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
+        "price_rub": payments_mod.price_rub(),
+        "free_download_unlock": config.FREE_DOWNLOAD_UNLOCK,
+        "note": "/api/process → result_id; pay then download; POST /api/feedback",
     }
 
 
@@ -311,7 +392,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
-    print_jpeg, print_sheet = _print_payload(cropped)
+    print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     compliance = {
         **compliance,
         "jpeg_bytes": len(jpeg),
@@ -353,10 +434,15 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         print_jpeg,
         meta=pair_meta,
     )
-    if format == "jpeg":
-        return Response(content=jpeg, media_type="image/jpeg")
-    if format == "print":
-        return Response(content=print_jpeg, media_type="image/jpeg")
+    if format in ("jpeg", "print"):
+        raise HTTPException(
+            status_code=403,
+            detail={
+                "message": "Прямое скачивание отключено. Откройте страницу результата и оплатите.",
+                "result_id": result_id,
+                "result_path": f"/result/{result_id}" if result_id else None,
+            },
+        )
 
     payload = {
         "ok": True,
@@ -366,8 +452,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         "width": config.PASSPORT_WIDTH,
         "height": config.PASSPORT_HEIGHT,
         "dpi": config.PASSPORT_DPI,
-        "image_base64": base64.b64encode(jpeg).decode("ascii"),
-        "print_sheet": print_sheet,
+        "print_sheet": print_meta,
         "pipeline": pair_meta["pipeline"],
         "model": edit_meta.get("model"),
         "edit_backend": config.EDIT_BACKEND,
@@ -376,6 +461,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         "edit": edit_meta,
         "crop": crop_metrics,
         "compliance": compliance,
+        "price_rub": payments_mod.price_rub(),
     }
     if result_id:
         payload["result_id"] = result_id
@@ -390,27 +476,83 @@ def get_result(result_id: str):
     meta = load_meta(result_id)
     if not meta:
         raise HTTPException(status_code=404, detail="Result not found")
-    print_meta = meta.get("print_sheet") or {}
-    return {
-        "ok": True,
-        "result_id": result_id,
-        "result_path": f"/result/{result_id}",
-        "mime": meta.get("mime") or "image/jpeg",
-        "width": meta.get("width") or config.PASSPORT_WIDTH,
-        "height": meta.get("height") or config.PASSPORT_HEIGHT,
-        "dpi": meta.get("dpi") or config.PASSPORT_DPI,
-        "compliance": meta.get("compliance") or {},
-        "print_sheet": print_meta,
-        "digital_url": f"/api/result/{result_id}/digital.jpg",
-        "print_url": f"/api/result/{result_id}/print.jpg",
-        "gate": meta.get("gate"),
-        "crop": meta.get("crop"),
-        "saved_at": meta.get("saved_at"),
-    }
+    return _result_public_payload(result_id, meta)
+
+
+@app.post("/api/result/{result_id}/pay")
+def pay_result(result_id: str):
+    if not is_valid_result_id(result_id):
+        raise HTTPException(status_code=404, detail="Result not found")
+    try:
+        return payments_mod.create_checkout(result_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Result not found") from None
+    except TochkaError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except ValueError:
+        raise HTTPException(status_code=404, detail="Result not found") from None
+
+
+@app.get("/api/result/{result_id}/payment-status")
+def payment_status(result_id: str):
+    if not is_valid_result_id(result_id):
+        raise HTTPException(status_code=404, detail="Result not found")
+    meta = load_meta(result_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="Result not found")
+    payments_mod.sync_pending_for_result(result_id)
+    meta = load_meta(result_id) or meta
+    return _result_public_payload(result_id, meta)
+
+
+@app.post("/api/payments/tochka/webhook")
+async def tochka_webhook(request: Request):
+    raw = (await request.body()).decode("utf-8", errors="replace")
+    signature = request.headers.get("x-signature") or request.headers.get(
+        "X-Signature"
+    )
+    # Always ACK 200 so Tochka does not retry forever on our processing bugs.
+    try:
+        result = payments_mod.handle_webhook(raw, signature)
+    except Exception as e:
+        log.exception("Tochka webhook handler error: %s", e)
+        result = {"ok": True, "error": "internal"}
+    return result
+
+
+@app.get("/pay/success")
+def pay_success(result_id: str = ""):
+    if is_valid_result_id(result_id):
+        return RedirectResponse(url=f"/result/{result_id}?paid=1", status_code=302)
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/pay/fail")
+def pay_fail(result_id: str = ""):
+    if is_valid_result_id(result_id):
+        return RedirectResponse(url=f"/result/{result_id}?paid=0", status_code=302)
+    return RedirectResponse(url="/", status_code=302)
+
+
+@app.get("/api/result/{result_id}/preview_digital.jpg")
+def get_result_preview_digital(result_id: str):
+    data = load_file(result_id, "preview_digital.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/preview_print.jpg")
+def get_result_preview_print(result_id: str):
+    data = load_file(result_id, "preview_print.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
 
 
 @app.get("/api/result/{result_id}/digital.jpg")
 def get_result_digital(result_id: str):
+    _require_paid(result_id)
     data = load_file(result_id, "digital.jpg")
     if not data:
         raise HTTPException(status_code=404, detail="Result not found")
@@ -419,6 +561,7 @@ def get_result_digital(result_id: str):
 
 @app.get("/api/result/{result_id}/print.jpg")
 def get_result_print(result_id: str):
+    _require_paid(result_id)
     data = load_file(result_id, "print.jpg")
     if not data:
         raise HTTPException(status_code=404, detail="Result not found")
@@ -520,5 +663,11 @@ def process_info():
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter_model": config.OPENROUTER_IMAGE_MODEL,
         "openrouter_configured": bool(config.OPENROUTER_API_KEY),
-        "output": "json (image_base64 + print_sheet) or ?format=jpeg|print",
+        "output": "json with result_id; download after POST /api/result/{id}/pay",
+        "payments": {
+            "provider": "tochka",
+            "price_rub": payments_mod.price_rub(),
+            "pay": "POST /api/result/{id}/pay",
+            "webhook": "POST /api/payments/tochka/webhook",
+        },
     }

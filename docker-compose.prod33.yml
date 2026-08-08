@@ -32,10 +32,16 @@ services:
       REJECTEDS_DIR: /app/rejecteds
       PAIRS_DIR: /app/pairs
       RESULTS_DIR: /app/results
+      PAYMENTS_DIR: /app/payments
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://gosphoto.ru}
+      PRICE_KOPECKS: ${PRICE_KOPECKS:-10000}
+      FREE_DOWNLOAD_UNLOCK: ${FREE_DOWNLOAD_UNLOCK:-0}
+      PAYMENT_SYNC_INTERVAL_SECONDS: ${PAYMENT_SYNC_INTERVAL_SECONDS:-30}
     volumes:
       - ./rejecteds:/app/rejecteds
       - ./pairs:/app/pairs
       - ./results:/app/results
+      - ./payments:/app/payments
     # isnet@1024 needs more headroom than u2net@320
     mem_limit: 3072m
     healthcheck:

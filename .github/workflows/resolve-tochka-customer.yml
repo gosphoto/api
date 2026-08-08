@@ -1,0 +1,27 @@
+name: Resolve Tochka customerCode
+
+on:
+  workflow_dispatch:
+
+jobs:
+  resolve:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve customerCode
+        id: resolve
+        env:
+          TOCHKA_ACCESS_TOKEN: ${{ secrets.TOCHKA_ACCESS_TOKEN }}
+        run: |
+          set -euo pipefail
+          CODE="$(python3 scripts/resolve_tochka_customer.py)"
+          echo "customer_code=$CODE" >> "$GITHUB_OUTPUT"
+          echo "Resolved customerCode: $CODE"
+
+      - name: Summary
+        run: |
+          echo "### Tochka customerCode" >> "$GITHUB_STEP_SUMMARY"
+          echo "\`${{ steps.resolve.outputs.customer_code }}\`" >> "$GITHUB_STEP_SUMMARY"

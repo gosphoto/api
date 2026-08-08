@@ -104,6 +104,9 @@ jobs:
           SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
           SMTP_FROM: ${{ secrets.SMTP_FROM }}
           FEEDBACK_TO: ${{ secrets.FEEDBACK_TO }}
+          TOCHKA_ACCESS_TOKEN: ${{ secrets.TOCHKA_ACCESS_TOKEN }}
+          TOCHKA_CUSTOMER_CODE: ${{ secrets.TOCHKA_CUSTOMER_CODE }}
+          TOCHKA_MERCHANT_ID: ${{ secrets.TOCHKA_MERCHANT_ID }}
         run: |
           set -euo pipefail
           MODEL="${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}"
@@ -137,6 +140,9 @@ jobs:
               "SMTP_PASSWORD": """${SMTP_PASSWORD}""",
               "SMTP_FROM": """${SMTP_FROM_VAL}""",
               "FEEDBACK_TO": """${FEEDBACK_TO_VAL}""",
+              "TOCHKA_ACCESS_TOKEN": """${TOCHKA_ACCESS_TOKEN}""",
+              "TOCHKA_CUSTOMER_CODE": """${TOCHKA_CUSTOMER_CODE}""",
+              "TOCHKA_MERCHANT_ID": """${TOCHKA_MERCHANT_ID}""",
           }
           for k, v in updates.items():
               if v != "":
@@ -145,6 +151,54 @@ jobs:
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
           data.setdefault("NANO_BANANA_MODEL", "google/gemini-3-pro-image-preview")
           data.setdefault("EDIT_BACKEND", "openrouter")
+          data.setdefault("PUBLIC_BASE_URL", "https://gosphoto.ru")
+          data.setdefault("PRICE_KOPECKS", "10000")
+          data.setdefault("FREE_DOWNLOAD_UNLOCK", "0")
+          data.setdefault("PAYMENT_SYNC_INTERVAL_SECONDS", "30")
+
+          # Resolve customerCode from Tochka using JWT if missing
+          token = (data.get("TOCHKA_ACCESS_TOKEN") or "").strip()
+          if token and not (data.get("TOCHKA_CUSTOMER_CODE") or "").strip():
+              import json
+              import urllib.request
+              try:
+                  req = urllib.request.Request(
+                      "https://enter.tochka.com/uapi/open-banking/v1.0/customers",
+                      headers={
+                          "Authorization": f"Bearer {token}",
+                          "Accept": "application/json",
+                      },
+                  )
+                  with urllib.request.urlopen(req, timeout=30) as resp:
+                      root = json.loads(resp.read().decode("utf-8"))
+                  payload = root.get("Data") if isinstance(root, dict) else None
+                  code = ""
+                  if isinstance(payload, dict):
+                      code = str(payload.get("customerCode") or "").strip()
+                      if not code:
+                          raw = payload.get("Customer")
+                          customers = []
+                          if isinstance(raw, dict):
+                              customers = [raw]
+                          elif isinstance(raw, list):
+                              customers = [c for c in raw if isinstance(c, dict)]
+                          business = [
+                              c for c in customers
+                              if str(c.get("customerType") or "").lower() == "business"
+                              and str(c.get("customerCode") or "").strip()
+                          ]
+                          if len(business) == 1:
+                              code = str(business[0]["customerCode"]).strip()
+                          elif len(customers) == 1:
+                              code = str(customers[0].get("customerCode") or "").strip()
+                  if code:
+                      data["TOCHKA_CUSTOMER_CODE"] = code
+                      print("resolved TOCHKA_CUSTOMER_CODE=", code)
+                  else:
+                      print("WARN: could not resolve TOCHKA_CUSTOMER_CODE")
+              except Exception as e:
+                  print("WARN: Tochka customer resolve failed:", e)
+
           text = "\n".join(f"{k}={v}" for k, v in data.items()) + "\n"
           path.write_text(text, encoding="utf-8")
           path.chmod(0o600)

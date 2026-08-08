@@ -27,10 +27,16 @@ services:
       REJECTEDS_DIR: /app/rejecteds
       PAIRS_DIR: /app/pairs
       RESULTS_DIR: /app/results
+      PAYMENTS_DIR: /app/payments
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-http://localhost:5173}
+      PRICE_KOPECKS: ${PRICE_KOPECKS:-10000}
+      FREE_DOWNLOAD_UNLOCK: ${FREE_DOWNLOAD_UNLOCK:-1}
+      PAYMENT_SYNC_INTERVAL_SECONDS: ${PAYMENT_SYNC_INTERVAL_SECONDS:-0}
     volumes:
       - ./rejecteds:/app/rejecteds
       - ./pairs:/app/pairs
       - ./results:/app/results
+      - ./payments:/app/payments
     mem_limit: 1024m
     healthcheck:
       test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8091/health"]

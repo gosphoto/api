@@ -163,3 +163,32 @@ FEEDBACK_MAX_PHOTO_BYTES = int(
 )
 FEEDBACK_MAX_MESSAGE_CHARS = int(os.getenv("FEEDBACK_MAX_MESSAGE_CHARS", "4000"))
 FEEDBACK_MIN_MESSAGE_CHARS = int(os.getenv("FEEDBACK_MIN_MESSAGE_CHARS", "10"))
+
+# Tochka acquiring — pay-per-result unlock
+TOCHKA_ACCESS_TOKEN = os.getenv("TOCHKA_ACCESS_TOKEN", "").strip()
+TOCHKA_MERCHANT_ID = os.getenv("TOCHKA_MERCHANT_ID", "").strip()
+TOCHKA_CUSTOMER_CODE = os.getenv("TOCHKA_CUSTOMER_CODE", "").strip()
+TOCHKA_API_BASE_URL = os.getenv(
+    "TOCHKA_API_BASE_URL", "https://enter.tochka.com"
+).rstrip("/")
+PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://gosphoto.ru").rstrip("/")
+PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "10000"))
+FREE_DOWNLOAD_UNLOCK = os.getenv("FREE_DOWNLOAD_UNLOCK", "0").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+PAYMENT_SYNC_INTERVAL_SECONDS = int(os.getenv("PAYMENT_SYNC_INTERVAL_SECONDS", "30"))
+PAYMENTS_DIR = Path(
+    os.getenv(
+        "PAYMENTS_DIR",
+        str(Path(__file__).resolve().parent.parent / "payments"),
+    )
+)
+PAYMENTS_ENABLED = os.getenv("PAYMENTS_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
