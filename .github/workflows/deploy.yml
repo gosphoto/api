@@ -11,8 +11,10 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  DEPLOY_HOST: 91.207.75.72
+  # Prod API (nginx on 91 proxies gosphoto.ru /api/ here)
+  DEPLOY_HOST: 80.87.196.33
   API_PATH: /opt/gosphoto-api
+  COMPOSE_FILE: docker-compose.prod33.yml
 
 jobs:
   check:
@@ -24,10 +26,12 @@ jobs:
         run: |
           test -f Dockerfile
           test -f docker-compose.yml
+          test -f docker-compose.prod33.yml
           test -f app/main.py
           test -f app/gate.py
           test -f app/openrouter.py
           test -f app/crop.py
+          test -f app/feedback.py
           echo "API OK"
 
   deploy:
@@ -44,9 +48,11 @@ jobs:
         env:
           KEY: ${{ secrets.DEPLOY_SSH_PRIVATE_KEY }}
           USER_NAME: ${{ secrets.DEPLOY_USER }}
+          SMTP_PASSWORD: ${{ secrets.SMTP_PASSWORD }}
         run: |
           test -n "$KEY" || { echo "Add repository secret DEPLOY_SSH_PRIVATE_KEY"; exit 1; }
           test -n "$USER_NAME" || { echo "Add repository secret DEPLOY_USER"; exit 1; }
+          test -n "$SMTP_PASSWORD" || { echo "Add repository secret SMTP_PASSWORD"; exit 1; }
 
       - name: Load SSH key
         env:
@@ -87,7 +93,7 @@ jobs:
             ./ \
             "${DEPLOY_USER}@${DEPLOY_HOST}:${API_PATH}/"
 
-      - name: Write secrets and start container
+      - name: Upsert secrets and start container
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
           OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
@@ -101,32 +107,53 @@ jobs:
         run: |
           set -euo pipefail
           MODEL="${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}"
-          # OpenRouter for clean bg; local silueta is fallback inside the app.
-          EDIT_BACKEND_VAL="${EDIT_BACKEND:-openrouter}"
           SMTP_HOST_VAL="${SMTP_HOST:-mail.antonbutov.com}"
           SMTP_PORT_VAL="${SMTP_PORT:-587}"
           SMTP_USER_VAL="${SMTP_USER:-mail@antonbutov.com}"
           SMTP_FROM_VAL="${SMTP_FROM:-mail@antonbutov.com}"
           FEEDBACK_TO_VAL="${FEEDBACK_TO:-mail@antonbutov.com}"
-          test -n "${SMTP_PASSWORD}" || { echo "Add repository secret SMTP_PASSWORD"; exit 1; }
-          {
-            echo "OPENROUTER_API_KEY=${OPENROUTER_API_KEY}"
-            echo "OPENROUTER_IMAGE_MODEL=${MODEL}"
-            echo "OPENROUTER_TRANSPARENT_BG=1"
-            echo "EDIT_BACKEND=${EDIT_BACKEND_VAL}"
-            echo "EDIT_CUTOUT=silueta"
-            echo "SMTP_HOST=${SMTP_HOST_VAL}"
-            echo "SMTP_PORT=${SMTP_PORT_VAL}"
-            echo "SMTP_USER=${SMTP_USER_VAL}"
-            echo "SMTP_PASSWORD=${SMTP_PASSWORD}"
-            echo "SMTP_FROM=${SMTP_FROM_VAL}"
-            echo "FEEDBACK_TO=${FEEDBACK_TO_VAL}"
-          } | ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
-            "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "umask 077; cat > ${API_PATH}/.env"
+
+          # Preserve existing .env keys (OPENROUTER_BASE_URL, NANO_BANANA_MODEL, …);
+          # only upsert keys we manage from GitHub secrets.
           ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "cd ${API_PATH} && docker compose up -d --build"
+            "umask 077; python3 -" <<PY
+          from pathlib import Path
+          path = Path("${API_PATH}/.env")
+          data = {}
+          if path.exists():
+              for line in path.read_text(encoding="utf-8").splitlines():
+                  if not line.strip() or line.lstrip().startswith("#") or "=" not in line:
+                      continue
+                  k, _, v = line.partition("=")
+                  data[k.strip()] = v
+          updates = {
+              "OPENROUTER_API_KEY": """${OPENROUTER_API_KEY}""",
+              "OPENROUTER_IMAGE_MODEL": """${MODEL}""",
+              "OPENROUTER_TRANSPARENT_BG": "1",
+              "SMTP_HOST": """${SMTP_HOST_VAL}""",
+              "SMTP_PORT": """${SMTP_PORT_VAL}""",
+              "SMTP_USER": """${SMTP_USER_VAL}""",
+              "SMTP_PASSWORD": """${SMTP_PASSWORD}""",
+              "SMTP_FROM": """${SMTP_FROM_VAL}""",
+              "FEEDBACK_TO": """${FEEDBACK_TO_VAL}""",
+          }
+          for k, v in updates.items():
+              if v != "":
+                  data[k] = v
+          # Sensible defaults if never set on this host
+          data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
+          data.setdefault("NANO_BANANA_MODEL", "google/gemini-3-pro-image-preview")
+          data.setdefault("EDIT_BACKEND", "openrouter")
+          text = "\n".join(f"{k}={v}" for k, v in data.items()) + "\n"
+          path.write_text(text, encoding="utf-8")
+          path.chmod(0o600)
+          print("env keys:", ", ".join(sorted(data)))
+          PY
+
+          ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "cd ${API_PATH} && docker compose -f ${COMPOSE_FILE} up -d --build"
 
       - name: Smoke health
         env:
@@ -134,4 +161,4 @@ jobs:
         run: |
           ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "curl -fsS http://127.0.0.1:8091/health && curl -fsS https://gosphoto.ru/health"
+            "curl -fsS http://127.0.0.1:8111/health && curl -fsS https://gosphoto.ru/health && curl -fsS https://gosphoto.ru/api/feedback"
