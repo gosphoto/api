@@ -74,9 +74,11 @@ OPENROUTER_IMAGE_MODEL = os.getenv(
 OPENROUTER_TRANSPARENT_BG = os.getenv(
     "OPENROUTER_TRANSPARENT_BG", "1"
 ).strip().lower() in ("1", "true", "yes", "on")
-# /api/process always uses local cutout. OpenRouter only via /api/edit if EDIT_BACKEND=openrouter.
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "120"))
-# Prefer EDIT_BACKEND=local so /api/edit stays identity-safe too.
+# Live site edit: POST /api/process/nano-banana
+NANO_BANANA_MODEL = os.getenv(
+    "NANO_BANANA_MODEL", "google/gemini-3-pro-image-preview"
+).strip()
 
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
 # https://rg.ru/documents/2011/08/22/pasport-dok.html

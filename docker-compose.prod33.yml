@@ -1,0 +1,46 @@
+# Production API on 80.87.196.33 — port 8111 (8091–8099 = masterdoc)
+# Front nginx on 91.207.75.72 proxies gosphoto.ru /api/ → http://80.87.196.33:8111/
+services:
+  gosphoto-gate:
+    build: .
+    image: gosphoto-gate:latest
+    container_name: gosphoto-gate
+    restart: unless-stopped
+    ports:
+      - "8111:8091"
+    env_file:
+      - .env
+    environment:
+      GATE_MODEL_PATH: /app/models/face_landmarker.task
+      SELFIE_SEGMENTER_PATH: /app/models/selfie_segmenter.tflite
+      GATE_CORS_ORIGINS: "https://gosphoto.ru,https://www.gosphoto.ru"
+      GATE_MAX_UPLOAD_BYTES: "20971520"
+      GATE_MIN_BLUR_VARIANCE: "25"
+      GATE_MAX_YAW_DEG: "25"
+      GATE_MAX_PITCH_DEG: "25"
+      GATE_MAX_ROLL_DEG: "28"
+      EDIT_BACKEND: ${EDIT_BACKEND:-openrouter}
+      # 33 IP blocked by OpenRouter — egress via nginx proxy on 91
+      OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-http://91.207.75.72:8787/api/v1}
+      NANO_BANANA_MODEL: ${NANO_BANANA_MODEL:-google/gemini-3-pro-image-preview}
+      # Local ONNX only if OpenRouter fails
+      EDIT_CUTOUT: ${EDIT_CUTOUT:-isnet}
+      U2NETP_MODEL_PATH: /app/models/u2netp.onnx
+      SILUETA_MODEL_PATH: /app/models/silueta.onnx
+      U2NET_MODEL_PATH: /app/models/u2net.onnx
+      ISNET_MODEL_PATH: /app/models/isnet-general-use.onnx
+      REJECTEDS_DIR: /app/rejecteds
+      PAIRS_DIR: /app/pairs
+      RESULTS_DIR: /app/results
+    volumes:
+      - ./rejecteds:/app/rejecteds
+      - ./pairs:/app/pairs
+      - ./results:/app/results
+    # isnet@1024 needs more headroom than u2net@320
+    mem_limit: 3072m
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://127.0.0.1:8091/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 120s
