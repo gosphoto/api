@@ -197,6 +197,25 @@ def test_free_download_unlock(tmp_path, monkeypatch):
     assert client.get(f"/api/result/{rid}/digital.jpg").status_code == 200
 
 
+def test_lazy_preview_for_legacy_result(tmp_path, monkeypatch):
+    _setup_dirs(tmp_path, monkeypatch)
+    rid = results.save_result(_tiny_jpeg(), _tiny_jpeg())
+    folder = results.result_dir(rid)
+    (folder / "preview_digital.jpg").unlink()
+    assert not (folder / "preview_digital.jpg").is_file()
+    data = results.load_file(rid, "preview_digital.jpg")
+    assert data
+    assert (folder / "preview_digital.jpg").is_file()
+    assert client_get_preview_forbidden_full(rid) is None
+
+
+def client_get_preview_forbidden_full(rid: str):
+    client = TestClient(_mini_pay_app())
+    assert client.get(f"/api/result/{rid}/preview_digital.jpg").status_code == 200
+    assert client.get(f"/api/result/{rid}/digital.jpg").status_code == 403
+    return None
+
+
 def test_payment_binds_to_result_id(tmp_path, monkeypatch):
     _setup_dirs(tmp_path, monkeypatch)
     rid_a = results.save_result(_tiny_jpeg(), _tiny_jpeg())

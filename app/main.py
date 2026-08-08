@@ -283,8 +283,11 @@ async def edit_only(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Edit failed: {e}") from e
 
     jpeg = encode_jpeg(edited)
-    if format == "jpeg":
-        return Response(content=jpeg, media_type="image/jpeg")
+    if format in ("jpeg", "print"):
+        raise HTTPException(
+            status_code=403,
+            detail="Прямое скачивание отключено. Используйте /api/process → страница результата.",
+        )
 
     return JSONResponse(
         {
@@ -294,7 +297,6 @@ async def edit_only(file: UploadFile = File(...), format: str = "json"):
             "mime": "image/jpeg",
             "width": int(edited.shape[1]),
             "height": int(edited.shape[0]),
-            "image_base64": base64.b64encode(jpeg).decode("ascii"),
             "edit": edit_meta,
             "gate": gate.metrics,
         }
@@ -316,18 +318,24 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
         raise HTTPException(status_code=502, detail=f"Crop failed: {e}") from e
 
     jpeg = encode_jpeg(cropped)
-    print_jpeg, print_sheet = _print_payload(cropped)
+    print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     compliance = {
         **compliance,
         "jpeg_bytes": len(jpeg),
         "jpeg_max_bytes": config.JPEG_MAX_BYTES,
         "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
     }
-    if format == "jpeg":
-        return Response(content=jpeg, media_type="image/jpeg")
-    if format == "print":
-        return Response(content=print_jpeg, media_type="image/jpeg")
+    if format in ("jpeg", "print"):
+        raise HTTPException(
+            status_code=403,
+            detail="Прямое скачивание отключено. Используйте /api/process → страница результата.",
+        )
 
+    print_meta = {
+        k: print_sheet[k]
+        for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
+        if k in print_sheet
+    }
     return JSONResponse(
         {
             "ok": True,
@@ -337,8 +345,7 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
             "width": config.PASSPORT_WIDTH,
             "height": config.PASSPORT_HEIGHT,
             "dpi": config.PASSPORT_DPI,
-            "image_base64": base64.b64encode(jpeg).decode("ascii"),
-            "print_sheet": print_sheet,
+            "print_sheet": print_meta,
             "crop": crop_metrics,
             "compliance": compliance,
         }

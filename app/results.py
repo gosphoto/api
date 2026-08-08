@@ -148,9 +148,32 @@ def load_file(result_id: str, name: str) -> bytes | None:
         return None
     path = result_dir(result_id) / name
     if not path.is_file():
+        # Lazy preview for results saved before paywall
+        if name in ("preview_digital.jpg", "preview_print.jpg"):
+            return ensure_preview(result_id, name)
         return None
     try:
         return path.read_bytes()
     except Exception as e:
         log.warning("Failed to read result file id=%s name=%s: %s", result_id, name, e)
+        return None
+
+
+def ensure_preview(result_id: str, preview_name: str) -> bytes | None:
+    """Build watermarked preview from full JPEG if preview file is missing."""
+    source_name = (
+        "digital.jpg" if preview_name == "preview_digital.jpg" else "print.jpg"
+    )
+    if preview_name not in ("preview_digital.jpg", "preview_print.jpg"):
+        return None
+    folder = result_dir(result_id)
+    source = folder / source_name
+    if not source.is_file():
+        return None
+    try:
+        preview = make_preview_jpeg(source.read_bytes())
+        (folder / preview_name).write_bytes(preview)
+        return preview
+    except Exception as e:
+        log.warning("Failed to build preview id=%s name=%s: %s", result_id, preview_name, e)
         return None
