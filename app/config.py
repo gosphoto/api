@@ -28,8 +28,9 @@ CORS_ORIGINS = [
     if o.strip()
 ]
 
-# EDIT_CUTOUT=silueta|u2netp|u2net|mediapipe|rembg|auto
-EDIT_BACKEND = os.getenv("EDIT_BACKEND", "local").strip().lower()
+# EDIT_BACKEND=riverflow|openrouter|local|auto
+# EDIT_CUTOUT=silueta|u2netp|u2net|mediapipe|rembg|auto (local fallback)
+EDIT_BACKEND = os.getenv("EDIT_BACKEND", "riverflow").strip().lower()
 EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "silueta").strip().lower()
 REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
@@ -74,9 +75,21 @@ OPENROUTER_IMAGE_MODEL = os.getenv(
 OPENROUTER_TRANSPARENT_BG = os.getenv(
     "OPENROUTER_TRANSPARENT_BG", "1"
 ).strip().lower() in ("1", "true", "yes", "on")
-# /api/process always uses local cutout. OpenRouter only via /api/edit if EDIT_BACKEND=openrouter.
-OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "120"))
-# Prefer EDIT_BACKEND=local so /api/edit stays identity-safe too.
+OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "180"))
+
+# Live /api/process edit: Sourceful Riverflow v2.5 Pro (OpenRouter /images)
+RIVERFLOW_MODEL = os.getenv(
+    "RIVERFLOW_MODEL", "sourceful/riverflow-v2.5-pro"
+).strip()
+RIVERFLOW_BG_MODE = os.getenv("RIVERFLOW_BG_MODE", "solid").strip().lower()
+RIVERFLOW_BG_HEX = os.getenv("RIVERFLOW_BG_HEX", "#FFFFFF").strip().strip('"').strip("'")
+if RIVERFLOW_BG_HEX and not RIVERFLOW_BG_HEX.startswith("#"):
+    RIVERFLOW_BG_HEX = f"#{RIVERFLOW_BG_HEX}"
+RIVERFLOW_IMAGE_SIZE = os.getenv("RIVERFLOW_IMAGE_SIZE", "1K").strip()
+RIVERFLOW_REASONING = os.getenv("RIVERFLOW_REASONING", "medium").strip().lower()
+RIVERFLOW_TIMEOUT_SEC = float(
+    os.getenv("RIVERFLOW_TIMEOUT_SEC", str(OPENROUTER_TIMEOUT_SEC))
+)
 
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
 # https://rg.ru/documents/2011/08/22/pasport-dok.html

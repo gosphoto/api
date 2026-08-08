@@ -135,8 +135,9 @@ async def lifespan(_app: FastAPI):
     except Exception as e:
         log.warning("Cutout warmup failed (will retry on request): %s", e)
     log.info(
-        "Gate ready; edit_backend=%s cutout=%s openrouter=%s payments=%s free_unlock=%s",
+        "Gate ready; edit_backend=%s riverflow=%s cutout=%s openrouter=%s payments=%s free_unlock=%s",
         config.EDIT_BACKEND,
+        config.RIVERFLOW_MODEL,
         config.EDIT_CUTOUT,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
         "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
@@ -161,7 +162,7 @@ async def lifespan(_app: FastAPI):
             pass
 
 
-app = FastAPI(title="Gosphoto photo gate", version="0.10.0", lifespan=lifespan)
+app = FastAPI(title="Gosphoto photo gate", version="0.11.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=config.CORS_ORIGINS,
@@ -176,17 +177,18 @@ def health():
     return {
         "status": "ok",
         "service": "gosphoto-gate",
-        "version": "0.10.0",
-        "pipeline": ["gate", "local_person", "crop", "print_10x15"],
+        "version": "0.11.0",
+        "pipeline": ["gate", "riverflow", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
+        "riverflow_model": config.RIVERFLOW_MODEL,
+        "riverflow_bg_mode": config.RIVERFLOW_BG_MODE,
         "edit_cutout": config.EDIT_CUTOUT,
         "openrouter": bool(config.OPENROUTER_API_KEY),
-        "edit_model": config.OPENROUTER_IMAGE_MODEL,
         "smtp": bool(config.SMTP_PASSWORD),
         "payments": "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
         "price_rub": payments_mod.price_rub(),
         "free_download_unlock": config.FREE_DOWNLOAD_UNLOCK,
-        "note": "/api/process → result_id; pay then download; POST /api/feedback",
+        "note": "/api/process → Riverflow → result_id; pay then download",
     }
 
 
@@ -356,10 +358,9 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
 
 @app.post("/api/process")
 async def process(file: UploadFile = File(...), format: str = "json"):
-    """RF passport: gate → OR white bg → MediaPipe face_protect → 35×45 crop.
+    """RF passport: gate → Riverflow v2.5 Pro (solid white) → 35×45 crop.
 
-    Face zone is a no-retouch region: original selfie pixels only.
-    Falls back to local silueta if OpenRouter fails.
+    Falls back to local cutout if Riverflow/OpenRouter fails.
     """
     data = await _read_upload(file)
 
@@ -413,6 +414,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
         if k in print_sheet
     }
+    cutout = edit_meta.get("cutout") or "riverflow"
     pair_meta = {
         "gate": gate.metrics,
         "edit": edit_meta,
@@ -421,9 +423,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         "print_sheet": print_meta,
         "pipeline": [
             "gate",
-            "openrouter_bg",
-            "local_person",
-            "face_protect",
+            cutout if cutout == "riverflow" else "local_person",
             "crop",
             "print_10x15",
         ],
@@ -456,7 +456,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
     payload = {
         "ok": True,
         "stage": "done",
-        "message": "Фото 35×45 для Госуслуг + лист 10×15 (4 фото)",
+        "message": "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)",
         "mime": "image/jpeg",
         "width": config.PASSPORT_WIDTH,
         "height": config.PASSPORT_HEIGHT,
@@ -464,8 +464,8 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         "print_sheet": print_meta,
         "pipeline": pair_meta["pipeline"],
         "model": edit_meta.get("model"),
-        "edit_backend": config.EDIT_BACKEND,
-        "edit_cutout": config.EDIT_CUTOUT,
+        "edit_backend": edit_meta.get("cutout") or config.EDIT_BACKEND,
+        "edit_cutout": edit_meta.get("cutout") or config.EDIT_CUTOUT,
         "gate": gate.metrics,
         "edit": edit_meta,
         "crop": crop_metrics,

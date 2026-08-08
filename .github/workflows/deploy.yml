@@ -38,7 +38,9 @@ jobs:
     name: Deploy to VPS
     runs-on: ubuntu-latest
     needs: check
-    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
+    if: >
+      (github.event_name == 'push' || github.event_name == 'workflow_dispatch')
+      && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     permissions:
       contents: read
     steps:
@@ -116,7 +118,7 @@ jobs:
           SMTP_FROM_VAL="${SMTP_FROM:-mail@antonbutov.com}"
           FEEDBACK_TO_VAL="${FEEDBACK_TO:-mail@antonbutov.com}"
 
-          # Preserve existing .env keys (OPENROUTER_BASE_URL, NANO_BANANA_MODEL, …);
+          # Preserve existing .env keys (OPENROUTER_BASE_URL, RIVERFLOW_*, …);
           # only upsert keys we manage from GitHub secrets.
           ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
@@ -149,8 +151,10 @@ jobs:
                   data[k] = v
           # Sensible defaults if never set on this host
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
-          data.setdefault("NANO_BANANA_MODEL", "google/gemini-3-pro-image-preview")
-          data.setdefault("EDIT_BACKEND", "openrouter")
+          data.setdefault("EDIT_BACKEND", "riverflow")
+          data.setdefault("RIVERFLOW_MODEL", "sourceful/riverflow-v2.5-pro")
+          data.setdefault("RIVERFLOW_BG_MODE", "solid")
+          data.setdefault("RIVERFLOW_BG_HEX", "#FFFFFF")
           data.setdefault("PUBLIC_BASE_URL", "https://gosphoto.ru")
           data.setdefault("PRICE_KOPECKS", "10000")
           data.setdefault("FREE_DOWNLOAD_UNLOCK", "0")

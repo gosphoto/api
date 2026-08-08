@@ -1,9 +1,9 @@
-# Gosphoto API — photo gate + local white bg + crop
+# Gosphoto API — photo gate + Riverflow white bg + crop
 
 Бэкенд для https://gosphoto.ru
 
 - `POST /api/validate` — gate (MediaPipe Face Landmarker)
-- `POST /api/process` — gate → белый фон → 35×45 crop → **лист 10×15** → `result_id` (без полного base64)
+- `POST /api/process` — gate → **Riverflow v2.5 Pro** (`background_mode=solid` `#FFFFFF`) → 35×45 crop → **лист 10×15** → `result_id` (без полного base64); fallback — local cutout
 - `GET /api/result/{id}` — meta + preview URLs; `paid` / цена
 - `POST /api/result/{id}/pay` — Tochka checkout (100 ₽) → unlock download
 - `POST /api/payments/tochka/webhook` — webhook Точки
@@ -41,8 +41,10 @@ https://github.com/gosphoto/api/settings/secrets/actions
 |--------|------------|------------|
 | `DEPLOY_SSH_PRIVATE_KEY` | да | SSH на VPS |
 | `DEPLOY_USER` | да | SSH user (обычно `root`) |
-| `OPENROUTER_API_KEY` | нет | только для опционального `/api/edit` |
-| `OPENROUTER_IMAGE_MODEL` | нет | default image model for `/api/edit` |
+| `OPENROUTER_API_KEY` | да | Riverflow / OpenRouter image edit |
+| `RIVERFLOW_MODEL` | нет | default `sourceful/riverflow-v2.5-pro` |
+| `RIVERFLOW_BG_MODE` / `RIVERFLOW_BG_HEX` | нет | `solid` / `#FFFFFF` |
+| `OPENROUTER_IMAGE_MODEL` | нет | legacy model for non-Riverflow `/api/edit` |
 
 Для `/api/feedback` — GitHub Secrets (пишет deploy в `/opt/gosphoto-api/.env`):
 

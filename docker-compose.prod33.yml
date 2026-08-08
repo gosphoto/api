@@ -19,12 +19,18 @@ services:
       GATE_MAX_YAW_DEG: "25"
       GATE_MAX_PITCH_DEG: "25"
       GATE_MAX_ROLL_DEG: "28"
-      EDIT_BACKEND: ${EDIT_BACKEND:-openrouter}
+      EDIT_BACKEND: ${EDIT_BACKEND:-riverflow}
       # 33 IP blocked by OpenRouter — egress via nginx proxy on 91
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-http://91.207.75.72:8787/api/v1}
-      NANO_BANANA_MODEL: ${NANO_BANANA_MODEL:-google/gemini-3-pro-image-preview}
-      # Local ONNX only if OpenRouter fails
-      EDIT_CUTOUT: ${EDIT_CUTOUT:-isnet}
+      OPENROUTER_TIMEOUT_SEC: ${OPENROUTER_TIMEOUT_SEC:-180}
+      RIVERFLOW_MODEL: ${RIVERFLOW_MODEL:-sourceful/riverflow-v2.5-pro}
+      RIVERFLOW_BG_MODE: ${RIVERFLOW_BG_MODE:-solid}
+      RIVERFLOW_BG_HEX: "${RIVERFLOW_BG_HEX:-#FFFFFF}"
+      RIVERFLOW_IMAGE_SIZE: ${RIVERFLOW_IMAGE_SIZE:-1K}
+      RIVERFLOW_REASONING: ${RIVERFLOW_REASONING:-medium}
+      RIVERFLOW_TIMEOUT_SEC: ${RIVERFLOW_TIMEOUT_SEC:-180}
+      # Local ONNX fallback if Riverflow fails
+      EDIT_CUTOUT: ${EDIT_CUTOUT:-silueta}
       U2NETP_MODEL_PATH: /app/models/u2netp.onnx
       SILUETA_MODEL_PATH: /app/models/silueta.onnx
       U2NET_MODEL_PATH: /app/models/u2net.onnx

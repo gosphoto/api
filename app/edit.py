@@ -17,10 +17,68 @@ from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
 from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
-from .openrouter import edit_selfie
+from .openrouter import edit_selfie, edit_selfie_riverflow
 from .whitening import force_white_background
 
 log = logging.getLogger("gosphoto-gate")
+
+
+def _uniform_max_side(bgr: np.ndarray, max_side: int) -> np.ndarray:
+    """Scale preserving aspect — never squash to another frame's HxW."""
+    h, w = bgr.shape[:2]
+    m = max(h, w)
+    if m <= max_side:
+        return bgr
+    scale = max_side / float(m)
+    return cv2.resize(
+        bgr,
+        (max(1, int(round(w * scale))), max(1, int(round(h * scale)))),
+        interpolation=cv2.INTER_AREA,
+    )
+
+
+def run_edit_riverflow(
+    data: bytes,
+    mime: str = "image/jpeg",
+) -> tuple[np.ndarray, dict[str, Any]]:
+    """Riverflow v2.5 Pro: solid #FFFFFF bg via native background_mode."""
+    src = _decode_image(data)
+    if src is None:
+        raise RuntimeError("decode_error")
+    src_p = prepare_for_cutout(src)
+    src_p = _resize_max_side(src_p, config.MAX_IMAGE_SIDE)
+
+    ok, buf = cv2.imencode(".jpg", src_p, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+    if not ok:
+        raise RuntimeError("encode_for_riverflow_failed")
+    orig_jpg = buf.tobytes()
+
+    raw = edit_selfie_riverflow(orig_jpg, mime="image/jpeg")
+    decoded = _decode_any(raw)
+    if decoded is None:
+        raise RuntimeError("Riverflow decode failed")
+    out = composite_on_white(decoded)
+    out = _uniform_max_side(out, config.MAX_IMAGE_SIDE)
+    out = force_white_background(out, tol=48)
+
+    bg_mode = config.RIVERFLOW_BG_MODE or "solid"
+    return out, {
+        "model": config.RIVERFLOW_MODEL,
+        "cutout": "riverflow",
+        "background_mode": bg_mode,
+        "background_hex_color": (
+            config.RIVERFLOW_BG_HEX if bg_mode == "solid" else None
+        ),
+        "image_size": config.RIVERFLOW_IMAGE_SIZE,
+        "reasoning": config.RIVERFLOW_REASONING,
+        "face_protected": False,
+        "passes": 1,
+        "prompt": "gosuslugi_riverflow",
+        "src_size": [int(src_p.shape[1]), int(src_p.shape[0])],
+        "kept_model_aspect": True,
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
+    }
 
 
 def _gentle_light_outside_face(bgr: np.ndarray) -> np.ndarray:
@@ -163,85 +221,45 @@ def run_edit_stage(
     """
     Stage 1 entry: bytes → edited BGR (white bg, not cropped).
 
-    Strategy:
-      Default: local person on white (no face paste/align → no shift).
-      Optional OR path via EDIT_BACKEND=openrouter (still local matte by default).
+    Default: Riverflow v2.5 Pro (solid #FFFFFF). On failure → local cutout.
+    EDIT_BACKEND=local forces silueta/ONNX path only.
     """
-    backend = config.EDIT_BACKEND
+    backend = (config.EDIT_BACKEND or "riverflow").strip().lower()
     has_or_key = bool(config.OPENROUTER_API_KEY)
-    prefer_or = backend in ("openrouter", "auto") and has_or_key
-    prefer_local = backend in ("local", "") or (backend == "auto" and not has_or_key)
-    allow_or = has_or_key and backend in ("openrouter", "auto")
-    allow_local = backend in ("local", "auto", "openrouter", "")
-
-    if backend not in ("local", "openrouter", "auto", ""):
-        prefer_or = has_or_key
-        prefer_local = not prefer_or
-    elif backend == "openrouter":
-        prefer_or = has_or_key
-        prefer_local = True
-    elif backend == "auto":
-        prefer_or = has_or_key
-        prefer_local = True
-    elif backend in ("local", ""):
-        prefer_or = False
-        prefer_local = True
+    use_riverflow = backend in ("riverflow", "openrouter", "auto") and has_or_key
+    allow_local = backend in ("local", "auto", "riverflow", "openrouter", "")
 
     meta: dict[str, Any] = {"stage": "edit"}
-    local_err: Exception | None = None
-    or_err: Exception | None = None
+    river_err: Exception | None = None
 
     src = _decode_image(data)
     if src is None:
         raise RuntimeError("decode_error")
 
-    if prefer_or and allow_or:
+    if use_riverflow:
         try:
-            edited, or_meta = _edit_openrouter(data, mime, src)
-            meta.update(or_meta)
+            edited, rf_meta = run_edit_riverflow(data, mime=mime)
+            meta.update(rf_meta)
             return edited, meta
         except Exception as e:
-            or_err = e
-            log.warning("OpenRouter edit failed, falling back to local: %s", e)
-
-    if prefer_local and allow_local:
-        try:
-            edited, local_meta = edit_selfie_local(src)
-            meta.update(local_meta)
-            meta["model"] = local_meta.get("cutout", "mediapipe")
-            return edited, meta
-        except Exception as e:
-            local_err = e
-            log.warning("Local edit failed: %s", e)
-            if backend == "local" or not allow_or:
+            river_err = e
+            log.warning("Riverflow edit failed, falling back to local: %s", e)
+            if backend == "riverflow" and not allow_local:
                 raise
 
-    if allow_or and prefer_local:
-        try:
-            edited, or_meta = _edit_openrouter(data, mime, src)
-            meta.update(or_meta)
-            if local_err is not None:
-                meta["local_fallback"] = str(local_err)[:200]
-            return edited, meta
-        except Exception as e:
-            or_err = e
-            log.warning("OpenRouter fallback failed: %s", e)
-
-    if prefer_or and allow_local:
+    if allow_local:
         try:
             edited, local_meta = edit_selfie_local(src)
             meta.update(local_meta)
             meta["model"] = local_meta.get("cutout", "mediapipe")
-            if or_err is not None:
-                meta["openrouter_fallback"] = str(or_err)[:200]
+            if river_err is not None:
+                meta["riverflow_fallback"] = str(river_err)[:200]
             return edited, meta
-        except Exception:
-            if or_err:
-                raise or_err
-            raise
+        except Exception as e:
+            if river_err:
+                raise river_err
+            raise e
 
-    if or_err:
-        raise or_err
-    if local_err:
-        raise local_err
+    if river_err:
+        raise river_err
     raise RuntimeError(f"No edit backend available (EDIT_BACKEND={backend})")
