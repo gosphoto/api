@@ -67,8 +67,8 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
     head_width_ok = (
         config.HEAD_WIDTH_MM_MIN <= head_w_mm <= config.HEAD_WIDTH_MM_MAX
     )
-    # Top field ~3–6 mm of 45 mm
-    top_margin_ok = 0.05 <= top_margin <= 0.14
+    # Top field ~4–6 mm of 45 mm (MVD 5±1); soft floor avoids landmark noise fails
+    top_margin_ok = 0.08 <= top_margin <= 0.14
 
     checks = {
         "size_ok": size_ok,

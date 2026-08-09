@@ -1,0 +1,148 @@
+{
+  "saved_at": "20260809T170923Z",
+  "original_filename": "selfie_short.jpg",
+  "in": "in.jpg",
+  "out": "out.jpg",
+  "in_bytes": 121199,
+  "out_bytes": 136056,
+  "gate": {
+    "blur": 194.98,
+    "width": 768,
+    "height": 1024,
+    "face_count": 1,
+    "yaw": 1.63,
+    "pitch": -0.27,
+    "roll": 0.22,
+    "rotation_deg": 0,
+    "upright_yaw": 1.63,
+    "upright_pitch": -0.27,
+    "upright_roll": 0.22,
+    "upright_blur": 194.98,
+    "chin_below_forehead": true
+  },
+  "readiness": {
+    "ready": false,
+    "reason": "bg_not_white",
+    "reasons": [
+      "bg_not_white",
+      "border_not_white",
+      "subject_too_large"
+    ],
+    "scores": {
+      "corner_white_ok": false,
+      "corner_bgr": [
+        201.5,
+        202.5,
+        202.5
+      ],
+      "subject_area_frac": 0.99,
+      "border_white_frac": 0.0,
+      "border_luma_mean": 225.3,
+      "border_bg_pix": 307,
+      "border_ok": false,
+      "border_sparse": false,
+      "bg_luma_std": 2.48,
+      "bg_chroma_mean": 2.69,
+      "bg_uniform_ok": true
+    },
+    "source": "cpu_studio"
+  },
+  "edit": {
+    "stage": "edit",
+    "model": "sourceful/riverflow-v2.5-pro",
+    "cutout": "riverflow",
+    "background_mode": "solid",
+    "background_hex_color": "#FFFFFF",
+    "image_size": "1K",
+    "reasoning": "medium",
+    "face_protected": false,
+    "passes": 1,
+    "prompt": "gosuslugi_riverflow",
+    "src_size": [
+      768,
+      1024
+    ],
+    "kept_model_aspect": true,
+    "width": 864,
+    "height": 1152
+  },
+  "crop": {
+    "roll_corrected_deg": -1.25,
+    "width": 827,
+    "height": 1063,
+    "face_ratio_target": 0.8,
+    "crown_factor": 0.4,
+    "top_margin_target": 0.11,
+    "face_ratio_est": 0.8,
+    "attempt_score": 1000.0,
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.648,
+      "gap_ratio": 0.375,
+      "crown_factor": 0.375,
+      "source": "silhouette"
+    }
+  },
+  "compliance": {
+    "width": 827,
+    "height": 1063,
+    "dpi_target": 600,
+    "face_ratio": 0.783,
+    "top_margin": 0.122,
+    "head_height_mm": 35.2,
+    "head_width_mm": 19.9,
+    "bg": {
+      "bgr": [
+        253.5,
+        253.5,
+        253.5
+      ],
+      "white_ok": true
+    },
+    "checks": {
+      "size_ok": true,
+      "face_oval_ok": true,
+      "head_height_mm_ok": true,
+      "head_width_mm_ok": true,
+      "top_margin_ok": true,
+      "bg_white_ok": true,
+      "single_face_ok": true,
+      "face_ratio_ok": true
+    },
+    "pass": true,
+    "source": "rg.ru/2011/08/22/pasport-dok.html §34.3",
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.774,
+      "gap_ratio": 0.406,
+      "crown_factor": 0.406,
+      "source": "silhouette"
+    },
+    "jpeg_bytes": 136056,
+    "jpeg_max_bytes": 307200,
+    "jpeg_size_ok": true
+  },
+  "print_sheet": {
+    "width": 1181,
+    "height": 1772,
+    "dpi": 300,
+    "copies": 4,
+    "bytes": 186779,
+    "size_cm": [
+      10,
+      15
+    ],
+    "mime": "image/jpeg",
+    "layout": "2x2"
+  },
+  "pipeline": [
+    "gate",
+    "riverflow",
+    "crop",
+    "print_10x15"
+  ],
+  "width": 827,
+  "height": 1063,
+  "dpi": 600,
+  "mime": "image/jpeg"
+}

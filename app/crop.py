@@ -157,7 +157,7 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
 
 
 def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
-    """Geometry grid; bald/short hair prefers smaller crown_factor first."""
+    """Geometry grid; silhouette crown_factor hint first (bald or high hair)."""
     face_r = config.PASSPORT_FACE_RATIO
     top_m = config.PASSPORT_TOP_MARGIN
     default: list[tuple[float, float, float]] = [
@@ -168,25 +168,34 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
         (0.60, 0.79, 0.08),
         (0.35, 0.81, 0.10),
     ]
-    if not bald.get("is_bald"):
-        return default
+    hinted = float(bald.get("crown_factor") or (0.22 if bald.get("is_bald") else 0.45))
+    hinted = float(np.clip(hinted, 0.14, 0.65))
 
-    hinted = float(bald.get("crown_factor") or 0.22)
-    bald_first: list[tuple[float, float, float]] = [
-        (hinted, face_r, top_m),
-        (max(0.14, hinted - 0.04), 0.80, 0.10),
-        (min(0.34, hinted + 0.04), 0.80, 0.10),
-        (0.22, 0.80, 0.10),
-        (0.18, 0.81, 0.09),
-        (0.26, 0.79, 0.11),
-        (0.30, 0.80, 0.10),
-        (0.35, 0.81, 0.10),
-    ]
-    # De-dupe by crown_factor while keeping order; append mild defaults as fallback.
-    seen: set[float] = set()
+    if bald.get("is_bald"):
+        priority: list[tuple[float, float, float]] = [
+            (hinted, face_r, top_m),
+            (max(0.14, hinted - 0.04), 0.80, 0.10),
+            (min(0.34, hinted + 0.04), 0.80, 0.10),
+            (0.22, 0.80, 0.10),
+            (0.18, 0.81, 0.09),
+            (0.26, 0.79, 0.11),
+            (0.30, 0.80, 0.10),
+            (0.35, 0.81, 0.10),
+        ]
+    else:
+        # High / average hair: try measured silhouette gap before blind grid.
+        priority = [
+            (hinted, face_r, top_m),
+            (hinted, 0.80, 0.10),
+            (float(np.clip(hinted - 0.04, 0.14, 0.65)), 0.80, 0.10),
+            (float(np.clip(hinted + 0.04, 0.14, 0.65)), 0.78, 0.11),
+            (hinted, 0.78, 0.11),
+        ]
+
+    seen: set[tuple[float, float, float]] = set()
     out: list[tuple[float, float, float]] = []
-    for item in bald_first + default:
-        key = round(item[0], 3)
+    for item in priority + default:
+        key = (round(item[0], 3), round(item[1], 3), round(item[2], 3))
         if key in seen:
             continue
         seen.add(key)
@@ -222,7 +231,10 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
             }
             if best is None or score > best[3]:
                 best = (cropped, metrics, comp, score)
-            if comp.get("pass"):
+            # Soft compliance pass can undershoot top field (~3 mm). Keep
+            # searching until top_margin is near MVD 5±1 mm (≈0.09–0.13).
+            tm = float(comp.get("top_margin") or 0.0)
+            if comp.get("pass") and tm >= 0.09:
                 break
         except Exception as e:
             errors.append(f"{crown_f}/{face_r}: {e}")

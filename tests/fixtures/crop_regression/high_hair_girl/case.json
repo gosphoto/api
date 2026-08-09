@@ -1,0 +1,18 @@
+{
+  "id": "high_hair_girl",
+  "role": "high_hair_volume",
+  "title": "Девочка с объёмными волосами",
+  "notes": "Прод 2026-08-09: top_margin=0.072 (~3.2 мм) при цели ~5 мм. white_in = baseline out (перекроп). in.jpg = исходник с цветным фоном для e2e.",
+  "input": "white_in.jpg",
+  "source_pair": "20260809T171831Z_A_IMG_7726",
+  "baseline_top_margin": 0.072,
+  "expect": {
+    "pass": true,
+    "top_margin_min": 0.08,
+    "top_margin_max": 0.14,
+    "face_ratio_min": 0.78,
+    "head_height_mm_min": 32.0,
+    "head_height_mm_max": 36.0,
+    "is_bald": false
+  }
+}

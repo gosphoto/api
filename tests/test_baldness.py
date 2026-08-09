@@ -42,6 +42,14 @@ def test_crop_attempts_bald_prefers_small_crown():
     assert all(a[0] <= 0.35 for a in attempts[:4])
 
 
-def test_crop_attempts_haired_keeps_defaults():
+def test_crop_attempts_haired_prefers_silhouette_hint():
+    attempts = _crop_attempts(
+        {"is_bald": False, "crown_factor": 0.59, "gap_ratio": 0.59}
+    )
+    assert attempts[0][0] == 0.59
+    assert attempts[0][2] == 0.10  # PASSPORT_TOP_MARGIN
+
+
+def test_crop_attempts_haired_default_hint():
     attempts = _crop_attempts({"is_bald": False, "crown_factor": 0.45})
     assert attempts[0][0] == 0.45
