@@ -14,11 +14,13 @@ import numpy as np
 # Border / bg thresholds (fail-closed).
 CORNER_WHITE_MIN = 245.0
 BORDER_WHITE_MIN = 242.0
-BORDER_WHITE_FRAC_MIN = 0.92
+BORDER_WHITE_FRAC_MIN = 0.90
+BORDER_BG_MIN_PIX = 200
 BG_LUMA_STD_MAX = 12.0
 BG_CHROMA_MEAN_MAX = 8.0
 SUBJECT_AREA_FRAC_MIN = 0.08
-SUBJECT_AREA_FRAC_MAX = 0.85
+# Tight passport framing can fill most of the frame with torso/head.
+SUBJECT_AREA_FRAC_MAX = 0.92
 
 
 @dataclass(frozen=True)
@@ -66,24 +68,48 @@ def _corner_whiteness(bgr: np.ndarray) -> dict[str, Any]:
     }
 
 
-def _border_whiteness(bgr: np.ndarray, *, band_frac: float = 0.06) -> dict[str, Any]:
+def _border_whiteness(
+    bgr: np.ndarray,
+    subject: np.ndarray,
+    *,
+    band_frac: float = 0.06,
+) -> dict[str, Any]:
+    """Whiteness of border *background* only.
+
+    Tight studio crops put shoulders/shirt into the bottom/side bands — those
+    subject pixels must not veto an otherwise white studio plate.
+    """
     h, w = bgr.shape[:2]
     band = max(6, int(band_frac * min(h, w)))
-    strips = [
-        bgr[:band, :],
-        bgr[-band:, :],
-        bgr[:, :band],
-        bgr[:, -band:],
-    ]
-    pix = np.concatenate([s.reshape(-1, 3) for s in strips], axis=0).astype(np.float32)
+    border = np.zeros((h, w), dtype=bool)
+    border[:band, :] = True
+    border[-band:, :] = True
+    border[:, :band] = True
+    border[:, -band:] = True
+
+    bg_border = border & (~subject)
+    n_bg = int(bg_border.sum())
+    if n_bg < BORDER_BG_MIN_PIX:
+        # Almost no free border — fall back to corners + uniformity.
+        return {
+            "border_white_frac": 1.0,
+            "border_luma_mean": 255.0,
+            "border_bg_pix": n_bg,
+            "border_ok": True,
+            "border_sparse": True,
+        }
+
+    pix = bgr[bg_border].astype(np.float32)
     luma = pix.mean(axis=1)
     chroma = np.linalg.norm(pix - pix.mean(axis=1, keepdims=True), axis=1)
     white = (luma >= BORDER_WHITE_MIN) & (chroma <= 14.0)
-    frac = float(white.mean()) if pix.size else 0.0
+    frac = float(white.mean())
     return {
         "border_white_frac": round(frac, 3),
         "border_luma_mean": round(float(luma.mean()), 1),
+        "border_bg_pix": n_bg,
         "border_ok": frac >= BORDER_WHITE_FRAC_MIN,
+        "border_sparse": False,
     }
 
 
@@ -120,11 +146,10 @@ def assess_readiness(bgr: np.ndarray) -> ReadinessResult:
             scores={},
         )
 
-    h, w = bgr.shape[:2]
     subject = _person_mask_near_white(bgr)
     area = float(subject.mean()) if subject.size else 0.0
     corners = _corner_whiteness(bgr)
-    border = _border_whiteness(bgr)
+    border = _border_whiteness(bgr, subject)
     uniform = _bg_uniformity(bgr, subject)
 
     scores: dict[str, Any] = {

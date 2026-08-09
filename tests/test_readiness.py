@@ -41,6 +41,18 @@ def test_white_with_shadow_band_not_ready():
     assert r.ready is False
 
 
+def test_tight_studio_shoulders_in_border_still_ready():
+    """Passport-tight crop: shirt fills bottom/side bands, but plate is white."""
+    h, w = 400, 300
+    bgr = np.full((h, w, 3), 255, dtype=np.uint8)
+    # Wide torso touching left/right/bottom borders (like the grandfather sample).
+    bgr[140:400, 20:280] = (40, 55, 80)
+    bgr[60:180, 90:210] = (40, 55, 80)
+    r = assess_readiness(bgr)
+    assert r.ready is True, r.as_dict()
+    assert r.reason == "studio_ready"
+
+
 def test_as_dict_shape():
     bgr = _portrait(bg=255)
     d = assess_readiness(bgr).as_dict()
