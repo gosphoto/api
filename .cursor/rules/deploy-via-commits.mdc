@@ -1,0 +1,22 @@
+---
+description: Deploy gosphoto-api only via git commit/push; wait for CI
+alwaysApply: true
+---
+
+# Deploy via commits
+
+Prod (`80.87.196.33`, `/opt/gosphoto-api`) обновляется **только** через GitHub Actions на push в `main` / `master` (workflow `deploy.yml`).
+
+## Обязательно
+
+- Чтобы выкатить фикс: **commit → push** в `main`, затем **ждать** зелёный deploy в Actions.
+- После push кратко сказать, что ждём CI; при необходимости проверить `gh run list` / `gh run watch`.
+
+## Запрещено
+
+- Ручной деплой по SSH: `docker compose build/up`, `rsync` кода на VPS, правки файлов в `/opt/gosphoto-api` «на живую».
+- Считать задачу задеплоенной сразу после push — дождаться успешного workflow.
+
+## Исключения
+
+Только если пользователь **явно** просит hotfix по SSH или одноразовую серверную операцию (логи, purge `preview_*.jpg`, `.env`).
