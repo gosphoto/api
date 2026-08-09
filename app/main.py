@@ -17,9 +17,10 @@ from . import progress_events as progress_events_mod
 from . import result_email as result_email_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import run_edit_stage
+from .edit import prepare_skip_edit, run_edit_stage
 from .gate import _decode_image, prepare_upload, warmup, validate_image
 from .openrouter import OpenRouterError
+from .readiness import assess_readiness
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
@@ -179,8 +180,9 @@ def health():
         "status": "ok",
         "service": "gosphoto-gate",
         "version": "0.12.0",
-        "pipeline": ["gate", "riverflow", "crop", "print_10x15"],
+        "pipeline": ["gate", "readiness|riverflow", "crop", "print_10x15"],
         "edit_backend": config.EDIT_BACKEND,
+        "skip_edit_if_ready": config.SKIP_EDIT_IF_READY,
         "riverflow_model": config.RIVERFLOW_MODEL,
         "riverflow_bg_mode": config.RIVERFLOW_BG_MODE,
         "edit_cutout": config.EDIT_CUTOUT,
@@ -189,7 +191,10 @@ def health():
         "payments": "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
         "price_rub": payments_mod.price_rub(),
         "free_download_unlock": config.FREE_DOWNLOAD_UNLOCK,
-        "note": "/api/process/stream (SSE) or /api/process → Riverflow → result_id",
+        "note": (
+            "/api/process/stream or /api/process → "
+            "gate → readiness (skip Riverflow if studio-ready) → crop → result_id"
+        ),
     }
 
 
@@ -363,7 +368,7 @@ def _run_process_pipeline(
     filename: str | None,
     mime: str,
 ) -> dict:
-    """Sync gate → edit → crop → save. Returns ok/error dict (no HTTPException)."""
+    """Sync gate → readiness/edit → crop → save. Returns ok/error dict."""
     data, gate = prepare_upload(data)
     if not gate.ok:
         save_rejected(
@@ -381,8 +386,25 @@ def _run_process_pipeline(
             "metrics": gate.metrics,
         }
 
+    readiness_meta: dict | None = None
+    skipped_edit = False
+    decoded = _decode_image(data)
+    if decoded is not None and config.SKIP_EDIT_IF_READY:
+        readiness = assess_readiness(decoded)
+        readiness_meta = readiness.as_dict()
+        skipped_edit = bool(readiness.ready)
+        log.info(
+            "Readiness ready=%s reason=%s scores=%s",
+            readiness.ready,
+            readiness.reason,
+            readiness.scores,
+        )
+
     try:
-        edited, edit_meta = run_edit_stage(data, mime=mime)
+        if skipped_edit:
+            edited, edit_meta = prepare_skip_edit(data)
+        else:
+            edited, edit_meta = run_edit_stage(data, mime=mime)
     except OpenRouterError as e:
         log.exception("Edit stage OpenRouter error")
         return {
@@ -402,6 +424,30 @@ def _run_process_pipeline(
         log.exception("Crop stage failed")
         return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
 
+    # Fail-closed: skip-edit that fails compliance → escalate to Riverflow.
+    if skipped_edit and not compliance.get("pass"):
+        log.info(
+            "Skip-edit compliance failed; escalating to Riverflow (%s)",
+            compliance.get("checks"),
+        )
+        try:
+            edited, edit_meta = run_edit_stage(data, mime=mime)
+            edit_meta["escalated_from_skip"] = True
+            cropped, crop_metrics, compliance = run_crop_stage(edited)
+            skipped_edit = False
+        except OpenRouterError as e:
+            log.exception("Escalated edit OpenRouter error")
+            return {
+                "ok": False,
+                "stage": "edit",
+                "message": str(e),
+                "provider_status": e.status,
+                "body": e.body,
+            }
+        except Exception as e:
+            log.exception("Escalated edit/crop failed")
+            return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
+
     jpeg = encode_jpeg(cropped)
     print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     compliance = {
@@ -416,15 +462,22 @@ def _run_process_pipeline(
         if k in print_sheet
     }
     cutout = edit_meta.get("cutout") or "riverflow"
+    if cutout == "skip_edit":
+        edit_stage_name = "skip_edit"
+    elif cutout == "riverflow":
+        edit_stage_name = "riverflow"
+    else:
+        edit_stage_name = "local_person"
     pair_meta = {
         "gate": gate.metrics,
+        "readiness": readiness_meta,
         "edit": edit_meta,
         "crop": crop_metrics,
         "compliance": compliance,
         "print_sheet": print_meta,
         "pipeline": [
             "gate",
-            cutout if cutout == "riverflow" else "local_person",
+            edit_stage_name,
             "crop",
             "print_10x15",
         ],
@@ -444,10 +497,14 @@ def _run_process_pipeline(
         print_jpeg,
         meta=pair_meta,
     )
+    if skipped_edit:
+        done_msg = "Фото 35×45 (crop-only, без Riverflow) + лист 10×15 (4 фото)"
+    else:
+        done_msg = "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)"
     payload = {
         "ok": True,
         "stage": "done",
-        "message": "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)",
+        "message": done_msg,
         "mime": "image/jpeg",
         "width": config.PASSPORT_WIDTH,
         "height": config.PASSPORT_HEIGHT,
@@ -458,6 +515,7 @@ def _run_process_pipeline(
         "edit_backend": edit_meta.get("cutout") or config.EDIT_BACKEND,
         "edit_cutout": edit_meta.get("cutout") or config.EDIT_CUTOUT,
         "gate": gate.metrics,
+        "readiness": readiness_meta,
         "edit": edit_meta,
         "crop": crop_metrics,
         "compliance": compliance,

@@ -214,6 +214,28 @@ def _edit_openrouter(
     }
 
 
+def prepare_skip_edit(data: bytes) -> tuple[np.ndarray, dict[str, Any]]:
+    """Crop-only path: light bleach on already-studio input, no Riverflow."""
+    src = _decode_image(data)
+    if src is None:
+        raise RuntimeError("decode_error")
+    src_p = prepare_for_cutout(src)
+    src_p = _resize_max_side(src_p, config.MAX_IMAGE_SIDE)
+    out = force_white_background(src_p, tol=40)
+    return out, {
+        "stage": "edit",
+        "model": None,
+        "cutout": "skip_edit",
+        "skipped_riverflow": True,
+        "background_mode": "passthrough",
+        "face_protected": True,
+        "passes": 0,
+        "src_size": [int(src_p.shape[1]), int(src_p.shape[0])],
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
+    }
+
+
 def run_edit_stage(
     data: bytes,
     mime: str = "image/jpeg",
