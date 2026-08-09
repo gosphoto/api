@@ -14,6 +14,7 @@ import mediapipe as mp
 import numpy as np
 
 from . import config
+from .baldness import analyze_baldness
 from .compliance import measure_compliance
 from .gate import _landmarker
 from .whitening import force_white_background
@@ -155,6 +156,44 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     )
 
 
+def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
+    """Geometry grid; bald/short hair prefers smaller crown_factor first."""
+    face_r = config.PASSPORT_FACE_RATIO
+    top_m = config.PASSPORT_TOP_MARGIN
+    default: list[tuple[float, float, float]] = [
+        (0.45, face_r, top_m),
+        (0.50, 0.80, 0.10),
+        (0.55, 0.78, 0.09),
+        (0.40, 0.80, 0.11),
+        (0.60, 0.79, 0.08),
+        (0.35, 0.81, 0.10),
+    ]
+    if not bald.get("is_bald"):
+        return default
+
+    hinted = float(bald.get("crown_factor") or 0.22)
+    bald_first: list[tuple[float, float, float]] = [
+        (hinted, face_r, top_m),
+        (max(0.14, hinted - 0.04), 0.80, 0.10),
+        (min(0.34, hinted + 0.04), 0.80, 0.10),
+        (0.22, 0.80, 0.10),
+        (0.18, 0.81, 0.09),
+        (0.26, 0.79, 0.11),
+        (0.30, 0.80, 0.10),
+        (0.35, 0.81, 0.10),
+    ]
+    # De-dupe by crown_factor while keeping order; append mild defaults as fallback.
+    seen: set[float] = set()
+    out: list[tuple[float, float, float]] = []
+    for item in bald_first + default:
+        key = round(item[0], 3)
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(item)
+    return out
+
+
 def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """
     White-bg portrait → 35×45 @600dpi passport BGR + metrics + compliance.
@@ -162,14 +201,8 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
     Tries several crown/face geometries and keeps the best compliance result.
     Targets FMS §34.3: face oval ≥80%, head 32–36 mm.
     """
-    attempts: list[tuple[float, float, float]] = [
-        (0.45, config.PASSPORT_FACE_RATIO, config.PASSPORT_TOP_MARGIN),
-        (0.50, 0.80, 0.10),
-        (0.55, 0.78, 0.09),
-        (0.40, 0.80, 0.11),
-        (0.60, 0.79, 0.08),
-        (0.35, 0.81, 0.10),
-    ]
+    bald = analyze_baldness(bgr).as_dict()
+    attempts = _crop_attempts(bald)
 
     best: tuple[np.ndarray, dict[str, Any], dict[str, Any], float] | None = None
     errors: list[str] = []
@@ -182,7 +215,11 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
             cropped = force_white_background(cropped, tol=55)
             comp = measure_compliance(cropped)
             score = _score_compliance(comp)
-            metrics = {**metrics, "attempt_score": round(score, 2)}
+            metrics = {
+                **metrics,
+                "attempt_score": round(score, 2),
+                "baldness": bald,
+            }
             if best is None or score > best[3]:
                 best = (cropped, metrics, comp, score)
             if comp.get("pass"):
@@ -210,12 +247,13 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
         )
         cropped = force_white_background(cropped, tol=55)
         comp = measure_compliance(cropped)
-        metrics = {"fallback": True, "errors": errors[:4]}
+        metrics = {"fallback": True, "errors": errors[:4], "baldness": bald}
         return cropped, metrics, comp
 
     cropped, metrics, comp, _ = best
     if errors:
         metrics["skipped_errors"] = errors[:3]
+    metrics["baldness"] = bald
     return cropped, metrics, comp
 
 

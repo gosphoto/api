@@ -9,6 +9,7 @@ import mediapipe as mp
 import numpy as np
 
 from . import config
+from .baldness import estimate_crown_y
 from .gate import _landmarker
 from .whitening import corner_whiteness
 
@@ -44,8 +45,8 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
         }
 
     lm = result.face_landmarks[0]
-    # Crown ≈ above forehead (hairline estimate)
-    crown = lm[_FOREHEAD].y * h - 0.45 * (lm[_CHIN].y - lm[_FOREHEAD].y) * h
+    # Prefer real silhouette crown (bald-aware); fallback landmark heuristic.
+    crown, bald = estimate_crown_y(bgr, lm)
     chin = lm[_CHIN].y * h
     face_h = max(chin - crown, 1.0)
     face_ratio = face_h / h
@@ -89,7 +90,7 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
         "single_face_ok",
     )
 
-    return {
+    out: dict[str, Any] = {
         "width": w,
         "height": h,
         "dpi_target": config.PASSPORT_DPI,
@@ -102,3 +103,6 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
         "pass": all(checks[k] for k in hard),
         "source": "rg.ru/2011/08/22/pasport-dok.html §34.3",
     }
+    if bald is not None:
+        out["baldness"] = bald.as_dict()
+    return out
