@@ -203,6 +203,10 @@ def _riverflow_image_config() -> dict[str, Any]:
     return cfg
 
 
+def _is_riverflow_model(model: str | None = None) -> bool:
+    return "riverflow" in (model or config.RIVERFLOW_MODEL or "").lower()
+
+
 def build_riverflow_images_payload(
     image_bytes: bytes,
     mime: str = "image/jpeg",
@@ -233,14 +237,46 @@ def build_riverflow_images_payload(
     return payload
 
 
+def build_generic_edit_images_payload(
+    image_bytes: bytes,
+    mime: str = "image/jpeg",
+    *,
+    model: str | None = None,
+    prompt: str | None = None,
+) -> dict[str, Any]:
+    """POST /images for non-Riverflow editors (e.g. FLUX.2 Pro) — no image_config."""
+    model = model or config.RIVERFLOW_MODEL
+    return {
+        "model": model,
+        "prompt": prompt or GOSUSLUGI_EDIT_PROMPT,
+        "aspect_ratio": _aspect_ratio_for_model(model),
+        "output_format": "jpeg",
+        "input_references": [
+            {
+                "type": "image_url",
+                "image_url": {"url": _data_url(image_bytes, mime)},
+            }
+        ],
+    }
+
+
 def edit_selfie_riverflow(
     image_bytes: bytes,
     mime: str = "image/jpeg",
 ) -> bytes:
-    """Riverflow v2.5 (fast/pro) — solid/transparent bg via OpenRouter /images."""
-    payload = build_riverflow_images_payload(
-        image_bytes, mime, prompt=GOSUSLUGI_EDIT_PROMPT
-    )
+    """Gosuslugi white-bg via OpenRouter /images.
+
+    Riverflow models get native background_mode + scoring; other models
+    (e.g. black-forest-labs/flux.2-pro) use a plain edit payload.
+    """
+    if _is_riverflow_model():
+        payload = build_riverflow_images_payload(
+            image_bytes, mime, prompt=GOSUSLUGI_EDIT_PROMPT
+        )
+    else:
+        payload = build_generic_edit_images_payload(
+            image_bytes, mime, prompt=GOSUSLUGI_EDIT_PROMPT
+        )
     data = _post_json(
         "images",
         payload,

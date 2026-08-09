@@ -41,7 +41,7 @@ def run_edit_riverflow(
     data: bytes,
     mime: str = "image/jpeg",
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """Riverflow v2.5 Pro: solid #FFFFFF bg via native background_mode."""
+    """White-bg edit via RIVERFLOW_MODEL (Riverflow or e.g. FLUX.2 Pro)."""
     src = _decode_image(data)
     if src is None:
         raise RuntimeError("decode_error")
@@ -62,15 +62,17 @@ def run_edit_riverflow(
     out = force_white_background(out, tol=48)
 
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
+    model = config.RIVERFLOW_MODEL
+    cutout = "riverflow" if "riverflow" in model.lower() else "openrouter_edit"
     return out, {
-        "model": config.RIVERFLOW_MODEL,
-        "cutout": "riverflow",
+        "model": model,
+        "cutout": cutout,
         "background_mode": bg_mode,
         "background_hex_color": (
             config.RIVERFLOW_BG_HEX if bg_mode == "solid" else None
         ),
         "image_size": config.RIVERFLOW_IMAGE_SIZE,
-        "reasoning": config.RIVERFLOW_REASONING,
+        "reasoning": config.RIVERFLOW_REASONING if cutout == "riverflow" else None,
         "face_protected": False,
         "passes": 1,
         "prompt": "gosuslugi_riverflow",

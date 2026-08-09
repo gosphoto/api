@@ -85,9 +85,9 @@ OPENROUTER_TRANSPARENT_BG = os.getenv(
 ).strip().lower() in ("1", "true", "yes", "on")
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 
-# Live /api/process edit: Sourceful Riverflow v2.5 Pro (OpenRouter /images)
+# Live /api/process edit (OpenRouter /images). FLUX.2 Pro default after A/B.
 RIVERFLOW_MODEL = os.getenv(
-    "RIVERFLOW_MODEL", "sourceful/riverflow-v2.5-pro"
+    "RIVERFLOW_MODEL", "black-forest-labs/flux.2-pro"
 ).strip()
 RIVERFLOW_BG_MODE = os.getenv("RIVERFLOW_BG_MODE", "solid").strip().lower()
 RIVERFLOW_BG_HEX = os.getenv("RIVERFLOW_BG_HEX", "#FFFFFF").strip().strip('"').strip("'")
