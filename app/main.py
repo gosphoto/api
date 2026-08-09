@@ -18,7 +18,7 @@ from . import result_email as result_email_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage
-from .gate import _decode_image, warmup, validate_image
+from .gate import _decode_image, prepare_upload, warmup, validate_image
 from .openrouter import OpenRouterError
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
@@ -208,7 +208,7 @@ async def validate(file: UploadFile = File(...)):
             detail=f"File too large (max {config.MAX_UPLOAD_BYTES} bytes)",
         )
 
-    result = validate_image(data)
+    _oriented, result = prepare_upload(data)
     if not result.ok:
         save_rejected(
             data,
@@ -256,7 +256,7 @@ async def _read_upload(file: UploadFile) -> bytes:
 async def edit_only(file: UploadFile = File(...), format: str = "json"):
     """Step 1: white background + normalize. No passport crop."""
     data = await _read_upload(file)
-    gate = validate_image(data)
+    data, gate = prepare_upload(data)
     if not gate.ok:
         save_rejected(
             data,
@@ -364,7 +364,7 @@ def _run_process_pipeline(
     mime: str,
 ) -> dict:
     """Sync gate → edit → crop → save. Returns ok/error dict (no HTTPException)."""
-    gate = validate_image(data)
+    data, gate = prepare_upload(data)
     if not gate.ok:
         save_rejected(
             data,

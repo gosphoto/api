@@ -143,6 +143,96 @@ def _pose_from_landmarks(landmarks) -> tuple[float, float, float]:
     return yaw, pitch, roll
 
 
+def _encode_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes | None:
+    ok, buf = cv2.imencode(".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), quality])
+    return buf.tobytes() if ok else None
+
+
+def _analyze_bgr(
+    bgr: np.ndarray,
+) -> tuple[int, float, float, float, float, bool]:
+    """face_count, yaw, pitch, roll, blur, chin_below_forehead."""
+    blur = _blur_score(bgr)
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+    result = _landmarker().detect(mp_image)
+    face_count = len(result.face_landmarks) if result.face_landmarks else 0
+    if face_count != 1:
+        return face_count, 0.0, 0.0, 0.0, blur, False
+
+    landmarks = result.face_landmarks[0]
+    if (
+        result.facial_transformation_matrixes
+        and len(result.facial_transformation_matrixes) > 0
+    ):
+        mat = np.array(result.facial_transformation_matrixes[0]).reshape(4, 4)
+        yaw, pitch, roll = _euler_from_matrix(mat)
+    else:
+        yaw, pitch, roll = _pose_from_landmarks(landmarks)
+
+    chin = landmarks[_CHIN]
+    forehead = landmarks[_FOREHEAD]
+    upright = chin.y > forehead.y
+    return face_count, yaw, pitch, roll, blur, upright
+
+
+def _pose_score(yaw: float, pitch: float, roll: float, upright: bool) -> float:
+    """Lower is better. Penalize upside-down faces."""
+    score = abs(yaw) + abs(pitch) + abs(roll)
+    if not upright:
+        score += 180.0
+    return score
+
+
+def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
+    """
+    Pick the best 0/90/180/270 orientation (sideways phone photos → upright).
+
+    Returns (jpeg_bytes or None, meta). Meta always includes rotation_deg.
+    """
+    src = _decode_image(data)
+    if src is None:
+        return None, {"rotation_deg": 0}
+
+    src = _resize_max_side(src, config.MAX_IMAGE_SIDE)
+    best_k = 0
+    best_score = float("inf")
+    best_bgr = src
+    best_stats: tuple[int, float, float, float, float, bool] | None = None
+
+    for k in (0, 1, 2, 3):
+        cand = src if k == 0 else np.ascontiguousarray(np.rot90(src, k))
+        face_count, yaw, pitch, roll, blur, upright = _analyze_bgr(cand)
+        if face_count != 1:
+            continue
+        score = _pose_score(yaw, pitch, roll, upright)
+        if score < best_score:
+            best_score = score
+            best_k = k
+            best_bgr = cand
+            best_stats = (face_count, yaw, pitch, roll, blur, upright)
+
+    meta: dict[str, Any] = {"rotation_deg": int(best_k * 90)}
+    if best_stats is not None:
+        _, yaw, pitch, roll, blur, upright = best_stats
+        meta.update(
+            {
+                "upright_yaw": round(yaw, 2),
+                "upright_pitch": round(pitch, 2),
+                "upright_roll": round(roll, 2),
+                "upright_blur": round(blur, 2),
+                "chin_below_forehead": upright,
+            }
+        )
+
+    if best_k == 0:
+        # Keep original bytes when no rotation needed (preserve quality).
+        return data, meta
+
+    encoded = _encode_jpeg(best_bgr)
+    return encoded, meta
+
+
 def validate_image(data: bytes) -> GateResult:
     bgr = _decode_image(data)
     if bgr is None:
@@ -155,13 +245,7 @@ def validate_image(data: bytes) -> GateResult:
         )
 
     bgr = _resize_max_side(bgr, config.MAX_IMAGE_SIDE)
-    blur = _blur_score(bgr)
-
-    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-    result = _landmarker().detect(mp_image)
-
-    face_count = len(result.face_landmarks) if result.face_landmarks else 0
+    face_count, yaw, pitch, roll, blur, _upright = _analyze_bgr(bgr)
     metrics: dict[str, Any] = {
         "blur": round(blur, 2),
         "width": int(bgr.shape[1]),
@@ -175,15 +259,6 @@ def validate_image(data: bytes) -> GateResult:
         return GateResult(
             False, "multiple_faces", _MESSAGES["multiple_faces"], face_count, metrics
         )
-
-    if (
-        result.facial_transformation_matrixes
-        and len(result.facial_transformation_matrixes) > 0
-    ):
-        mat = np.array(result.facial_transformation_matrixes[0]).reshape(4, 4)
-        yaw, pitch, roll = _euler_from_matrix(mat)
-    else:
-        yaw, pitch, roll = _pose_from_landmarks(result.face_landmarks[0])
 
     metrics.update(
         {
@@ -203,3 +278,23 @@ def validate_image(data: bytes) -> GateResult:
         return GateResult(False, "blur", _MESSAGES["blur"], 1, metrics)
 
     return GateResult(True, None, _MESSAGES["ok"], 1, metrics)
+
+
+def prepare_upload(data: bytes) -> tuple[bytes, GateResult]:
+    """
+    Auto-upright sideways uploads, then run gate on the oriented frame.
+
+    Downstream (Riverflow) must use the returned bytes.
+    """
+    oriented, upright_meta = upright_image(data)
+    if oriented is None:
+        return data, GateResult(
+            False,
+            "decode_error",
+            _MESSAGES["decode_error"],
+            0,
+            upright_meta,
+        )
+    gate = validate_image(oriented)
+    gate.metrics = {**gate.metrics, **upright_meta}
+    return oriented, gate

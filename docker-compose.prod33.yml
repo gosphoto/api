@@ -15,7 +15,7 @@ services:
       SELFIE_SEGMENTER_PATH: /app/models/selfie_segmenter.tflite
       GATE_CORS_ORIGINS: "https://gosphoto.ru,https://www.gosphoto.ru"
       GATE_MAX_UPLOAD_BYTES: "20971520"
-      GATE_MIN_BLUR_VARIANCE: "25"
+      GATE_MIN_BLUR_VARIANCE: "10"
       GATE_MAX_YAW_DEG: "25"
       GATE_MAX_PITCH_DEG: "25"
       GATE_MAX_ROLL_DEG: "28"
