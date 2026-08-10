@@ -70,7 +70,7 @@ def _apply_watermark(img: Image.Image) -> Image.Image:
     strip_h = max(22, h // 14)
     draw.rectangle((0, h - strip_h, w, h), fill=(20, 24, 32, 155))
     strip_font = _load_font(max(12, strip_h - 8))
-    label = "Превью · скачайте после оплаты"
+    label = "Превью · после оплаты"
     lb = draw.textbbox((0, 0), label, font=strip_font)
     lw, lh = lb[2] - lb[0], lb[3] - lb[1]
     draw.text(
