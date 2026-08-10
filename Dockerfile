@@ -4,9 +4,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libgl1 \
     libglib2.0-0 \
     curl \
-    fonts-dejavu-core \
-    && mkdir -p /app/fonts \
-    && cp /usr/share/fonts/truetype/dejavu/DejaVuSans.ttf /app/fonts/DejaVuSans.ttf \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app

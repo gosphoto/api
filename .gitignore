@@ -1,6 +1,8 @@
 .DS_Store
 .env
 .venv/
+.venv311/
+.venv311-ci/
 __pycache__/
 *.pyc
 models/

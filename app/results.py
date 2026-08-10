@@ -160,7 +160,7 @@ def load_file(result_id: str, name: str) -> bytes | None:
 
 
 def ensure_preview(result_id: str, preview_name: str) -> bytes | None:
-    """Build watermarked preview from full JPEG if preview file is missing."""
+    """Build downscaled preview from full JPEG if preview file is missing."""
     source_name = (
         "digital.jpg" if preview_name == "preview_digital.jpg" else "print.jpg"
     )

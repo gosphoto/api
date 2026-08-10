@@ -31,7 +31,15 @@
 VPS `91.207.75.72` → `/opt/gosphoto-api` (Docker `gosphoto-gate`, `127.0.0.1:8091`).  
 Nginx на лендинге проксирует `/api/` и `/health`.
 
-Push в `main` → GitHub Actions deploy.
+Push / PR → GitHub Actions: **pytest** (включая crop regression: лысый / высокая укладка / объёмные волосы) → deploy на `main` только если тесты зелёные.
+
+Локально:
+
+```bash
+pip install -r requirements.txt pytest
+export GATE_MODEL_PATH=$PWD/models/face_landmarker.task PYTHONPATH=$PWD
+pytest tests/ -v
+```
 
 ## Secrets
 
