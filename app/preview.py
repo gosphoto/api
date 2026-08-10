@@ -44,8 +44,8 @@ def _apply_watermark(img: Image.Image) -> Image.Image:
     tile_draw = ImageDraw.Draw(tile)
     x0, y0 = pad_x // 2, pad_y // 2
     for dx, dy, fill in (
-        (1, 1, (25, 25, 25, 100)),
-        (0, 0, (255, 255, 255, 155)),
+        (1, 1, (25, 25, 25, 70)),
+        (0, 0, (255, 255, 255, 110)),
     ):
         tile_draw.text((x0 + dx, y0 + dy), WATERMARK_TEXT, font=font, fill=fill)
 
