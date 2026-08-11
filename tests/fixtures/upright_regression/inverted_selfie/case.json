@@ -1,0 +1,11 @@
+{
+  "id": "inverted_selfie",
+  "source": "prod pair 20260811T084949Z_IMG_2137 (post gate; wrongly left inverted under old scorer)",
+  "note": "Old scorer preferred rot=0 (score~6.9) over rot=180 (~12.3) because MediaPipe reports chin_below_forehead=true on the inverted frame. face_center_y must flip it.",
+  "input": "in.jpg",
+  "expect": {
+    "rotation_deg": 180,
+    "chin_below_forehead": true,
+    "face_center_y_max": 0.55
+  }
+}

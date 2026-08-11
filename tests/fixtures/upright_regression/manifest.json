@@ -1,0 +1,7 @@
+{
+  "name": "upright_regression",
+  "updated": "2026-08-11",
+  "purpose": "Guard auto-upright: MediaPipe can mark inverted faces as upright; face_center_y must still prefer the correct orientation",
+  "cases": ["inverted_selfie"],
+  "run_when": ["gate.py", "upright_image", "_pose_score", "face_center_y"]
+}

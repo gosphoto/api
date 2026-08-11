@@ -150,15 +150,15 @@ def _encode_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes | None:
 
 def _analyze_bgr(
     bgr: np.ndarray,
-) -> tuple[int, float, float, float, float, bool]:
-    """face_count, yaw, pitch, roll, blur, chin_below_forehead."""
+) -> tuple[int, float, float, float, float, bool, float]:
+    """face_count, yaw, pitch, roll, blur, chin_below_forehead, face_center_y."""
     blur = _blur_score(bgr)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     result = _landmarker().detect(mp_image)
     face_count = len(result.face_landmarks) if result.face_landmarks else 0
     if face_count != 1:
-        return face_count, 0.0, 0.0, 0.0, blur, False
+        return face_count, 0.0, 0.0, 0.0, blur, False, 0.5
 
     landmarks = result.face_landmarks[0]
     if (
@@ -173,20 +173,33 @@ def _analyze_bgr(
     chin = landmarks[_CHIN]
     forehead = landmarks[_FOREHEAD]
     upright = chin.y > forehead.y
-    return face_count, yaw, pitch, roll, blur, upright
+    face_center_y = float((chin.y + forehead.y) / 2.0)
+    return face_count, yaw, pitch, roll, blur, upright, face_center_y
 
 
-def _pose_score(yaw: float, pitch: float, roll: float, upright: bool) -> float:
-    """Lower is better. Penalize upside-down faces."""
+def _pose_score(
+    yaw: float,
+    pitch: float,
+    roll: float,
+    upright: bool,
+    face_center_y: float = 0.5,
+) -> float:
+    """Lower is better. Penalize upside-down / low-in-frame faces.
+
+    MediaPipe often paints a canonical upright mesh onto an inverted head near
+    the bottom of the frame; chin_below_forehead alone cannot catch that, so we
+    also prefer faces higher in the image (typical portrait framing).
+    """
     score = abs(yaw) + abs(pitch) + abs(roll)
     if not upright:
         score += 180.0
+    score += 50.0 * face_center_y
     return score
 
 
 def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
     """
-    Pick the best 0/90/180/270 orientation (sideways phone photos → upright).
+    Pick the best 0/90/180/270 orientation (sideways / inverted phone photos).
 
     Returns (jpeg_bytes or None, meta). Meta always includes rotation_deg.
     """
@@ -198,23 +211,23 @@ def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
     best_k = 0
     best_score = float("inf")
     best_bgr = src
-    best_stats: tuple[int, float, float, float, float, bool] | None = None
+    best_stats: tuple[int, float, float, float, float, bool, float] | None = None
 
     for k in (0, 1, 2, 3):
         cand = src if k == 0 else np.ascontiguousarray(np.rot90(src, k))
-        face_count, yaw, pitch, roll, blur, upright = _analyze_bgr(cand)
+        face_count, yaw, pitch, roll, blur, upright, face_cy = _analyze_bgr(cand)
         if face_count != 1:
             continue
-        score = _pose_score(yaw, pitch, roll, upright)
+        score = _pose_score(yaw, pitch, roll, upright, face_cy)
         if score < best_score:
             best_score = score
             best_k = k
             best_bgr = cand
-            best_stats = (face_count, yaw, pitch, roll, blur, upright)
+            best_stats = (face_count, yaw, pitch, roll, blur, upright, face_cy)
 
     meta: dict[str, Any] = {"rotation_deg": int(best_k * 90)}
     if best_stats is not None:
-        _, yaw, pitch, roll, blur, upright = best_stats
+        _, yaw, pitch, roll, blur, upright, face_cy = best_stats
         meta.update(
             {
                 "upright_yaw": round(yaw, 2),
@@ -222,6 +235,7 @@ def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
                 "upright_roll": round(roll, 2),
                 "upright_blur": round(blur, 2),
                 "chin_below_forehead": upright,
+                "face_center_y": round(face_cy, 3),
             }
         )
 
@@ -245,7 +259,7 @@ def validate_image(data: bytes) -> GateResult:
         )
 
     bgr = _resize_max_side(bgr, config.MAX_IMAGE_SIDE)
-    face_count, yaw, pitch, roll, blur, _upright = _analyze_bgr(bgr)
+    face_count, yaw, pitch, roll, blur, _upright, _face_cy = _analyze_bgr(bgr)
     metrics: dict[str, Any] = {
         "blur": round(blur, 2),
         "width": int(bgr.shape[1]),
