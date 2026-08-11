@@ -174,8 +174,17 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     return cleaned
 
 
+_CORNER_WHITE_MIN = 245.0
+
+
 def corner_whiteness(bgr: np.ndarray) -> dict:
-    """Score background whiteness; skip clothing-dominated bottom corners."""
+    """Score background whiteness; skip clothing-dominated bottom corners.
+
+    Bottom corners often contain shoulders / a white shirt. Those pixels are
+    bright (luma ≥210) but not passport-white — averaging them used to drag a
+    clean plate below the ≥245 threshold. Only count bottom pixels that are
+    already pure white; otherwise ignore that corner and trust the top ones.
+    """
     n = 12
     chips = [
         bgr[:n, :n],
@@ -184,12 +193,13 @@ def corner_whiteness(bgr: np.ndarray) -> dict:
         bgr[-n:, -n:],
     ]
     means: list[np.ndarray] = []
+    min_keep = max(4, n * n // 4)
     for i, c in enumerate(chips):
         pix = c.reshape(-1, 3).astype(np.float32)
-        luma = pix.mean(axis=1)
         if i >= 2:
-            keep = luma >= 210
-            if int(keep.sum()) < max(4, pix.shape[0] // 4):
+            # Pure white only — not light-gray clothing.
+            keep = np.min(pix, axis=1) >= _CORNER_WHITE_MIN
+            if int(keep.sum()) < min_keep:
                 continue
             pix = pix[keep]
         means.append(pix.mean(axis=0))
@@ -198,5 +208,5 @@ def corner_whiteness(bgr: np.ndarray) -> dict:
     avg = np.mean(means, axis=0)
     return {
         "bgr": [round(float(x), 1) for x in avg],
-        "white_ok": bool(np.all(avg >= 245)),
+        "white_ok": bool(np.all(avg >= _CORNER_WHITE_MIN)),
     }

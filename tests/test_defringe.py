@@ -39,3 +39,24 @@ def test_corner_whiteness_ignores_clothing_bottom():
     img[-15:, -15:] = (200, 60, 30)
     info = corner_whiteness(img)
     assert info["white_ok"] is True
+
+
+def test_corner_whiteness_ignores_light_shirt_bottom():
+    """White/light tee in bottom corners must not fail a white plate (IMG_2137)."""
+    h, w = 80, 60
+    img = np.full((h, w, 3), 255, np.uint8)
+    # Light gray-white shirt — bright enough to pass old luma≥210 keep, but <245.
+    img[-20:, :20] = (220, 222, 225)
+    img[-20:, -20:] = (218, 220, 224)
+    info = corner_whiteness(img)
+    assert info["white_ok"] is True, info
+    assert all(c >= 245 for c in info["bgr"]), info
+
+
+def test_corner_whiteness_still_fails_dirty_top():
+    h, w = 60, 60
+    img = np.full((h, w, 3), 255, np.uint8)
+    img[:15, :15] = (230, 230, 230)
+    img[:15, -15:] = (230, 230, 230)
+    info = corner_whiteness(img)
+    assert info["white_ok"] is False

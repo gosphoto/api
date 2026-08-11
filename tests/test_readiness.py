@@ -41,14 +41,17 @@ def test_white_with_shadow_band_not_ready():
     assert r.ready is False
 
 
-def test_tight_studio_shoulders_in_border_still_ready():
-    """Passport-tight crop: shirt fills bottom/side bands, but plate is white."""
+def test_tight_studio_white_shirt_in_corners_still_ready():
+    """Light tee only in bottom corner chips; plate must stay studio-ready."""
     h, w = 400, 300
     bgr = np.full((h, w, 3), 255, dtype=np.uint8)
-    # Wide torso touching left/right/bottom borders (like the grandfather sample).
-    bgr[140:400, 20:280] = (40, 55, 80)
     bgr[60:180, 90:210] = (40, 55, 80)
+    bgr[160:380, 80:220] = (40, 55, 80)
+    # Corner-chip sized light shirt (not whole border — that is subject-mask territory).
+    bgr[-15:, :15] = (220, 222, 225)
+    bgr[-15:, -15:] = (218, 220, 224)
     r = assess_readiness(bgr)
+    assert r.scores["corner_white_ok"] is True, r.as_dict()
     assert r.ready is True, r.as_dict()
     assert r.reason == "studio_ready"
 

@@ -41,31 +41,10 @@ def _person_mask_near_white(bgr: np.ndarray, *, tol: int = 40) -> np.ndarray:
 
 
 def _corner_whiteness(bgr: np.ndarray) -> dict[str, Any]:
-    """Corner mean BGR; bottom corners ignore dark clothing."""
-    n = 12
-    chips = [
-        bgr[:n, :n],
-        bgr[:n, -n:],
-        bgr[-n:, :n],
-        bgr[-n:, -n:],
-    ]
-    means: list[np.ndarray] = []
-    for i, c in enumerate(chips):
-        pix = c.reshape(-1, 3).astype(np.float32)
-        luma = pix.mean(axis=1)
-        if i >= 2:
-            keep = luma >= 210
-            if int(keep.sum()) < max(4, pix.shape[0] // 4):
-                continue
-            pix = pix[keep]
-        means.append(pix.mean(axis=0))
-    if not means:
-        means = [c.reshape(-1, 3).mean(axis=0) for c in chips[:2]]
-    avg = np.mean(means, axis=0)
-    return {
-        "bgr": [round(float(x), 1) for x in avg],
-        "white_ok": bool(np.all(avg >= CORNER_WHITE_MIN)),
-    }
+    """Corner mean BGR; bottom corners ignore clothing (incl. white shirts)."""
+    from .whitening import corner_whiteness
+
+    return corner_whiteness(bgr)
 
 
 def _border_whiteness(
