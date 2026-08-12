@@ -1,4 +1,4 @@
-"""OpenRouter Image API — white/transparent background edit, no precise crop."""
+"""OpenRouter Image API — Riverflow white-bg edit (+ legacy /images helper)."""
 
 from __future__ import annotations
 
@@ -14,40 +14,24 @@ from . import config
 log = logging.getLogger("gosphoto-gate")
 
 EDIT_PROMPT = (
-    "Russian passport / Gosuslugi photo. PRIMARY RULE: stay as close as possible "
-    "to the ORIGINAL input — treat it as a copy-paste of the person onto a white studio. "
+    "STRICT edit scope for a Russian passport / Gosuslugi photo. "
     "ALLOWED only: (1) replace background with transparent alpha or pure #FFFFFF; "
-    "(2) minor cleanup of clothing/shoulder outline against white. "
-    "MUST KEEP FROM ORIGINAL (do not invent or restyle): face identity, eyes, brows, "
-    "nose, mouth, ears, skin tone and texture (pores, freckles, redness, wrinkles), "
-    "neck color matching the original neck, hair shape/color/texture/strands "
-    "(no cartoon, plastic, or smoothed hair), expression, makeup, age, lighting on skin. "
-    "Jewelry/accessories only if present on the input — do not add nose rings, "
-    "piercings, earrings, chains, or other accessories that are not on the selfie. "
-    "Prefer near pixel-identical head and hair; do not redraw, beautify, morph, "
-    "relight, recolor, or generate a new person. "
-    "BACKGROUND RULE: pure #FFFFFF only OUTSIDE the outer hair silhouette and "
-    "where the room wall clearly shows through sparse outer strands. "
-    "FORBIDDEN inside the hair mass: white holes, swiss-cheese gaps, salt-and-pepper "
-    "white speckles, or cutting light/blonde strands into #FFFFFF — those are hair "
-    "(including highlights), not background. If unsure whether a bright pixel is "
-    "hair or wall, keep the hair. Also clean room crumbs behind ears / ear edges "
-    "without erasing cartilage. "
-    "If unsure about face/identity pixels, leave them unchanged. "
-    "Only background (and tiny edge cleanup on clothes) may change."
+    "(2) clean the shoulder/clothing outline BELOW the neck. "
+    "FORBIDDEN: any change to the head — face, eyes, brows, nose, mouth, ears, "
+    "skin, pores, freckles, wrinkles, stubble, expression, makeup, hair style/color/volume. "
+    "The entire head must look pixel-identical to the input photo; do not redraw, "
+    "beautify, morph, smooth, relight, or re-age the face. "
+    "Do not invent a new face. Keep identity 100%. "
+    "Only shoulders and background may differ. Remove colour spill / halo on clothes edges."
 )
 
-# Gosuslugi / RF passport — Riverflow edit prompt.
 GOSUSLUGI_EDIT_PROMPT = (
     "Сделай фото на документы для Госуслуг / загранпаспорта РФ строго по требованиям. "
     "Один кадр: человек на чистом белом фоне #FFFFFF, без теней на фоне, без виньетки. "
     "Формат портрета: лицо анфас, взгляд в камеру, нейтральное выражение, плечи видны. "
     "КРИТИЧНО — сохранить идентичность 1:1 с исходным селфи: "
     "то же лицо, возраст, черты, цвет и текстура кожи (включая шею и лоб — без «маски»), "
-    "те же волосы (натуральные пряди, без мультяшной заливки), одежда; "
-    "украшения только те, что есть на исходнике "
-    "(не добавляй пирсинг, кольцо в носу, серьги, цепочки, если их нет на селфи). "
-    "Не изобретай детали лица/аксессуаров, которых нет на входе. "
+    "те же волосы (натуральные пряди, без мультяшной заливки), одежда, украшения. "
     "Не ретушируй, не омолаживай, не меняй макияж, свет на коже и геометрию головы. "
     "Разрешено только: заменить фон на чисто белый и слегка подчистить контур одежды/плеч. "
     "ФОН: чисто белый #FFFFFF только СНАРУЖИ силуэта причёски и там, где сквозь "
@@ -58,6 +42,7 @@ GOSUSLUGI_EDIT_PROMPT = (
     "За ушами и по краям раковин убери куски стены/ореол, но не хрящ уха. "
     "Без водяных знаков, текста, рамок, фильтров. Высокое качество, естественный вид."
 )
+
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF studio background with no room props or shadows on the "
     "backdrop; keep face identity pixel-faithful to the input selfie; never punch "
