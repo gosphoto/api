@@ -17,7 +17,7 @@ from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
 from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
-from .openrouter import edit_selfie, edit_selfie_riverflow
+from .openrouter import edit_selfie, edit_selfie_resume, edit_selfie_riverflow
 from .whitening import force_white_background
 
 log = logging.getLogger("gosphoto-gate")
@@ -287,3 +287,46 @@ def run_edit_stage(
     if river_err:
         raise river_err
     raise RuntimeError(f"No edit backend available (EDIT_BACKEND={backend})")
+
+
+def run_resume_suit_edit(
+    data: bytes,
+    mime: str = "image/jpeg",
+) -> tuple[bytes, dict[str, Any]]:
+    """Generate business-suit resume JPEG from original selfie. Raises on failure."""
+    if not config.OPENROUTER_API_KEY:
+        raise RuntimeError("OPENROUTER_API_KEY is not configured")
+    src = _decode_image(data)
+    if src is None:
+        raise RuntimeError("decode_error")
+    src_p = prepare_for_cutout(src)
+    src_p = _resize_max_side(src_p, config.MAX_IMAGE_SIDE)
+    ok, buf = cv2.imencode(".jpg", src_p, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+    if not ok:
+        raise RuntimeError("encode_for_resume_failed")
+    raw = edit_selfie_resume(buf.tobytes(), mime="image/jpeg")
+    decoded = _decode_any(raw)
+    if decoded is None:
+        raise RuntimeError("resume decode failed")
+    if decoded.ndim == 2:
+        out = cv2.cvtColor(decoded, cv2.COLOR_GRAY2BGR)
+    elif decoded.shape[2] == 4:
+        out = composite_on_white(decoded)
+    else:
+        out = decoded
+    out = _uniform_max_side(out, config.MAX_IMAGE_SIDE)
+    ok2, out_buf = cv2.imencode(
+        ".jpg", out, [int(cv2.IMWRITE_JPEG_QUALITY), config.JPEG_QUALITY]
+    )
+    if not ok2:
+        raise RuntimeError("resume_jpeg_encode_failed")
+    jpeg = out_buf.tobytes()
+    meta = {
+        "stage": "resume_suit",
+        "model": config.RIVERFLOW_MODEL,
+        "prompt": "resume_suit",
+        "bytes": len(jpeg),
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
+    }
+    return jpeg, meta

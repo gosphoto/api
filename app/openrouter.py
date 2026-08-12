@@ -1,4 +1,4 @@
-"""OpenRouter Image API — Riverflow white-bg edit (+ legacy /images helper)."""
+"""OpenRouter Image API — white/transparent background edit, no precise crop."""
 
 from __future__ import annotations
 
@@ -14,24 +14,40 @@ from . import config
 log = logging.getLogger("gosphoto-gate")
 
 EDIT_PROMPT = (
-    "STRICT edit scope for a Russian passport / Gosuslugi photo. "
+    "Russian passport / Gosuslugi photo. PRIMARY RULE: stay as close as possible "
+    "to the ORIGINAL input — treat it as a copy-paste of the person onto a white studio. "
     "ALLOWED only: (1) replace background with transparent alpha or pure #FFFFFF; "
-    "(2) clean the shoulder/clothing outline BELOW the neck. "
-    "FORBIDDEN: any change to the head — face, eyes, brows, nose, mouth, ears, "
-    "skin, pores, freckles, wrinkles, stubble, expression, makeup, hair style/color/volume. "
-    "The entire head must look pixel-identical to the input photo; do not redraw, "
-    "beautify, morph, smooth, relight, or re-age the face. "
-    "Do not invent a new face. Keep identity 100%. "
-    "Only shoulders and background may differ. Remove colour spill / halo on clothes edges."
+    "(2) minor cleanup of clothing/shoulder outline against white. "
+    "MUST KEEP FROM ORIGINAL (do not invent or restyle): face identity, eyes, brows, "
+    "nose, mouth, ears, skin tone and texture (pores, freckles, redness, wrinkles), "
+    "neck color matching the original neck, hair shape/color/texture/strands "
+    "(no cartoon, plastic, or smoothed hair), expression, makeup, age, lighting on skin. "
+    "Jewelry/accessories only if present on the input — do not add nose rings, "
+    "piercings, earrings, chains, or other accessories that are not on the selfie. "
+    "Prefer near pixel-identical head and hair; do not redraw, beautify, morph, "
+    "relight, recolor, or generate a new person. "
+    "BACKGROUND RULE: pure #FFFFFF only OUTSIDE the outer hair silhouette and "
+    "where the room wall clearly shows through sparse outer strands. "
+    "FORBIDDEN inside the hair mass: white holes, swiss-cheese gaps, salt-and-pepper "
+    "white speckles, or cutting light/blonde strands into #FFFFFF — those are hair "
+    "(including highlights), not background. If unsure whether a bright pixel is "
+    "hair or wall, keep the hair. Also clean room crumbs behind ears / ear edges "
+    "without erasing cartilage. "
+    "If unsure about face/identity pixels, leave them unchanged. "
+    "Only background (and tiny edge cleanup on clothes) may change."
 )
 
+# Gosuslugi / RF passport — Riverflow edit prompt.
 GOSUSLUGI_EDIT_PROMPT = (
     "Сделай фото на документы для Госуслуг / загранпаспорта РФ строго по требованиям. "
     "Один кадр: человек на чистом белом фоне #FFFFFF, без теней на фоне, без виньетки. "
     "Формат портрета: лицо анфас, взгляд в камеру, нейтральное выражение, плечи видны. "
     "КРИТИЧНО — сохранить идентичность 1:1 с исходным селфи: "
     "то же лицо, возраст, черты, цвет и текстура кожи (включая шею и лоб — без «маски»), "
-    "те же волосы (натуральные пряди, без мультяшной заливки), одежда, украшения. "
+    "те же волосы (натуральные пряди, без мультяшной заливки), одежда; "
+    "украшения только те, что есть на исходнике "
+    "(не добавляй пирсинг, кольцо в носу, серьги, цепочки, если их нет на селфи). "
+    "Не изобретай детали лица/аксессуаров, которых нет на входе. "
     "Не ретушируй, не омолаживай, не меняй макияж, свет на коже и геометрию головы. "
     "Разрешено только: заменить фон на чисто белый и слегка подчистить контур одежды/плеч. "
     "ФОН: чисто белый #FFFFFF только СНАРУЖИ силуэта причёски и там, где сквозь "
@@ -42,11 +58,25 @@ GOSUSLUGI_EDIT_PROMPT = (
     "За ушами и по краям раковин убери куски стены/ореол, но не хрящ уха. "
     "Без водяных знаков, текста, рамок, фильтров. Высокое качество, естественный вид."
 )
-
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF studio background with no room props or shadows on the "
     "backdrop; keep face identity pixel-faithful to the input selfie; never punch "
     "white holes into hair; clean ear edges without erasing cartilage."
+)
+
+# Resume / LinkedIn-style portrait — clothing swap + light retouch (separate SKU).
+RESUME_SUIT_PROMPT = (
+    "Professional resume / LinkedIn headshot from this selfie. "
+    "Dress the person in a stylish modern business suit "
+    "(well-fitted blazer, dress shirt, subtle tie optional if it fits the look). "
+    "Apply light natural retouch: even skin tone, soft shine reduction, "
+    "keep pores and real texture — no plastic skin, no heavy beauty filter, "
+    "no age change. "
+    "CRITICAL: preserve exact face identity, age, hair style/color, expression, "
+    "eye color, facial proportions from the input. "
+    "Framing: upper body / shoulders visible, face centered, soft studio lighting, "
+    "neutral light-gray or soft off-white seamless backdrop. "
+    "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
 GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
@@ -75,7 +105,6 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
         "weight": 0.15,
     },
 ]
-
 
 class OpenRouterError(RuntimeError):
     def __init__(self, message: str, status: int | None = None, body: Any = None):
@@ -106,12 +135,18 @@ def _headers() -> dict[str, str]:
     }
 
 
-def build_edit_payload(image_bytes: bytes, mime: str = "image/jpeg") -> dict[str, Any]:
+def build_edit_payload(
+    image_bytes: bytes,
+    mime: str = "image/jpeg",
+    *,
+    model: str | None = None,
+    prompt: str | None = None,
+) -> dict[str, Any]:
     transparent = bool(config.OPENROUTER_TRANSPARENT_BG)
-    model = config.OPENROUTER_IMAGE_MODEL
+    model = model or config.OPENROUTER_IMAGE_MODEL
     payload: dict[str, Any] = {
         "model": model,
-        "prompt": EDIT_PROMPT,
+        "prompt": prompt or EDIT_PROMPT,
         "aspect_ratio": _aspect_ratio_for_model(model),
         "output_format": "png" if transparent else "jpeg",
         "input_references": [
@@ -149,6 +184,64 @@ def _extract_image_bytes_from_images_api(data: dict[str, Any]) -> bytes:
     raise OpenRouterError("OpenRouter image missing b64_json/url", body=item)
 
 
+def _extract_image_bytes_from_chat(data: dict[str, Any]) -> bytes:
+    """Parse chat/completions multimodal image response."""
+    choices = data.get("choices") or []
+    if not choices:
+        raise OpenRouterError("OpenRouter chat returned no choices", body=data)
+    msg = choices[0].get("message") or {}
+
+    for img in msg.get("images") or []:
+        url = (
+            (img.get("image_url") or {}).get("url")
+            if isinstance(img, dict)
+            else None
+        )
+        if not url and isinstance(img, dict):
+            url = img.get("url") or img.get("b64_json")
+        if isinstance(url, str) and url:
+            if url.startswith("data:") or re.fullmatch(r"[A-Za-z0-9+/=\s]+", url[:80]):
+                try:
+                    return _decode_b64_image(url)
+                except Exception:
+                    pass
+            if url.startswith("http"):
+                with httpx.Client(timeout=60) as client:
+                    r = client.get(url)
+                    r.raise_for_status()
+                    return r.content
+
+    content = msg.get("content")
+    if isinstance(content, list):
+        for part in content:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") in ("image_url", "output_image", "image"):
+                url = (part.get("image_url") or part.get("image") or {}).get("url")
+                if not url:
+                    url = part.get("url") or part.get("b64_json")
+                if isinstance(url, str) and url:
+                    if url.startswith("http"):
+                        with httpx.Client(timeout=60) as client:
+                            r = client.get(url)
+                            r.raise_for_status()
+                            return r.content
+                    return _decode_b64_image(url)
+            if part.get("type") == "text" and isinstance(part.get("text"), str):
+                m = re.search(
+                    r"data:image/[^;]+;base64,([A-Za-z0-9+/=\s]+)", part["text"]
+                )
+                if m:
+                    return base64.b64decode(m.group(1))
+
+    if isinstance(content, str) and "base64," in content:
+        m = re.search(r"data:image/[^;]+;base64,([A-Za-z0-9+/=\s]+)", content)
+        if m:
+            return base64.b64decode(m.group(1))
+
+    raise OpenRouterError("OpenRouter chat response missing image", body=data)
+
+
 def _post_json(
     path: str,
     payload: dict[str, Any],
@@ -174,17 +267,20 @@ def _post_json(
     return resp.json()
 
 
-def edit_selfie(image_bytes: bytes, mime: str = "image/jpeg") -> bytes:
-    """Legacy OpenRouter /images edit (non-Riverflow models)."""
-    data = _post_json(
-        "images",
-        build_edit_payload(image_bytes, mime),
-        timeout=config.OPENROUTER_TIMEOUT_SEC,
-    )
+def edit_selfie(
+    image_bytes: bytes,
+    mime: str = "image/jpeg",
+    *,
+    model: str | None = None,
+    prompt: str | None = None,
+) -> bytes:
+    payload = build_edit_payload(image_bytes, mime, model=model, prompt=prompt)
+    data = _post_json("images", payload)
     return _extract_image_bytes_from_images_api(data)
 
 
 def _riverflow_image_config() -> dict[str, Any]:
+    """Native Riverflow v2.5 background + scoring (OpenRouter image_config)."""
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
     if bg_mode not in ("solid", "transparent", "original"):
         bg_mode = "solid"
@@ -213,6 +309,7 @@ def build_riverflow_images_payload(
     *,
     prompt: str | None = None,
 ) -> dict[str, Any]:
+    """POST /images payload for Riverflow (fallback path)."""
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
     if bg_mode not in ("solid", "transparent", "original"):
         bg_mode = "solid"
@@ -263,20 +360,41 @@ def build_generic_edit_images_payload(
 def edit_selfie_riverflow(
     image_bytes: bytes,
     mime: str = "image/jpeg",
+    *,
+    prompt: str | None = None,
 ) -> bytes:
     """Gosuslugi white-bg via OpenRouter /images.
 
     Riverflow models get native background_mode + scoring; other models
     (e.g. black-forest-labs/flux.2-pro) use a plain edit payload.
     """
-    if _is_riverflow_model():
+    use_prompt = prompt or GOSUSLUGI_EDIT_PROMPT
+    if _is_riverflow_model() and use_prompt == GOSUSLUGI_EDIT_PROMPT:
         payload = build_riverflow_images_payload(
-            image_bytes, mime, prompt=GOSUSLUGI_EDIT_PROMPT
+            image_bytes, mime, prompt=use_prompt
         )
     else:
         payload = build_generic_edit_images_payload(
-            image_bytes, mime, prompt=GOSUSLUGI_EDIT_PROMPT
+            image_bytes, mime, prompt=use_prompt
         )
+    data = _post_json(
+        "images",
+        payload,
+        timeout=config.RIVERFLOW_TIMEOUT_SEC,
+    )
+    return _extract_image_bytes_from_images_api(data)
+
+
+def edit_selfie_resume(
+    image_bytes: bytes,
+    mime: str = "image/jpeg",
+) -> bytes:
+    """Business-suit resume portrait via OpenRouter /images (no Gosuslugi scoring)."""
+    payload = build_generic_edit_images_payload(
+        image_bytes,
+        mime,
+        prompt=RESUME_SUIT_PROMPT,
+    )
     data = _post_json(
         "images",
         payload,

@@ -19,6 +19,9 @@ from .tochka import (
 
 log = logging.getLogger("gosphoto-gate")
 
+PRODUCT_PASSPORT = "passport"
+PRODUCT_RESUME = "resume"
+
 
 def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -96,6 +99,26 @@ def find_all_pending() -> list[dict[str, Any]]:
     return out
 
 
+def _apply_unlock(record: dict[str, Any], *, tochka_operation_id: str, paid_at: str) -> None:
+    product = record.get("product") or PRODUCT_PASSPORT
+    result_id = record["result_id"]
+    payment_id = record["payment_id"]
+    if product == PRODUCT_RESUME:
+        results.set_paid_resume(
+            result_id,
+            payment_id=payment_id,
+            tochka_operation_id=tochka_operation_id,
+            paid_at=paid_at,
+        )
+    else:
+        results.set_paid(
+            result_id,
+            payment_id=payment_id,
+            tochka_operation_id=tochka_operation_id,
+            paid_at=paid_at,
+        )
+
+
 def mark_paid(
     payment_id: str,
     *,
@@ -112,16 +135,12 @@ def mark_paid(
     record["paid_at"] = ts
     record["tochka_operation_id"] = tochka_operation_id
     _write_payment(record)
-    results.set_paid(
-        record["result_id"],
-        payment_id=payment_id,
-        tochka_operation_id=tochka_operation_id,
-        paid_at=ts,
-    )
+    _apply_unlock(record, tochka_operation_id=tochka_operation_id, paid_at=ts)
     log.info(
-        "Payment marked paid payment_id=%s result_id=%s operation=%s",
+        "Payment marked paid payment_id=%s result_id=%s product=%s operation=%s",
         payment_id,
         record.get("result_id"),
+        record.get("product") or PRODUCT_PASSPORT,
         tochka_operation_id,
     )
     return record
@@ -131,8 +150,12 @@ def price_rub() -> int:
     return max(0, config.PRICE_KOPECKS) // 100
 
 
+def resume_price_rub() -> int:
+    return max(0, config.RESUME_PRICE_KOPECKS) // 100
+
+
 def create_checkout(result_id: str) -> dict[str, Any]:
-    """Create Tochka payment (or free-unlock). Returns response dict for API."""
+    """Create Tochka payment for passport unlock (or free-unlock)."""
     if not results.is_valid_result_id(result_id):
         raise ValueError("invalid result id")
     meta = results.load_meta(result_id)
@@ -146,6 +169,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
             record = {
                 "payment_id": payment_id,
                 "result_id": result_id,
+                "product": PRODUCT_PASSPORT,
                 "amount_kopecks": config.PRICE_KOPECKS,
                 "status": "free_unlock",
                 "tochka_operation_id": f"free_{payment_id}",
@@ -163,6 +187,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
             "ok": True,
             "paid": True,
             "payment_required": False,
+            "product": PRODUCT_PASSPORT,
             "result_id": result_id,
             "price_kopecks": config.PRICE_KOPECKS,
             "price_rub": price_rub(),
@@ -173,6 +198,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
     metadata = {
         "payment_link_id": payment_id,
         "result_id": result_id,
+        "product": PRODUCT_PASSPORT,
     }
     base = config.PUBLIC_BASE_URL.strip()
     if base.lower().startswith("https://"):
@@ -195,6 +221,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
     record = {
         "payment_id": payment_id,
         "result_id": result_id,
+        "product": PRODUCT_PASSPORT,
         "amount_kopecks": config.PRICE_KOPECKS,
         "status": "pending",
         "tochka_operation_id": tochka.operation_id,
@@ -206,11 +233,106 @@ def create_checkout(result_id: str) -> dict[str, Any]:
         "ok": True,
         "paid": False,
         "payment_required": True,
+        "product": PRODUCT_PASSPORT,
         "payment_id": payment_id,
         "payment_url": tochka.payment_url,
         "result_id": result_id,
         "price_kopecks": config.PRICE_KOPECKS,
         "price_rub": price_rub(),
+    }
+
+
+def create_checkout_resume(result_id: str) -> dict[str, Any]:
+    """Create Tochka payment for resume-suit unlock (500 ₽)."""
+    if not results.is_valid_result_id(result_id):
+        raise ValueError("invalid result id")
+    meta = results.load_meta(result_id)
+    if not meta:
+        raise FileNotFoundError("result not found")
+    if not meta.get("resume_offer"):
+        raise ValueError("resume offer not available")
+
+    if results.is_paid_resume(result_id) or config.FREE_DOWNLOAD_UNLOCK:
+        if not results.is_paid_resume(result_id):
+            payment_id = str(uuid.uuid4())
+            ts = _now_iso()
+            record = {
+                "payment_id": payment_id,
+                "result_id": result_id,
+                "product": PRODUCT_RESUME,
+                "amount_kopecks": config.RESUME_PRICE_KOPECKS,
+                "status": "free_unlock",
+                "tochka_operation_id": f"free_resume_{payment_id}",
+                "created_at": ts,
+                "paid_at": ts,
+            }
+            _write_payment(record)
+            results.set_paid_resume(
+                result_id,
+                payment_id=payment_id,
+                tochka_operation_id=record["tochka_operation_id"],
+                paid_at=ts,
+            )
+        return {
+            "ok": True,
+            "paid": True,
+            "paid_resume": True,
+            "payment_required": False,
+            "product": PRODUCT_RESUME,
+            "result_id": result_id,
+            "price_kopecks": config.RESUME_PRICE_KOPECKS,
+            "price_rub": resume_price_rub(),
+            "message": "Фото для резюме уже доступно",
+        }
+
+    payment_id = str(uuid.uuid4())
+    metadata = {
+        "payment_link_id": payment_id,
+        "result_id": result_id,
+        "product": PRODUCT_RESUME,
+    }
+    base = config.PUBLIC_BASE_URL.strip()
+    if base.lower().startswith("https://"):
+        metadata["redirect_url"] = f"{base}/result/{result_id}?paid_resume=1"
+        metadata["fail_redirect_url"] = f"{base}/result/{result_id}?paid_resume=0"
+
+    client = get_tochka_client()
+    try:
+        tochka = client.create_payment(
+            amount_kopecks=config.RESUME_PRICE_KOPECKS,
+            description=(
+                f"Госфото — фото для резюме ({resume_price_rub()} ₽)"
+            ),
+            metadata=metadata,
+        )
+    except TochkaError:
+        raise
+    except Exception as e:
+        raise TochkaError(str(e)) from e
+
+    ts = _now_iso()
+    record = {
+        "payment_id": payment_id,
+        "result_id": result_id,
+        "product": PRODUCT_RESUME,
+        "amount_kopecks": config.RESUME_PRICE_KOPECKS,
+        "status": "pending",
+        "tochka_operation_id": tochka.operation_id,
+        "created_at": ts,
+        "paid_at": None,
+    }
+    _write_payment(record)
+    return {
+        "ok": True,
+        "paid": False,
+        "paid_resume": False,
+        "payment_required": True,
+        "product": PRODUCT_RESUME,
+        "payment_id": payment_id,
+        "payment_url": tochka.payment_url,
+        "result_id": result_id,
+        "price_kopecks": config.RESUME_PRICE_KOPECKS,
+        "price_rub": resume_price_rub(),
     }
 
 
@@ -277,9 +399,10 @@ def handle_webhook(raw_body: str, signature: str | None = None) -> dict[str, Any
 
     mark_paid(record["payment_id"], tochka_operation_id=tochka_id)
     log.info(
-        "Tochka webhook activated payment_id=%s result_id=%s operationId=%s",
+        "Tochka webhook activated payment_id=%s result_id=%s product=%s operationId=%s",
         record["payment_id"],
         record["result_id"],
+        record.get("product") or PRODUCT_PASSPORT,
         tochka_id,
     )
     return {
@@ -287,6 +410,7 @@ def handle_webhook(raw_body: str, signature: str | None = None) -> dict[str, Any
         "paid": True,
         "payment_id": record["payment_id"],
         "result_id": record["result_id"],
+        "product": record.get("product") or PRODUCT_PASSPORT,
     }
 
 
@@ -310,12 +434,12 @@ def activate_if_tochka_paid(record: dict[str, Any]) -> bool:
 
 
 def sync_pending_for_result(result_id: str) -> bool:
-    """Poll Tochka for pending payments of this result. Returns True if now paid."""
-    if results.is_paid(result_id):
-        return True
+    """Poll Tochka for pending payments of this result. Returns True if any activated."""
+    activated = False
     for record in find_pending_by_result(result_id):
-        activate_if_tochka_paid(record)
-    return results.is_paid(result_id)
+        if activate_if_tochka_paid(record):
+            activated = True
+    return activated or results.is_paid(result_id) or results.is_paid_resume(result_id)
 
 
 def sync_all_pending() -> int:

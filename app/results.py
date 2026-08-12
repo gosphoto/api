@@ -22,6 +22,8 @@ ALLOWED_FILES = frozenset(
         "print.jpg",
         "preview_digital.jpg",
         "preview_print.jpg",
+        "resume.jpg",
+        "preview_resume.jpg",
     }
 )
 
@@ -46,9 +48,10 @@ def save_result(
     *,
     meta: dict[str, Any] | None = None,
     result_id: str | None = None,
+    resume_jpeg: bytes | None = None,
 ) -> str | None:
     """
-    Write results/<id>/{digital,print,preview_*}.jpg + meta.json.
+    Write results/<id>/{digital,print,preview_*}.jpg + optional resume + meta.json.
 
     Returns result_id, or None if disabled / empty / IO error.
     """
@@ -67,6 +70,12 @@ def save_result(
         preview_print = make_preview_jpeg(print_jpeg)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+
+        resume_offer = bool(resume_jpeg)
+        if resume_jpeg:
+            (folder / "resume.jpg").write_bytes(resume_jpeg)
+            (folder / "preview_resume.jpg").write_bytes(make_preview_jpeg(resume_jpeg))
+
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         payload = {
             "result_id": rid,
@@ -79,12 +88,24 @@ def save_result(
             "print_bytes": len(print_jpeg),
             **(meta or {}),
             "paid": False,
+            "resume_offer": resume_offer,
+            "paid_resume": False,
+            "torso_ok": bool((meta or {}).get("torso_ok", resume_offer)),
         }
+        if resume_offer:
+            payload["resume"] = "resume.jpg"
+            payload["preview_resume"] = "preview_resume.jpg"
+            payload["resume_bytes"] = len(resume_jpeg or b"")
         (folder / "meta.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        log.info("Saved result id=%s dir=%s", rid, folder)
+        log.info(
+            "Saved result id=%s dir=%s resume_offer=%s",
+            rid,
+            folder,
+            resume_offer,
+        )
         return rid
     except Exception as e:
         log.warning("Failed to save result: %s", e)
@@ -118,6 +139,20 @@ def is_paid(result_id: str) -> bool:
     return bool(meta.get("paid"))
 
 
+def is_paid_resume(result_id: str) -> bool:
+    meta = load_meta(result_id)
+    if not meta:
+        return False
+    return bool(meta.get("paid_resume"))
+
+
+def has_resume_offer(result_id: str) -> bool:
+    meta = load_meta(result_id)
+    if not meta:
+        return False
+    return bool(meta.get("resume_offer"))
+
+
 def set_paid(
     result_id: str,
     *,
@@ -141,6 +176,31 @@ def set_paid(
         return False
 
 
+def set_paid_resume(
+    result_id: str,
+    *,
+    payment_id: str,
+    tochka_operation_id: str,
+    paid_at: str | None = None,
+) -> bool:
+    meta = load_meta(result_id)
+    if not meta:
+        return False
+    if not meta.get("resume_offer"):
+        log.warning("set_paid_resume without resume_offer id=%s", result_id)
+    ts = paid_at or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    meta["paid_resume"] = True
+    meta["paid_resume_at"] = ts
+    meta["resume_payment_id"] = payment_id
+    meta["resume_tochka_operation_id"] = tochka_operation_id
+    try:
+        _write_meta(result_id, meta)
+        return True
+    except Exception as e:
+        log.warning("Failed to set paid_resume id=%s: %s", result_id, e)
+        return False
+
+
 def load_file(result_id: str, name: str) -> bytes | None:
     if name not in ALLOWED_FILES:
         return None
@@ -149,7 +209,7 @@ def load_file(result_id: str, name: str) -> bytes | None:
     path = result_dir(result_id) / name
     if not path.is_file():
         # Lazy preview for results saved before paywall
-        if name in ("preview_digital.jpg", "preview_print.jpg"):
+        if name in ("preview_digital.jpg", "preview_print.jpg", "preview_resume.jpg"):
             return ensure_preview(result_id, name)
         return None
     try:
@@ -161,10 +221,13 @@ def load_file(result_id: str, name: str) -> bytes | None:
 
 def ensure_preview(result_id: str, preview_name: str) -> bytes | None:
     """Build downscaled preview from full JPEG if preview file is missing."""
-    source_name = (
-        "digital.jpg" if preview_name == "preview_digital.jpg" else "print.jpg"
-    )
-    if preview_name not in ("preview_digital.jpg", "preview_print.jpg"):
+    source_map = {
+        "preview_digital.jpg": "digital.jpg",
+        "preview_print.jpg": "print.jpg",
+        "preview_resume.jpg": "resume.jpg",
+    }
+    source_name = source_map.get(preview_name)
+    if not source_name:
         return None
     folder = result_dir(result_id)
     source = folder / source_name

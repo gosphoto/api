@@ -10,21 +10,30 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, RedirectResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field
 
+from concurrent.futures import ThreadPoolExecutor
 from . import config
 from . import feedback as feedback_mod
 from . import payments as payments_mod
 from . import progress_events as progress_events_mod
 from . import result_email as result_email_mod
+from . import torso as torso_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import prepare_skip_edit, run_edit_stage
+from .edit import prepare_skip_edit, run_edit_stage, run_resume_suit_edit
 from .gate import _decode_image, prepare_upload, warmup, validate_image
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .rejecteds import save_rejected
-from .results import is_paid, is_valid_result_id, load_file, load_meta, save_result
+from .results import (
+    is_paid,
+    is_paid_resume,
+    is_valid_result_id,
+    load_file,
+    load_meta,
+    save_result,
+)
 from .tochka import TochkaError, get_tochka_client
 
 logging.basicConfig(level=logging.INFO)
@@ -68,8 +77,20 @@ def _require_paid(result_id: str) -> None:
         )
 
 
+def _require_paid_resume(result_id: str) -> None:
+    if not is_valid_result_id(result_id) or not load_meta(result_id):
+        raise HTTPException(status_code=404, detail="Result not found")
+    if not is_paid_resume(result_id):
+        raise HTTPException(
+            status_code=403,
+            detail="Payment required. Pay via POST /api/result/{id}/pay-resume",
+        )
+
+
 def _result_public_payload(result_id: str, meta: dict) -> dict:
     paid = bool(meta.get("paid"))
+    paid_resume = bool(meta.get("paid_resume"))
+    resume_offer = bool(meta.get("resume_offer"))
     print_meta = meta.get("print_sheet") or {}
     body = {
         "ok": True,
@@ -86,9 +107,14 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "paid": paid,
         "price_kopecks": config.PRICE_KOPECKS,
         "price_rub": payments_mod.price_rub(),
+        "resume_offer": resume_offer,
+        "paid_resume": paid_resume,
+        "price_resume_kopecks": config.RESUME_PRICE_KOPECKS,
+        "price_resume_rub": payments_mod.resume_price_rub(),
         "gate": meta.get("gate"),
         "crop": meta.get("crop"),
         "saved_at": meta.get("saved_at"),
+        "torso_ok": bool(meta.get("torso_ok")),
     }
     if paid:
         body["digital_url"] = f"/api/result/{result_id}/digital.jpg"
@@ -96,6 +122,14 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
     else:
         body["digital_url"] = None
         body["print_url"] = None
+    if resume_offer:
+        body["preview_resume_url"] = f"/api/result/{result_id}/preview_resume.jpg"
+        body["resume_url"] = (
+            f"/api/result/{result_id}/resume.jpg" if paid_resume else None
+        )
+    else:
+        body["preview_resume_url"] = None
+        body["resume_url"] = None
     return body
 
 
@@ -132,18 +166,30 @@ async def lifespan(_app: FastAPI):
     log.info("Loading Face Landmarker from %s", config.MODEL_PATH)
     warmup()
     try:
+        torso_mod.warmup()
+        log.info(
+            "Pose torso ready model=%s upsell=%s",
+            config.POSE_MODEL_PATH,
+            config.RESUME_UPSELL_ENABLED,
+        )
+    except Exception as e:
+        log.warning("Pose warmup failed (resume upsell may skip): %s", e)
+    try:
         warmup_cutout()
         log.info("Cutout ready backend=%s", config.EDIT_CUTOUT)
     except Exception as e:
         log.warning("Cutout warmup failed (will retry on request): %s", e)
     log.info(
-        "Gate ready; edit_backend=%s riverflow=%s cutout=%s openrouter=%s payments=%s free_unlock=%s",
+        "Gate ready; edit_backend=%s riverflow=%s cutout=%s openrouter=%s "
+        "payments=%s free_unlock=%s resume_upsell=%s resume_price=%s",
         config.EDIT_BACKEND,
         config.RIVERFLOW_MODEL,
         config.EDIT_CUTOUT,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
         "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
         config.FREE_DOWNLOAD_UNLOCK,
+        config.RESUME_UPSELL_ENABLED,
+        payments_mod.resume_price_rub(),
     )
     if config.TOCHKA_ACCESS_TOKEN:
         try:
@@ -190,10 +236,12 @@ def health():
         "smtp": bool(config.SMTP_PASSWORD),
         "payments": "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
         "price_rub": payments_mod.price_rub(),
+        "price_resume_rub": payments_mod.resume_price_rub(),
+        "resume_upsell": config.RESUME_UPSELL_ENABLED,
         "free_download_unlock": config.FREE_DOWNLOAD_UNLOCK,
         "note": (
             "/api/process/stream or /api/process → "
-            "gate → readiness (skip Riverflow if studio-ready) → crop → result_id"
+            "gate → readiness|riverflow (+ optional resume suit) → crop → result_id"
         ),
     }
 
@@ -362,30 +410,12 @@ async def crop_only(file: UploadFile = File(...), format: str = "json"):
     )
 
 
-def _run_process_pipeline(
+def _run_passport_stages(
     data: bytes,
     *,
-    filename: str | None,
     mime: str,
 ) -> dict:
-    """Sync gate → readiness/edit → crop → save. Returns ok/error dict."""
-    data, gate = prepare_upload(data)
-    if not gate.ok:
-        save_rejected(
-            data,
-            reason=gate.reason,
-            message=gate.message,
-            metrics=gate.metrics,
-            filename=filename,
-        )
-        return {
-            "ok": False,
-            "stage": "gate",
-            "reason": gate.reason,
-            "message": gate.message,
-            "metrics": gate.metrics,
-        }
-
+    """Gate-passed input → readiness/edit → crop → JPEGs. Raises or returns error dict."""
     readiness_meta: dict | None = None
     skipped_edit = False
     decoded = _decode_image(data)
@@ -424,7 +454,6 @@ def _run_process_pipeline(
         log.exception("Crop stage failed")
         return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
 
-    # Fail-closed: skip-edit that fails compliance → escalate to Riverflow.
     if skipped_edit and not compliance.get("pass"):
         log.info(
             "Skip-edit compliance failed; escalating to Riverflow (%s)",
@@ -468,19 +497,101 @@ def _run_process_pipeline(
         edit_stage_name = "riverflow"
     else:
         edit_stage_name = "local_person"
+    return {
+        "ok": True,
+        "jpeg": jpeg,
+        "print_jpeg": print_jpeg,
+        "print_meta": print_meta,
+        "edit_meta": edit_meta,
+        "crop_metrics": crop_metrics,
+        "compliance": compliance,
+        "readiness_meta": readiness_meta,
+        "skipped_edit": skipped_edit,
+        "edit_stage_name": edit_stage_name,
+    }
+
+
+def _run_process_pipeline(
+    data: bytes,
+    *,
+    filename: str | None,
+    mime: str,
+) -> dict:
+    """Sync gate → optional parallel passport+resume → save. Returns ok/error dict."""
+    data, gate = prepare_upload(data)
+    if not gate.ok:
+        save_rejected(
+            data,
+            reason=gate.reason,
+            message=gate.message,
+            metrics=gate.metrics,
+            filename=filename,
+        )
+        return {
+            "ok": False,
+            "stage": "gate",
+            "reason": gate.reason,
+            "message": gate.message,
+            "metrics": gate.metrics,
+        }
+
+    torso = torso_mod.assess_torso(data)
+    log.info(
+        "Torso check ok=%s reason=%s upsell=%s",
+        torso.ok,
+        torso.reason,
+        config.RESUME_UPSELL_ENABLED,
+    )
+    run_suit = bool(config.RESUME_UPSELL_ENABLED and torso.ok)
+
+    resume_jpeg: bytes | None = None
+    resume_meta: dict | None = None
+    resume_error: str | None = None
+
+    if run_suit:
+        with ThreadPoolExecutor(max_workers=2) as pool:
+            fut_pass = pool.submit(_run_passport_stages, data, mime=mime)
+            fut_suit = pool.submit(run_resume_suit_edit, data, mime)
+            passport = fut_pass.result()
+            try:
+                resume_jpeg, resume_meta = fut_suit.result()
+            except Exception as e:
+                log.warning("Resume suit edit failed (passport continues): %s", e)
+                resume_error = str(e)[:300]
+                resume_jpeg = None
+                resume_meta = None
+    else:
+        passport = _run_passport_stages(data, mime=mime)
+
+    if not passport.get("ok"):
+        return passport
+
+    jpeg = passport["jpeg"]
+    print_jpeg = passport["print_jpeg"]
+    print_meta = passport["print_meta"]
+    edit_meta = passport["edit_meta"]
+    crop_metrics = passport["crop_metrics"]
+    compliance = passport["compliance"]
+    readiness_meta = passport["readiness_meta"]
+    skipped_edit = passport["skipped_edit"]
+    edit_stage_name = passport["edit_stage_name"]
+
+    pipeline = ["gate", edit_stage_name, "crop", "print_10x15"]
+    if resume_jpeg:
+        pipeline.append("resume_suit")
+
     pair_meta = {
         "gate": gate.metrics,
+        "torso": {"ok": torso.ok, "reason": torso.reason, **torso.metrics},
+        "torso_ok": torso.ok,
         "readiness": readiness_meta,
         "edit": edit_meta,
         "crop": crop_metrics,
         "compliance": compliance,
         "print_sheet": print_meta,
-        "pipeline": [
-            "gate",
-            edit_stage_name,
-            "crop",
-            "print_10x15",
-        ],
+        "resume": resume_meta,
+        "resume_error": resume_error,
+        "pipeline": pipeline,
         "width": config.PASSPORT_WIDTH,
         "height": config.PASSPORT_HEIGHT,
         "dpi": config.PASSPORT_DPI,
@@ -496,11 +607,14 @@ def _run_process_pipeline(
         jpeg,
         print_jpeg,
         meta=pair_meta,
+        resume_jpeg=resume_jpeg,
     )
     if skipped_edit:
         done_msg = "Фото 35×45 (crop-only, без Riverflow) + лист 10×15 (4 фото)"
     else:
         done_msg = "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)"
+    if resume_jpeg:
+        done_msg += " + превью для резюме"
     payload = {
         "ok": True,
         "stage": "done",
@@ -515,6 +629,9 @@ def _run_process_pipeline(
         "edit_backend": edit_meta.get("cutout") or config.EDIT_BACKEND,
         "edit_cutout": edit_meta.get("cutout") or config.EDIT_CUTOUT,
         "gate": gate.metrics,
+        "torso": pair_meta["torso"],
+        "resume_offer": bool(resume_jpeg),
+        "price_resume_rub": payments_mod.resume_price_rub(),
         "readiness": readiness_meta,
         "edit": edit_meta,
         "crop": crop_metrics,
@@ -627,6 +744,23 @@ def pay_result(result_id: str):
         raise HTTPException(status_code=404, detail="Result not found") from None
 
 
+@app.post("/api/result/{result_id}/pay-resume")
+def pay_resume_result(result_id: str):
+    if not is_valid_result_id(result_id):
+        raise HTTPException(status_code=404, detail="Result not found")
+    try:
+        return payments_mod.create_checkout_resume(result_id)
+    except FileNotFoundError:
+        raise HTTPException(status_code=404, detail="Result not found") from None
+    except TochkaError as e:
+        raise HTTPException(status_code=502, detail=str(e)) from e
+    except ValueError as e:
+        detail = str(e)
+        if "resume offer" in detail:
+            raise HTTPException(status_code=404, detail="Resume offer not available") from e
+        raise HTTPException(status_code=404, detail="Result not found") from e
+
+
 @app.get("/api/result/{result_id}/payment-status")
 def payment_status(result_id: str):
     if not is_valid_result_id(result_id):
@@ -693,6 +827,14 @@ def get_result_preview_print(result_id: str):
     return Response(content=data, media_type="image/jpeg")
 
 
+@app.get("/api/result/{result_id}/preview_resume.jpg")
+def get_result_preview_resume(result_id: str):
+    data = load_file(result_id, "preview_resume.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
 @app.get("/api/result/{result_id}/digital.jpg")
 def get_result_digital(result_id: str):
     _require_paid(result_id)
@@ -706,6 +848,15 @@ def get_result_digital(result_id: str):
 def get_result_print(result_id: str):
     _require_paid(result_id)
     data = load_file(result_id, "print.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/resume.jpg")
+def get_result_resume(result_id: str):
+    _require_paid_resume(result_id)
+    data = load_file(result_id, "resume.jpg")
     if not data:
         raise HTTPException(status_code=404, detail="Result not found")
     return Response(content=data, media_type="image/jpeg")
@@ -823,6 +974,7 @@ def process_info():
             "/api/crop": "crop + print sheet",
             "/api/feedback": "contact form → SMTP email",
             "/api/result/{id}/email": "POST {email} → send paid JPEGs",
+            "/api/result/{id}/pay-resume": "Tochka checkout for resume suit (500 ₽)",
         },
         "passport": {
             "size_mm": [35, 45],

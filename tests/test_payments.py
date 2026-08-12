@@ -28,6 +28,7 @@ def _setup_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RESULTS_ENABLED", True)
     monkeypatch.setattr(config, "PAYMENTS_ENABLED", True)
     monkeypatch.setattr(config, "PRICE_KOPECKS", 10000)
+    monkeypatch.setattr(config, "RESUME_PRICE_KOPECKS", 50000)
     monkeypatch.setattr(config, "FREE_DOWNLOAD_UNLOCK", False)
     monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://gosphoto.ru")
     monkeypatch.setattr(config, "TOCHKA_ACCESS_TOKEN", "")
@@ -39,16 +40,28 @@ def _setup_dirs(tmp_path, monkeypatch):
 
 def _result_public_payload(result_id: str, meta: dict) -> dict:
     paid = bool(meta.get("paid"))
+    paid_resume = bool(meta.get("paid_resume"))
+    resume_offer = bool(meta.get("resume_offer"))
     body = {
         "ok": True,
         "result_id": result_id,
         "paid": paid,
         "price_kopecks": config.PRICE_KOPECKS,
         "price_rub": payments_mod.price_rub(),
+        "resume_offer": resume_offer,
+        "paid_resume": paid_resume,
+        "price_resume_kopecks": config.RESUME_PRICE_KOPECKS,
+        "price_resume_rub": payments_mod.resume_price_rub(),
         "preview_digital_url": f"/api/result/{result_id}/preview_digital.jpg",
         "preview_print_url": f"/api/result/{result_id}/preview_print.jpg",
+        "preview_resume_url": (
+            f"/api/result/{result_id}/preview_resume.jpg" if resume_offer else None
+        ),
         "digital_url": f"/api/result/{result_id}/digital.jpg" if paid else None,
         "print_url": f"/api/result/{result_id}/print.jpg" if paid else None,
+        "resume_url": (
+            f"/api/result/{result_id}/resume.jpg" if paid_resume else None
+        ),
         "compliance": meta.get("compliance") or {},
     }
     return body
@@ -77,6 +90,19 @@ def _mini_pay_app():
         except TochkaError as e:
             raise HTTPException(status_code=502, detail=str(e)) from e
 
+    @app.post("/api/result/{result_id}/pay-resume")
+    def pay_resume(result_id: str):
+        if not results.is_valid_result_id(result_id):
+            raise HTTPException(status_code=404, detail="Result not found")
+        try:
+            return payments_mod.create_checkout_resume(result_id)
+        except FileNotFoundError:
+            raise HTTPException(status_code=404, detail="Result not found") from None
+        except ValueError as e:
+            raise HTTPException(status_code=404, detail=str(e)) from e
+        except TochkaError as e:
+            raise HTTPException(status_code=502, detail=str(e)) from e
+
     @app.get("/api/result/{result_id}/payment-status")
     def payment_status(result_id: str):
         if not results.is_valid_result_id(result_id):
@@ -100,6 +126,13 @@ def _mini_pay_app():
             raise HTTPException(status_code=404, detail="Result not found")
         return Response(content=data, media_type="image/jpeg")
 
+    @app.get("/api/result/{result_id}/preview_resume.jpg")
+    def get_preview_resume(result_id: str):
+        data = results.load_file(result_id, "preview_resume.jpg")
+        if not data:
+            raise HTTPException(status_code=404, detail="Result not found")
+        return Response(content=data, media_type="image/jpeg")
+
     @app.get("/api/result/{result_id}/digital.jpg")
     def get_digital(result_id: str):
         if not results.is_valid_result_id(result_id) or not results.load_meta(result_id):
@@ -118,6 +151,17 @@ def _mini_pay_app():
         if not results.is_paid(result_id):
             raise HTTPException(status_code=403, detail="Payment required")
         data = results.load_file(result_id, "print.jpg")
+        if not data:
+            raise HTTPException(status_code=404, detail="Result not found")
+        return Response(content=data, media_type="image/jpeg")
+
+    @app.get("/api/result/{result_id}/resume.jpg")
+    def get_resume(result_id: str):
+        if not results.is_valid_result_id(result_id) or not results.load_meta(result_id):
+            raise HTTPException(status_code=404, detail="Result not found")
+        if not results.is_paid_resume(result_id):
+            raise HTTPException(status_code=403, detail="Payment required")
+        data = results.load_file(result_id, "resume.jpg")
         if not data:
             raise HTTPException(status_code=404, detail="Result not found")
         return Response(content=data, media_type="image/jpeg")
@@ -227,8 +271,77 @@ def test_payment_binds_to_result_id(tmp_path, monkeypatch):
     payment_id = out["payment_id"]
     record = payments_mod.load_payment(payment_id)
     assert record["result_id"] == rid_a
+    assert record.get("product") == "passport"
     payments_mod.handle_webhook(
         f'{{"payment_link_id":"{payment_id}","payment_id":"op1","status":"APPROVED"}}'
     )
     assert results.is_paid(rid_a) is True
     assert results.is_paid(rid_b) is False
+
+
+def test_resume_offer_files_and_paywall(tmp_path, monkeypatch):
+    _setup_dirs(tmp_path, monkeypatch)
+    rid = results.save_result(
+        _tiny_jpeg(),
+        _tiny_jpeg(),
+        resume_jpeg=_tiny_jpeg(color=(30, 40, 120), size=(90, 120)),
+        meta={"torso_ok": True},
+    )
+    assert rid
+    meta = results.load_meta(rid)
+    assert meta["resume_offer"] is True
+    assert meta["paid_resume"] is False
+    assert results.load_file(rid, "preview_resume.jpg")
+    assert results.load_file(rid, "resume.jpg")
+
+    client = TestClient(_mini_pay_app())
+    body = client.get(f"/api/result/{rid}").json()
+    assert body["resume_offer"] is True
+    assert body["price_resume_rub"] == 500
+    assert body["preview_resume_url"].endswith("preview_resume.jpg")
+    assert body["resume_url"] is None
+    assert client.get(f"/api/result/{rid}/resume.jpg").status_code == 403
+    assert client.get(f"/api/result/{rid}/preview_resume.jpg").status_code == 200
+
+    pay = client.post(f"/api/result/{rid}/pay-resume")
+    assert pay.status_code == 200
+    pay_body = pay.json()
+    assert pay_body["product"] == "resume"
+    assert pay_body["payment_required"] is True
+    assert pay_body["price_rub"] == 500
+    payment_id = pay_body["payment_id"]
+
+    webhook = client.post(
+        "/api/payments/tochka/webhook",
+        content=(
+            f'{{"payment_id":"tochka_{payment_id[:8]}",'
+            f'"payment_link_id":"{payment_id}","status":"paid"}}'
+        ),
+        headers={"content-type": "application/json"},
+    )
+    assert webhook.status_code == 200
+    assert webhook.json().get("product") == "resume"
+
+    meta = results.load_meta(rid)
+    assert meta["paid_resume"] is True
+    assert meta["paid"] is False  # passport still locked
+    assert client.get(f"/api/result/{rid}/resume.jpg").status_code == 200
+    assert client.get(f"/api/result/{rid}/digital.jpg").status_code == 403
+
+
+def test_resume_independent_of_passport_payment(tmp_path, monkeypatch):
+    _setup_dirs(tmp_path, monkeypatch)
+    rid = results.save_result(
+        _tiny_jpeg(),
+        _tiny_jpeg(),
+        resume_jpeg=_tiny_jpeg(),
+    )
+    client = TestClient(_mini_pay_app())
+    pay_pass = client.post(f"/api/result/{rid}/pay").json()
+    payments_mod.handle_webhook(
+        f'{{"payment_link_id":"{pay_pass["payment_id"]}",'
+        f'"payment_id":"op_pass","status":"APPROVED"}}'
+    )
+    assert results.is_paid(rid) is True
+    assert results.is_paid_resume(rid) is False
+    assert client.get(f"/api/result/{rid}/resume.jpg").status_code == 403

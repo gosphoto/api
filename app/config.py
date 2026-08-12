@@ -196,7 +196,7 @@ TOCHKA_API_BASE_URL = os.getenv(
     "TOCHKA_API_BASE_URL", "https://enter.tochka.com"
 ).rstrip("/")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://gosphoto.ru").rstrip("/")
-PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "10000"))
+PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "7000"))
 FREE_DOWNLOAD_UNLOCK = os.getenv("FREE_DOWNLOAD_UNLOCK", "0").strip().lower() in (
     "1",
     "true",
@@ -216,3 +216,28 @@ PAYMENTS_ENABLED = os.getenv("PAYMENTS_ENABLED", "1").strip().lower() in (
     "yes",
     "on",
 )
+
+# Resume suit upsell (experimental): Pose torso → parallel suit edit → 500 ₽
+RESUME_UPSELL_ENABLED = os.getenv("RESUME_UPSELL_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+RESUME_PRICE_KOPECKS = int(os.getenv("RESUME_PRICE_KOPECKS", "50000"))
+POSE_MODEL_PATH = Path(
+    os.getenv(
+        "POSE_MODEL_PATH",
+        str(
+            Path(__file__).resolve().parent.parent
+            / "models"
+            / "pose_landmarker_lite.task"
+        ),
+    )
+)
+# MediaPipe Pose: min landmark visibility for shoulders
+TORSO_MIN_VISIBILITY = float(os.getenv("TORSO_MIN_VISIBILITY", "0.45"))
+# Mid-shoulder must sit this far below the nose (fraction of image height)
+TORSO_MIN_SHOULDER_DROP = float(os.getenv("TORSO_MIN_SHOULDER_DROP", "0.06"))
+# Shoulder width as fraction of image width (filters extreme face-crops)
+TORSO_MIN_SHOULDER_WIDTH = float(os.getenv("TORSO_MIN_SHOULDER_WIDTH", "0.12"))
