@@ -33,13 +33,14 @@ def test_prompt_forbids_invented_jewelry():
 
 def test_prompt_levels_shoulders():
     lower = EDIT_PROMPT.lower()
-    assert "level" in lower or "horizontal" in lower
+    assert "perfectly" in lower or "mandatory" in lower or "horizontal" in lower
     assert "shoulder" in lower
     from app.openrouter import GOSUSLUGI_EDIT_PROMPT
 
     ru = GOSUSLUGI_EDIT_PROMPT
-    assert "ПЛЕЧИ" in ru or "плеч" in ru
+    assert "КРИТИЧНО — ПЛЕЧИ" in ru or "ПЛЕЧИ" in ru
     assert "горизонтал" in ru
+    assert "запрещён" in ru or "запрещен" in ru
 
 
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):
