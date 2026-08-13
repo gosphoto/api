@@ -1,9 +1,8 @@
-"""MediaPipe Pose — torso upsell + shoulder roll for passport crop."""
+"""MediaPipe Pose — detect visible upper torso (shoulders) for resume upsell."""
 
 from __future__ import annotations
 
 import logging
-import math
 from dataclasses import dataclass
 from functools import lru_cache
 from typing import Any
@@ -23,81 +22,6 @@ class TorsoResult:
     ok: bool
     reason: str
     metrics: dict[str, Any]
-
-
-@dataclass
-class ShoulderRoll:
-    """Roll angle to level the shoulder line (degrees, OpenCV warpAffine sense)."""
-
-    deg: float
-    metrics: dict[str, Any]
-
-
-def normalize_roll_deg(deg: float) -> float:
-    """Map roll to (-90, 90] so reversed L/R axes stay near 0, not ±180."""
-    while deg > 180.0:
-        deg -= 360.0
-    while deg <= -180.0:
-        deg += 360.0
-    if deg > 90.0:
-        deg -= 180.0
-    elif deg <= -90.0:
-        deg += 180.0
-    return deg
-
-
-def shoulder_roll_from_landmarks(
-    *,
-    left_shoulder_x: float,
-    left_shoulder_y: float,
-    left_vis: float,
-    right_shoulder_x: float,
-    right_shoulder_y: float,
-    right_vis: float,
-    min_visibility: float | None = None,
-    min_shoulder_width: float | None = None,
-) -> ShoulderRoll | None:
-    """Pure: return roll deg to make L→R shoulder line horizontal, or None."""
-    min_vis = (
-        config.TORSO_MIN_VISIBILITY if min_visibility is None else min_visibility
-    )
-    min_width = (
-        config.TORSO_MIN_SHOULDER_WIDTH
-        if min_shoulder_width is None
-        else min_shoulder_width
-    )
-    metrics: dict[str, Any] = {
-        "left_shoulder": {
-            "x": round(left_shoulder_x, 4),
-            "y": round(left_shoulder_y, 4),
-            "visibility": round(left_vis, 4),
-        },
-        "right_shoulder": {
-            "x": round(right_shoulder_x, 4),
-            "y": round(right_shoulder_y, 4),
-            "visibility": round(right_vis, 4),
-        },
-        "min_visibility": min_vis,
-        "min_shoulder_width": min_width,
-    }
-    if left_vis < min_vis or right_vis < min_vis:
-        metrics["reason"] = "shoulders_low_visibility"
-        return None
-    width = abs(left_shoulder_x - right_shoulder_x)
-    metrics["shoulder_width"] = round(width, 4)
-    if width < min_width:
-        metrics["reason"] = "shoulders_too_narrow"
-        return None
-    dx = right_shoulder_x - left_shoulder_x
-    dy = right_shoulder_y - left_shoulder_y
-    # Same convention as eye roll in crop: atan2(dy, dx) → warpAffine angle.
-    # Pose L/R are anatomical: facing camera often has dx < 0 → raw ≈ ±180.
-    raw = math.degrees(math.atan2(dy, dx))
-    deg = normalize_roll_deg(raw)
-    metrics["shoulder_roll_raw_deg"] = round(raw, 2)
-    metrics["shoulder_roll_deg"] = round(deg, 2)
-    metrics["reason"] = "ok"
-    return ShoulderRoll(deg=deg, metrics=metrics)
 
 
 def decide_torso_ok(
@@ -194,60 +118,6 @@ def _pose_landmarker():
 def warmup() -> None:
     """Load Pose model once at process start (no-op if missing)."""
     _pose_landmarker()
-
-
-def _pose_shoulder_landmarks(
-    bgr: Any,
-) -> tuple[Any, Any] | None:
-    """Return (left_shoulder, right_shoulder) Pose landmarks or None."""
-    import numpy as np
-
-    landmarker = _pose_landmarker()
-    if landmarker is None:
-        return None
-    import mediapipe as mp
-
-    if bgr is None or getattr(bgr, "size", 0) == 0:
-        return None
-    rgb = np.ascontiguousarray(bgr[:, :, ::-1])
-    mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
-    try:
-        result = landmarker.detect(mp_image)
-    except Exception as e:
-        log.warning("Pose detect failed: %s", e)
-        return None
-    if not result.pose_landmarks:
-        return None
-    lm = result.pose_landmarks[0]
-    if len(lm) <= _RIGHT_SHOULDER:
-        return None
-    return lm[_LEFT_SHOULDER], lm[_RIGHT_SHOULDER]
-
-
-def measure_shoulder_roll(bgr: Any) -> ShoulderRoll | None:
-    """
-    Detect Pose shoulders and return roll to level them.
-
-    Independent of RESUME_UPSELL_ENABLED — used by passport crop.
-    """
-    pair = _pose_shoulder_landmarks(bgr)
-    if pair is None:
-        return None
-    ls, rs = pair
-    return shoulder_roll_from_landmarks(
-        left_shoulder_x=float(ls.x),
-        left_shoulder_y=float(ls.y),
-        left_vis=float(getattr(ls, "visibility", 0.0) or 0.0),
-        right_shoulder_x=float(rs.x),
-        right_shoulder_y=float(rs.y),
-        right_vis=float(getattr(rs, "visibility", 0.0) or 0.0),
-    )
-
-
-def shoulder_roll_deg(bgr: Any) -> float | None:
-    """Degrees to level shoulder line, or None if Pose shoulders unusable."""
-    measured = measure_shoulder_roll(bgr)
-    return None if measured is None else float(measured.deg)
 
 
 def assess_torso(data: bytes) -> TorsoResult:

@@ -31,6 +31,17 @@ def test_prompt_forbids_invented_jewelry():
     assert "не добавляй" in ru
 
 
+def test_prompt_levels_shoulders():
+    lower = EDIT_PROMPT.lower()
+    assert "level" in lower or "horizontal" in lower
+    assert "shoulder" in lower
+    from app.openrouter import GOSUSLUGI_EDIT_PROMPT
+
+    ru = GOSUSLUGI_EDIT_PROMPT
+    assert "ПЛЕЧИ" in ru or "плеч" in ru
+    assert "горизонтал" in ru
+
+
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1")
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", True)
