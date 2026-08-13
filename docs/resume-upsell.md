@@ -4,7 +4,7 @@
 
 После успешного gate: MediaPipe Pose проверяет видимость торса. Если ок и
 `RESUME_UPSELL_ENABLED=1`, параллельно с паспортным Riverflow генерируется
-фото в деловом костюме (лёгкая ретушь). На `/result/{id}` — watermark-превью
+фото в деловом костюме (лёгкая ретушь). На `/result/{id}` — downscale-превью (без watermark)
 и отдельная оплата Точка **500 ₽** (`POST /api/result/{id}/pay-resume`).
 
 ## Flags

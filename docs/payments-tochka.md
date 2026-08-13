@@ -45,7 +45,7 @@
 ## Smoke resume upsell
 
 1. Селфи с торсом → `POST /api/process` → `resume_offer: true` (ждёт оба edit)
-2. `GET .../preview_resume.jpg` → 200 (watermark)
+2. `GET .../preview_resume.jpg` → 200 (downscale, без watermark)
 3. `GET .../resume.jpg` → 403
 4. `POST /api/result/{id}/pay-resume` → `payment_url` (500 ₽)
 5. Webhook → `paid_resume: true`

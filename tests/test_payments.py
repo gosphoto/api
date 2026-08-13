@@ -253,6 +253,21 @@ def test_lazy_preview_for_legacy_result(tmp_path, monkeypatch):
     assert client_get_preview_forbidden_full(rid) is None
 
 
+def test_load_file_rebuilds_stale_watermarked_preview(tmp_path, monkeypatch):
+    _setup_dirs(tmp_path, monkeypatch)
+    rid = results.save_result(_tiny_jpeg((200, 180, 160)), _tiny_jpeg())
+    folder = results.result_dir(rid)
+    stale = Image.new("RGB", (80, 100), (10, 10, 10))
+    buf = io.BytesIO()
+    stale.save(buf, format="JPEG", quality=85)
+    (folder / "preview_digital.jpg").write_bytes(buf.getvalue())
+    data = results.load_file(rid, "preview_digital.jpg")
+    assert data
+    rebuilt = Image.open(io.BytesIO(data)).convert("RGB")
+    r, g, b = rebuilt.getpixel((40, 50))
+    assert abs(r - 200) + abs(g - 180) + abs(b - 160) < 40
+
+
 def client_get_preview_forbidden_full(rid: str):
     client = TestClient(_mini_pay_app())
     assert client.get(f"/api/result/{rid}/preview_digital.jpg").status_code == 200

@@ -206,11 +206,13 @@ def load_file(result_id: str, name: str) -> bytes | None:
         return None
     if not is_valid_result_id(result_id):
         return None
+    if name in ("preview_digital.jpg", "preview_print.jpg", "preview_resume.jpg"):
+        # Always rebuild so old watermarked caches drop after deploy.
+        rebuilt = ensure_preview(result_id, name)
+        if rebuilt:
+            return rebuilt
     path = result_dir(result_id) / name
     if not path.is_file():
-        # Lazy preview for results saved before paywall
-        if name in ("preview_digital.jpg", "preview_print.jpg", "preview_resume.jpg"):
-            return ensure_preview(result_id, name)
         return None
     try:
         return path.read_bytes()
@@ -220,7 +222,7 @@ def load_file(result_id: str, name: str) -> bytes | None:
 
 
 def ensure_preview(result_id: str, preview_name: str) -> bytes | None:
-    """Build downscaled preview from full JPEG if preview file is missing."""
+    """Rebuild downscaled preview from the full JPEG (overwrites cache)."""
     source_map = {
         "preview_digital.jpg": "digital.jpg",
         "preview_print.jpg": "print.jpg",
