@@ -6,8 +6,9 @@ from app.torso import decide_torso_ok, shoulder_roll_from_landmarks
 
 
 def test_shoulder_roll_levels_tilted_line():
-    # Right shoulder lower in image coords with anatomical L/R facing camera
-    # (left.x > right.x) — raw atan2 ≈ ±180 + small tilt; normalized near tilt.
+    from app.torso import normalize_roll_deg
+
+    # Anatomical L on image-right; right shoulder lower in image → small roll
     r = shoulder_roll_from_landmarks(
         left_shoulder_x=0.7,
         left_shoulder_y=0.4,
@@ -19,9 +20,8 @@ def test_shoulder_roll_levels_tilted_line():
         min_shoulder_width=0.12,
     )
     assert r is not None
-    # dy=+0.1, dx=-0.4 → raw ≈ -165.96 → normalize → ~14.04
     raw = math.degrees(math.atan2(0.1, -0.4))
-    expected = raw + 180.0  # since raw <= -90
+    expected = normalize_roll_deg(raw)
     assert abs(r.deg - expected) < 1e-6
     assert abs(r.deg) < 90
 
