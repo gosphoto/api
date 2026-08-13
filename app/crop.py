@@ -1,4 +1,4 @@
-"""Passport crop: roll-align → fit face/margins → 35×45 @ 600dpi (FMS §34.3).
+"""Passport crop: roll-align (shoulders, else eyes) → 35×45 @ 600dpi (FMS §34.3).
 
 Expects a white-background portrait (local cutout). No generative rewrite.
 Retries crown/face-ratio variants until compliance is closest to pass.
@@ -17,6 +17,7 @@ from . import config
 from .baldness import analyze_baldness
 from .compliance import measure_compliance
 from .gate import _landmarker
+from .torso import measure_shoulder_roll
 from .whitening import force_white_background
 
 _LEFT_EYE = 33
@@ -47,7 +48,17 @@ def _crop_once(
 
     dx = (re.x - le.x) * w
     dy = (re.y - le.y) * h
-    roll_deg = math.degrees(math.atan2(dy, dx))
+    eye_roll_deg = math.degrees(math.atan2(dy, dx))
+
+    shoulder = measure_shoulder_roll(bgr)
+    if shoulder is not None:
+        roll_deg = float(shoulder.deg)
+        roll_source = "shoulders"
+        shoulder_roll_deg = round(float(shoulder.deg), 2)
+    else:
+        roll_deg = eye_roll_deg
+        roll_source = "eyes"
+        shoulder_roll_deg = None
 
     center = (w / 2, h / 2)
     rot = cv2.getRotationMatrix2D(center, roll_deg, 1.0)
@@ -111,6 +122,9 @@ def _crop_once(
     out = cv2.resize(patch, (out_w, out_h), interpolation=interp)
     metrics = {
         "roll_corrected_deg": round(roll_deg, 2),
+        "roll_source": roll_source,
+        "eye_roll_deg": round(eye_roll_deg, 2),
+        "shoulder_roll_deg": shoulder_roll_deg,
         "width": out_w,
         "height": out_h,
         "face_ratio_target": face_ratio,

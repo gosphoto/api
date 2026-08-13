@@ -1,6 +1,72 @@
 """Unit tests for torso / resume-offer decision (no MediaPipe model required)."""
 
-from app.torso import decide_torso_ok
+import math
+
+from app.torso import decide_torso_ok, shoulder_roll_from_landmarks
+
+
+def test_shoulder_roll_levels_tilted_line():
+    # Right shoulder lower → positive atan2 → positive roll to correct
+    r = shoulder_roll_from_landmarks(
+        left_shoulder_x=0.3,
+        left_shoulder_y=0.4,
+        left_vis=0.9,
+        right_shoulder_x=0.7,
+        right_shoulder_y=0.5,
+        right_vis=0.9,
+        min_visibility=0.45,
+        min_shoulder_width=0.12,
+    )
+    assert r is not None
+    expected = math.degrees(math.atan2(0.1, 0.4))
+    assert abs(r.deg - expected) < 1e-6
+
+
+def test_shoulder_roll_none_when_level_narrow():
+    assert (
+        shoulder_roll_from_landmarks(
+            left_shoulder_x=0.48,
+            left_shoulder_y=0.4,
+            left_vis=0.9,
+            right_shoulder_x=0.52,
+            right_shoulder_y=0.4,
+            right_vis=0.9,
+            min_visibility=0.45,
+            min_shoulder_width=0.12,
+        )
+        is None
+    )
+
+
+def test_shoulder_roll_none_low_visibility():
+    assert (
+        shoulder_roll_from_landmarks(
+            left_shoulder_x=0.3,
+            left_shoulder_y=0.4,
+            left_vis=0.1,
+            right_shoulder_x=0.7,
+            right_shoulder_y=0.45,
+            right_vis=0.9,
+            min_visibility=0.45,
+            min_shoulder_width=0.12,
+        )
+        is None
+    )
+
+
+def test_shoulder_roll_horizontal_is_near_zero():
+    r = shoulder_roll_from_landmarks(
+        left_shoulder_x=0.3,
+        left_shoulder_y=0.45,
+        left_vis=0.9,
+        right_shoulder_x=0.7,
+        right_shoulder_y=0.45,
+        right_vis=0.9,
+        min_visibility=0.45,
+        min_shoulder_width=0.12,
+    )
+    assert r is not None
+    assert abs(r.deg) < 1e-9
 
 
 def test_torso_ok_when_shoulders_visible_below_face():
