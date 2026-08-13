@@ -162,11 +162,11 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     top_m = config.PASSPORT_TOP_MARGIN
     default: list[tuple[float, float, float]] = [
         (0.45, face_r, top_m),
-        (0.50, 0.80, 0.10),
+        (0.50, 0.79, 0.10),
         (0.55, 0.78, 0.09),
-        (0.40, 0.80, 0.11),
-        (0.60, 0.79, 0.08),
-        (0.35, 0.81, 0.10),
+        (0.40, 0.79, 0.11),
+        (0.60, 0.78, 0.10),
+        (0.35, 0.80, 0.10),
     ]
     hinted = float(bald.get("crown_factor") or (0.22 if bald.get("is_bald") else 0.45))
     hinted = float(np.clip(hinted, 0.14, 0.65))
@@ -174,20 +174,20 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     if bald.get("is_bald"):
         priority: list[tuple[float, float, float]] = [
             (hinted, face_r, top_m),
-            (max(0.14, hinted - 0.04), 0.80, 0.10),
-            (min(0.34, hinted + 0.04), 0.80, 0.10),
-            (0.22, 0.80, 0.10),
-            (0.18, 0.81, 0.09),
-            (0.26, 0.79, 0.11),
-            (0.30, 0.80, 0.10),
-            (0.35, 0.81, 0.10),
+            (max(0.14, hinted - 0.04), 0.79, 0.10),
+            (min(0.34, hinted + 0.04), 0.79, 0.10),
+            (0.22, 0.79, 0.10),
+            (0.18, 0.80, 0.09),
+            (0.26, 0.78, 0.11),
+            (0.30, 0.79, 0.10),
+            (0.35, 0.78, 0.10),
         ]
     else:
         # High / average hair: try measured silhouette gap before blind grid.
         priority = [
             (hinted, face_r, top_m),
-            (hinted, 0.80, 0.10),
-            (float(np.clip(hinted - 0.04, 0.14, 0.65)), 0.80, 0.10),
+            (hinted, 0.79, 0.10),
+            (float(np.clip(hinted - 0.04, 0.14, 0.65)), 0.79, 0.10),
             (float(np.clip(hinted + 0.04, 0.14, 0.65)), 0.78, 0.11),
             (hinted, 0.78, 0.11),
         ]

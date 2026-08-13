@@ -1,22 +1,33 @@
 ---
-description: Deploy gosphoto-api only via git commit/push; wait for CI
+description: Deploy gosphoto-api only via git commit/push; never docker cp hotfixes
 alwaysApply: true
 ---
 
 # Deploy via commits
 
-Prod (`80.87.196.33`, `/opt/gosphoto-api`) обновляется **только** через GitHub Actions на push в `main` / `master` (workflow `deploy.yml`).
+Канон прода: репозиторий **`gosphoto/api`** → push в `main` → GitHub Actions (`deploy.yml`) → VPS `80.87.196.33` `/opt/gosphoto-api`.
+
+Рабочая копия для правок API: `~/Documents/MYPROJECTS/gosphoto-api` (не `visa/backend` как источник деплоя).
 
 ## Обязательно
 
-- Чтобы выкатить фикс: **commit → push** в `main`, затем **ждать** зелёный deploy в Actions.
-- После push кратко сказать, что ждём CI; при необходимости проверить `gh run list` / `gh run watch`.
+- Любой фикс промпта/кропа/gate/config: **править код → commit → push** в `main`.
+- После push **ждать** зелёный Actions; проверить `gh run list` / `gh run watch`.
+- Считать задеплоенным только после успешного workflow (образ пересобран).
 
 ## Запрещено
 
-- Ручной деплой по SSH: `docker compose build/up`, `rsync` кода на VPS, правки файлов в `/opt/gosphoto-api` «на живую».
-- Считать задачу задеплоенной сразу после push — дождаться успешного workflow.
+- Hotfix по SSH: `scp` / `docker cp` в контейнер / правки в `/opt/gosphoto-api` «на живую».
+- `docker compose build/up` или `rsync` кода на VPS в обход CI.
+- Коммитить только в `visa/` и считать, что прод обновится — **не обновится**.
+
+```text
+❌ scp openrouter.py → docker cp gosphoto-gate → restart
+✅ edit gosphoto-api → git commit → git push → wait CI green
+```
+
+Почему: CI делает `rsync --delete` + rebuild; любой `docker cp` **затирается** следующим деплоем (уже случалось с запретом серёг/кольца).
 
 ## Исключения
 
-Только если пользователь **явно** просит hotfix по SSH или одноразовую серверную операцию (логи, purge `preview_*.jpg`, `.env`).
+Только если пользователь **явно** просит SSH-hotfix или одноразовую серверную операцию (логи, purge файлов, правка `.env`). Даже тогда сразу сказать, что без commit в `gosphoto/api` правка временная.

@@ -117,8 +117,8 @@ PASSPORT_HEIGHT = int(
         str(round(PASSPORT_HEIGHT_MM / 25.4 * PASSPORT_DPI)),
     )
 )
-# Овал лица ≥80%; голова в длину 32–36 мм → целевая доля ~0.80 (36/45)
-PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.80"))
+# Овал лица ≥80% (soft floor 0.78); голова 32–36 мм; цель 0.79 (~35.6 мм) — чуть больше плеч
+PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.79"))
 # Верхнее поле ~4.5 мм из 45 мм
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.10"))
 HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "32"))

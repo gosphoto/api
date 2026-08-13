@@ -22,6 +22,9 @@ EDIT_PROMPT = (
     "The entire head must look pixel-identical to the input photo; do not redraw, "
     "beautify, morph, smooth, relight, or re-age the face. "
     "Do not invent a new face. Keep identity 100%. "
+    "Jewelry/accessories only if present on the input — do not add earrings, "
+    "nose rings, piercings, chains, or pendants. If the selfie has no earrings, "
+    "keep bare ears with no earrings. "
     "Only shoulders and background may differ. Remove colour spill / halo on clothes edges."
 )
 
@@ -31,7 +34,11 @@ GOSUSLUGI_EDIT_PROMPT = (
     "Формат портрета: лицо анфас, взгляд в камеру, нейтральное выражение, плечи видны. "
     "КРИТИЧНО — сохранить идентичность 1:1 с исходным селфи: "
     "то же лицо, возраст, черты, цвет и текстура кожи (включая шею и лоб — без «маски»), "
-    "те же волосы (натуральные пряди, без мультяшной заливки), одежда, украшения. "
+    "те же волосы (натуральные пряди, без мультяшной заливки), одежда; "
+    "украшения/аксессуары только если они реально есть на исходном селфи — "
+    "не добавляй серьги, пирсинг, кольцо в носу, цепочки, кулоны. "
+    "Если на входе серёг нет — уши должны быть без серёг. "
+    "Не изобретай детали лица/аксессуаров, которых нет на входе. "
     "Не ретушируй, не омолаживай, не меняй макияж, свет на коже и геометрию головы. "
     "Разрешено только: заменить фон на чисто белый и слегка подчистить контур одежды/плеч. "
     "ФОН: чисто белый #FFFFFF только СНАРУЖИ силуэта причёски и там, где сквозь "
