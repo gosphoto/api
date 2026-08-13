@@ -6,20 +6,48 @@ from app.torso import decide_torso_ok, shoulder_roll_from_landmarks
 
 
 def test_shoulder_roll_levels_tilted_line():
-    # Right shoulder lower → positive atan2 → positive roll to correct
+    # Right shoulder lower in image coords with anatomical L/R facing camera
+    # (left.x > right.x) — raw atan2 ≈ ±180 + small tilt; normalized near tilt.
     r = shoulder_roll_from_landmarks(
-        left_shoulder_x=0.3,
+        left_shoulder_x=0.7,
         left_shoulder_y=0.4,
         left_vis=0.9,
-        right_shoulder_x=0.7,
+        right_shoulder_x=0.3,
         right_shoulder_y=0.5,
         right_vis=0.9,
         min_visibility=0.45,
         min_shoulder_width=0.12,
     )
     assert r is not None
-    expected = math.degrees(math.atan2(0.1, 0.4))
+    # dy=+0.1, dx=-0.4 → raw ≈ -165.96 → normalize → ~14.04
+    raw = math.degrees(math.atan2(0.1, -0.4))
+    expected = raw + 180.0  # since raw <= -90
     assert abs(r.deg - expected) < 1e-6
+    assert abs(r.deg) < 90
+
+
+def test_shoulder_roll_facing_camera_level_near_zero():
+    # Anatomical left on image-right (typical selfie) — must NOT return ±180
+    r = shoulder_roll_from_landmarks(
+        left_shoulder_x=0.75,
+        left_shoulder_y=0.45,
+        left_vis=1.0,
+        right_shoulder_x=0.25,
+        right_shoulder_y=0.45,
+        right_vis=1.0,
+        min_visibility=0.45,
+        min_shoulder_width=0.12,
+    )
+    assert r is not None
+    assert abs(r.deg) < 1e-6
+
+
+def test_normalize_roll_wraps_near_180():
+    from app.torso import normalize_roll_deg
+
+    assert abs(normalize_roll_deg(-178.9) - 1.1) < 1e-9
+    assert abs(normalize_roll_deg(177.0) - (-3.0)) < 1e-9
+    assert abs(normalize_roll_deg(45.0) - 45.0) < 1e-9
 
 
 def test_shoulder_roll_none_when_level_narrow():

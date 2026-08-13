@@ -33,6 +33,19 @@ class ShoulderRoll:
     metrics: dict[str, Any]
 
 
+def normalize_roll_deg(deg: float) -> float:
+    """Map roll to (-90, 90] so reversed L/R axes stay near 0, not ±180."""
+    while deg > 180.0:
+        deg -= 360.0
+    while deg <= -180.0:
+        deg += 360.0
+    if deg > 90.0:
+        deg -= 180.0
+    elif deg <= -90.0:
+        deg += 180.0
+    return deg
+
+
 def shoulder_roll_from_landmarks(
     *,
     left_shoulder_x: float,
@@ -78,7 +91,10 @@ def shoulder_roll_from_landmarks(
     dx = right_shoulder_x - left_shoulder_x
     dy = right_shoulder_y - left_shoulder_y
     # Same convention as eye roll in crop: atan2(dy, dx) → warpAffine angle.
-    deg = math.degrees(math.atan2(dy, dx))
+    # Pose L/R are anatomical: facing camera often has dx < 0 → raw ≈ ±180.
+    raw = math.degrees(math.atan2(dy, dx))
+    deg = normalize_roll_deg(raw)
+    metrics["shoulder_roll_raw_deg"] = round(raw, 2)
     metrics["shoulder_roll_deg"] = round(deg, 2)
     metrics["reason"] = "ok"
     return ShoulderRoll(deg=deg, metrics=metrics)
