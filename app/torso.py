@@ -260,6 +260,7 @@ def assess_torso(data: bytes) -> TorsoResult:
         return TorsoResult(ok=False, reason="pose_model_missing", metrics={})
 
     import mediapipe as mp
+    import numpy as np
 
     from .gate import _decode_image
 
