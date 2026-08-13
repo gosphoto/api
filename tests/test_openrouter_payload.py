@@ -20,6 +20,17 @@ def test_prompt_allows_only_shoulders_and_bg():
     assert "identity" in lower
 
 
+def test_prompt_forbids_invented_jewelry():
+    lower = EDIT_PROMPT.lower()
+    assert "earring" in lower
+    assert "nose ring" in lower or "piercing" in lower
+    from app.openrouter import GOSUSLUGI_EDIT_PROMPT
+
+    ru = GOSUSLUGI_EDIT_PROMPT
+    assert "серьг" in ru
+    assert "не добавляй" in ru
+
+
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1")
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", True)

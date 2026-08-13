@@ -14,8 +14,9 @@ def test_passport_pixels_are_600dpi_35x45():
 
 
 def test_face_and_head_targets_match_rg():
-    # 80% of 45 mm = 36 mm (upper bound of head length)
-    assert config.PASSPORT_FACE_RATIO == 0.80
+    # Soft target 0.79 (~35.6 mm) — more shoulder room; still inside 32–36 mm
+    # and above soft oval floor 0.78. Hard compliance remains 32–36 mm.
+    assert config.PASSPORT_FACE_RATIO == 0.79
     assert config.HEAD_HEIGHT_MM_MIN == 32
     assert config.HEAD_HEIGHT_MM_MAX == 36
     assert config.JPEG_MAX_BYTES == 300 * 1024
