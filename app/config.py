@@ -217,14 +217,14 @@ PAYMENTS_ENABLED = os.getenv("PAYMENTS_ENABLED", "1").strip().lower() in (
     "on",
 )
 
-# Resume suit upsell (experimental): Pose torso → parallel suit edit → 500 ₽
+# Resume suit upsell (experimental): Pose torso → parallel suit edit → 300 ₽
 RESUME_UPSELL_ENABLED = os.getenv("RESUME_UPSELL_ENABLED", "1").strip().lower() in (
     "1",
     "true",
     "yes",
     "on",
 )
-RESUME_PRICE_KOPECKS = int(os.getenv("RESUME_PRICE_KOPECKS", "50000"))
+RESUME_PRICE_KOPECKS = int(os.getenv("RESUME_PRICE_KOPECKS", "30000"))
 POSE_MODEL_PATH = Path(
     os.getenv(
         "POSE_MODEL_PATH",

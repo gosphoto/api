@@ -5,7 +5,7 @@
 | Product | Price | Unlock |
 |---------|-------|--------|
 | Passport (`product=passport`) | 70 ₽ (`PRICE_KOPECKS`) | `digital.jpg` + `print.jpg` |
-| Resume suit (`product=resume`) | 500 ₽ (`RESUME_PRICE_KOPECKS`) | `resume.jpg` |
+| Resume suit (`product=resume`) | 300 ₽ (`RESUME_PRICE_KOPECKS`) | `resume.jpg` |
 
 Оплаты независимы: можно купить резюме без паспортного unlock и наоборот.
 
@@ -19,7 +19,7 @@
 | `TOCHKA_API_BASE_URL` | `https://enter.tochka.com` |
 | `PUBLIC_BASE_URL` | `https://gosphoto.ru` |
 | `PRICE_KOPECKS` | `7000` |
-| `RESUME_PRICE_KOPECKS` | `50000` |
+| `RESUME_PRICE_KOPECKS` | `30000` |
 | `RESUME_UPSELL_ENABLED` | `1` (off → без suit-генерации) |
 | `FREE_DOWNLOAD_UNLOCK` | `false` |
 | `PAYMENT_SYNC_INTERVAL_SECONDS` | `30` |
@@ -47,7 +47,7 @@
 1. Селфи с торсом → `POST /api/process` → `resume_offer: true` (ждёт оба edit)
 2. `GET .../preview_resume.jpg` → 200 (downscale, без watermark)
 3. `GET .../resume.jpg` → 403
-4. `POST /api/result/{id}/pay-resume` → `payment_url` (500 ₽)
+4. `POST /api/result/{id}/pay-resume` → `payment_url` (300 ₽)
 5. Webhook → `paid_resume: true`
 6. `GET .../resume.jpg` → 200
 

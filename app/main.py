@@ -974,7 +974,7 @@ def process_info():
             "/api/crop": "crop + print sheet",
             "/api/feedback": "contact form → SMTP email",
             "/api/result/{id}/email": "POST {email} → send paid JPEGs",
-            "/api/result/{id}/pay-resume": "Tochka checkout for resume suit (500 ₽)",
+            "/api/result/{id}/pay-resume": "Tochka checkout for resume suit (300 ₽)",
         },
         "passport": {
             "size_mm": [35, 45],

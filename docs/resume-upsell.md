@@ -5,14 +5,14 @@
 После успешного gate: MediaPipe Pose проверяет видимость торса. Если ок и
 `RESUME_UPSELL_ENABLED=1`, параллельно с паспортным Riverflow генерируется
 фото в деловом костюме (лёгкая ретушь). На `/result/{id}` — downscale-превью (без watermark)
-и отдельная оплата Точка **500 ₽** (`POST /api/result/{id}/pay-resume`).
+и отдельная оплата Точка **300 ₽** (`POST /api/result/{id}/pay-resume`).
 
 ## Flags
 
 | Env | Default | Role |
 |-----|---------|------|
 | `RESUME_UPSELL_ENABLED` | `1` | Master switch |
-| `RESUME_PRICE_KOPECKS` | `50000` | 500 ₽ |
+| `RESUME_PRICE_KOPECKS` | `30000` | 300 ₽ |
 | `POSE_MODEL_PATH` | `models/pose_landmarker_lite.task` | Pose model |
 | `TORSO_MIN_VISIBILITY` | `0.45` | Shoulder visibility |
 | `TORSO_MIN_SHOULDER_DROP` | `0.06` | Nose→shoulder drop |

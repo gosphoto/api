@@ -28,7 +28,7 @@ def _setup_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RESULTS_ENABLED", True)
     monkeypatch.setattr(config, "PAYMENTS_ENABLED", True)
     monkeypatch.setattr(config, "PRICE_KOPECKS", 10000)
-    monkeypatch.setattr(config, "RESUME_PRICE_KOPECKS", 50000)
+    monkeypatch.setattr(config, "RESUME_PRICE_KOPECKS", 30000)
     monkeypatch.setattr(config, "FREE_DOWNLOAD_UNLOCK", False)
     monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://gosphoto.ru")
     monkeypatch.setattr(config, "TOCHKA_ACCESS_TOKEN", "")
@@ -312,7 +312,7 @@ def test_resume_offer_files_and_paywall(tmp_path, monkeypatch):
     client = TestClient(_mini_pay_app())
     body = client.get(f"/api/result/{rid}").json()
     assert body["resume_offer"] is True
-    assert body["price_resume_rub"] == 500
+    assert body["price_resume_rub"] == 300
     assert body["preview_resume_url"].endswith("preview_resume.jpg")
     assert body["resume_url"] is None
     assert client.get(f"/api/result/{rid}/resume.jpg").status_code == 403
@@ -323,7 +323,7 @@ def test_resume_offer_files_and_paywall(tmp_path, monkeypatch):
     pay_body = pay.json()
     assert pay_body["product"] == "resume"
     assert pay_body["payment_required"] is True
-    assert pay_body["price_rub"] == 500
+    assert pay_body["price_rub"] == 300
     payment_id = pay_body["payment_id"]
 
     webhook = client.post(

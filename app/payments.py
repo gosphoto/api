@@ -243,7 +243,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
 
 
 def create_checkout_resume(result_id: str) -> dict[str, Any]:
-    """Create Tochka payment for resume-suit unlock (500 ₽)."""
+    """Create Tochka payment for resume-suit unlock (300 ₽)."""
     if not results.is_valid_result_id(result_id):
         raise ValueError("invalid result id")
     meta = results.load_meta(result_id)
