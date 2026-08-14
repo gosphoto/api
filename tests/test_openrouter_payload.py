@@ -31,6 +31,19 @@ def test_prompt_forbids_invented_jewelry():
     assert "не добавляй" in ru
 
 
+def test_prompt_allows_light_rescue_for_dark_source():
+    from app.openrouter import GOSUSLUGI_EDIT_PROMPT
+
+    ru = GOSUSLUGI_EDIT_PROMPT
+    assert "тёмн" in ru
+    assert "некачественн" in ru
+    assert "небольш" in ru and "ретуш" in ru
+    assert "Не омолаживай" in ru
+    lower = EDIT_PROMPT.lower()
+    assert "underexposed" in lower or "dark" in lower
+    assert "beauty" in lower
+
+
 
 def test_payload_uses_transparent_png_when_enabled(monkeypatch):
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_IMAGE_MODEL", "openai/gpt-image-1")

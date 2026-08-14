@@ -16,16 +16,19 @@ log = logging.getLogger("gosphoto-gate")
 EDIT_PROMPT = (
     "STRICT edit scope for a Russian passport / Gosuslugi photo. "
     "ALLOWED only: (1) replace background with transparent alpha or pure #FFFFFF; "
-    "(2) clean the shoulder/clothing outline BELOW the neck. "
-    "FORBIDDEN: any change to the head — face, eyes, brows, nose, mouth, ears, "
-    "skin, pores, freckles, wrinkles, stubble, expression, makeup, hair style/color/volume. "
-    "The entire head must look pixel-identical to the input photo; do not redraw, "
-    "beautify, morph, smooth, relight, or re-age the face. "
+    "(2) clean the shoulder/clothing outline BELOW the neck; "
+    "(3) if the source is dark, underexposed, noisy or soft — mild exposure lift "
+    "and light denoise on the face, not a beauty filter. "
+    "FORBIDDEN: any change to the head — face identity, eyes, brows, nose, mouth, ears, "
+    "skin color, pores, freckles, wrinkles, stubble, expression, makeup, hair style/color/volume. "
+    "Do not redraw, beautify, morph, beauty-smooth, or re-age the face. "
     "Do not invent a new face. Keep identity 100%. "
+    "If the source is already well-lit and sharp, do not relight or retouch the face. "
     "Jewelry/accessories only if present on the input — do not add earrings, "
     "nose rings, piercings, chains, or pendants. If the selfie has no earrings, "
     "keep bare ears with no earrings. "
-    "Only shoulders and background may differ. Remove colour spill / halo on clothes edges."
+    "Only shoulders, background, and this optional exposure rescue may differ. "
+    "Remove colour spill / halo on clothes edges."
 )
 
 GOSUSLUGI_EDIT_PROMPT = (
@@ -39,8 +42,12 @@ GOSUSLUGI_EDIT_PROMPT = (
     "не добавляй серьги, пирсинг, кольцо в носу, цепочки, кулоны. "
     "Если на входе серёг нет — уши должны быть без серёг. "
     "Не изобретай детали лица/аксессуаров, которых нет на входе. "
-    "Не ретушируй, не омолаживай, не меняй макияж, свет на коже и геометрию головы. "
-    "Разрешено только: заменить фон на чисто белый и слегка подчистить контур одежды/плеч. "
+    "Не омолаживай, не меняй макияж и геометрию головы, не сглаживай кожу до пластика. "
+    "Разрешено: заменить фон на чисто белый и слегка подчистить контур одежды/плеч. "
+    "Если исходное фото тёмное, недоэкспонированное или некачественное (шум, мыло) — "
+    "сделай небольшую ретушь: чуть подними экспозицию лица, смягчи шум и жёсткие тени, "
+    "как в студии на документы. Не пересвечивай, не меняй цвет и черты лица, не добавляй макияж. "
+    "Если исходник уже нормально снят — лицо не ретушируй. "
     "ФОН: чисто белый #FFFFFF только СНАРУЖИ силуэта причёски и там, где сквозь "
     "редкие крайние пряди реально видна стена комнаты. "
     "ВНУТРИ массы волос запрещены белые дыры, «сыр», соль-перец и вырезание "
@@ -53,7 +60,8 @@ GOSUSLUGI_EDIT_PROMPT = (
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF studio background with no room props or shadows on the "
     "backdrop; keep face identity pixel-faithful to the input selfie; never punch "
-    "white holes into hair; clean ear edges without erasing cartilage."
+    "white holes into hair; clean ear edges without erasing cartilage; "
+    "if the input is dark or noisy, prefer a mildly lifted clean ID exposure without beautify."
 )
 
 # Resume / LinkedIn-style portrait — clothing swap + light retouch (separate SKU).
