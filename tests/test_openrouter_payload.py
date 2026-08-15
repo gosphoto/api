@@ -26,15 +26,17 @@ def test_prompt_forbids_invented_jewelry():
     assert "nose ring" in lower or "piercing" in lower
 
 
-def test_gosuslugi_prompt_is_full_resume_prompt():
+def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     from app.openrouter import GOSUSLUGI_EDIT_PROMPT, RESUME_SUIT_PROMPT
 
-    assert GOSUSLUGI_EDIT_PROMPT == RESUME_SUIT_PROMPT
+    assert GOSUSLUGI_EDIT_PROMPT != RESUME_SUIT_PROMPT
     g = GOSUSLUGI_EDIT_PROMPT.lower()
     assert "business suit" in g
     assert "blazer" in g
     assert "no age change" in g
-    assert "soft studio lighting" in g
+    assert "#ffffff" in g
+    assert "spot" in g or "blemish" in g
+    assert "gray" in g or "grey" in g  # forbidden gray backdrop called out
     lower = EDIT_PROMPT.lower()
     assert "underexposed" in lower or "dark" in lower
     assert "beauty" in lower
