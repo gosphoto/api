@@ -31,37 +31,37 @@ EDIT_PROMPT = (
     "Remove colour spill / halo on clothes edges."
 )
 
+# Main Gosuslugi edit — same quality bar as RESUME_SUIT_PROMPT, but keep original clothes
+# (no blazer/suit) and force pure #FFFFFF document background.
 GOSUSLUGI_EDIT_PROMPT = (
-    "Сделай фото на документы для Госуслуг / загранпаспорта РФ строго по требованиям. "
-    "Один кадр: человек на чистом белом фоне #FFFFFF, без теней на фоне, без виньетки. "
-    "Формат портрета: лицо анфас, взгляд в камеру, нейтральное выражение, плечи видны. "
-    "КРИТИЧНО — сохранить идентичность 1:1 с исходным селфи: "
-    "то же лицо, возраст, черты, цвет и текстура кожи (включая шею и лоб — без «маски»), "
-    "те же волосы (натуральные пряди, без мультяшной заливки), одежда; "
-    "украшения/аксессуары только если они реально есть на исходном селфи — "
-    "не добавляй серьги, пирсинг, кольцо в носу, цепочки, кулоны. "
-    "Если на входе серёг нет — уши должны быть без серёг. "
-    "Не изобретай детали лица/аксессуаров, которых нет на входе. "
-    "Не омолаживай, не меняй макияж и геометрию головы, не сглаживай кожу до пластика. "
-    "Разрешено: заменить фон на чисто белый и слегка подчистить контур одежды/плеч. "
-    "Если исходное фото тёмное, недоэкспонированное или некачественное (шум, мыло) — "
-    "сделай небольшую ретушь: чуть подними экспозицию лица, смягчи шум и жёсткие тени, "
-    "как в студии на документы. Не пересвечивай, не меняй цвет и черты лица, не добавляй макияж. "
-    "Если исходник уже нормально снят — лицо не ретушируй. "
-    "ФОН: чисто белый #FFFFFF только СНАРУЖИ силуэта причёски и там, где сквозь "
-    "редкие крайние пряди реально видна стена комнаты. "
-    "ВНУТРИ массы волос запрещены белые дыры, «сыр», соль-перец и вырезание "
-    "светлых/блондовых прядей или бликов в #FFFFFF — это волосы, не фон. "
-    "Если сомневаешься (волос или стена) — оставь волос. "
-    "За ушами и по краям раковин убери куски стены/ореол, но не хрящ уха. "
-    "Без водяных знаков, текста, рамок, фильтров. Естественный вид."
+    "Professional Russian Gosuslugi / passport ID photo from this selfie. "
+    "Keep the person's ORIGINAL clothing from the input — do NOT change the outfit, "
+    "do NOT add a blazer, suit jacket, dress shirt, or tie. "
+    "Replace the background with pure seamless #FFFFFF white "
+    "(no shadows, vignette, or room props). "
+    "Apply light natural retouch: even skin tone, soft shine reduction, "
+    "keep pores and real texture — no plastic skin, no heavy beauty filter, "
+    "no age change. "
+    "If the source is dark, underexposed, noisy or soft — mild exposure lift "
+    "and light denoise; if already well-lit and sharp, keep retouch minimal. "
+    "CRITICAL: preserve exact face identity, age, hair style/color, expression, "
+    "eye color, facial proportions, makeup, and clothing from the input. "
+    "Jewelry/accessories only if present on the input — do not add earrings, "
+    "nose rings, piercings, chains, or pendants. If the selfie has no earrings, "
+    "keep bare ears with no earrings. "
+    "Framing: face forward, looking at camera, neutral expression, shoulders visible, "
+    "soft studio lighting. "
+    "Hair: pure white only OUTSIDE the hair silhouette; never punch white holes, "
+    "swiss-cheese, or salt-pepper gaps into the hair mass — if unsure (hair vs wall), "
+    "keep hair. Clean wall crumbs behind ears without erasing cartilage. "
+    "No watermarks, text, logos, or frames. Photorealistic, natural look."
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF studio background with no room props or shadows on the "
-    "backdrop; keep face identity pixel-faithful to the input selfie; never punch "
-    "white holes into hair; clean ear edges without erasing cartilage; "
-    "if the input is dark or noisy, prefer a mildly lifted clean ID exposure without beautify."
+    "backdrop; keep face identity and original clothing (no invented blazer); "
+    "light natural retouch only, never beauty-filter; never punch white holes into hair; "
+    "clean ear edges without erasing cartilage."
 )
 
 # Resume / LinkedIn-style portrait — clothing swap + light retouch (separate SKU).
