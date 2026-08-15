@@ -61,6 +61,9 @@ GOSUSLUGI_EDIT_PROMPT = (
     "(left and right at the same height), head upright with no tilt/roll, "
     "spine vertical, face looking straight into the camera (yaw≈0). "
     "Correct any slanted selfie posture. "
+    "If eyeglasses are present: keep them, but remove all lens glare, reflections, "
+    "hotspots and flash bounce — eyes must be fully visible through clear lenses; "
+    "do not invent glasses if the input has none; no tinted lenses. "
     "Framing: upper body / shoulders visible, face centered, soft studio lighting. "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
     "no shadows, vignette, or room props. "
@@ -70,7 +73,8 @@ GOSUSLUGI_EDIT_PROMPT = (
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity; "
     "stylish modern business suit; upright straight posture with perfectly level "
-    "shoulders and no head tilt; light retouch that clears facial spots/blemishes "
+    "shoulders and no head tilt; if glasses present — zero lens glare, eyes fully "
+    "visible; light retouch that clears facial spots/blemishes "
     "without plastic skin or heavy beauty filter."
 )
 
