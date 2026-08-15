@@ -57,6 +57,10 @@ GOSUSLUGI_EDIT_PROMPT = (
     "no age change. "
     "CRITICAL: preserve exact face identity, age, hair style/color, expression, "
     "eye color, facial proportions from the input. "
+    "Posture: seat the person upright and straight — perfectly level shoulders "
+    "(left and right at the same height), head upright with no tilt/roll, "
+    "spine vertical, face looking straight into the camera (yaw≈0). "
+    "Correct any slanted selfie posture. "
     "Framing: upper body / shoulders visible, face centered, soft studio lighting. "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
     "no shadows, vignette, or room props. "
@@ -65,7 +69,8 @@ GOSUSLUGI_EDIT_PROMPT = (
 
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity; "
-    "stylish modern business suit; light retouch that clears facial spots/blemishes "
+    "stylish modern business suit; upright straight posture with perfectly level "
+    "shoulders and no head tilt; light retouch that clears facial spots/blemishes "
     "without plastic skin or heavy beauty filter."
 )
 
