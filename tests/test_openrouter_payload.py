@@ -24,22 +24,17 @@ def test_prompt_forbids_invented_jewelry():
     lower = EDIT_PROMPT.lower()
     assert "earring" in lower
     assert "nose ring" in lower or "piercing" in lower
-    from app.openrouter import GOSUSLUGI_EDIT_PROMPT
 
+
+def test_gosuslugi_prompt_is_full_resume_prompt():
+    from app.openrouter import GOSUSLUGI_EDIT_PROMPT, RESUME_SUIT_PROMPT
+
+    assert GOSUSLUGI_EDIT_PROMPT == RESUME_SUIT_PROMPT
     g = GOSUSLUGI_EDIT_PROMPT.lower()
-    assert "earring" in g
-    assert "do not add" in g
-
-
-def test_prompt_allows_light_rescue_for_dark_source():
-    from app.openrouter import GOSUSLUGI_EDIT_PROMPT
-
-    g = GOSUSLUGI_EDIT_PROMPT.lower()
-    assert "dark" in g or "underexposed" in g
-    assert "retouch" in g
-    assert "no age change" in g or "age" in g
-    assert "blazer" in g and "do not add" in g
-    assert "original clothing" in g
+    assert "business suit" in g
+    assert "blazer" in g
+    assert "no age change" in g
+    assert "soft studio lighting" in g
     lower = EDIT_PROMPT.lower()
     assert "underexposed" in lower or "dark" in lower
     assert "beauty" in lower

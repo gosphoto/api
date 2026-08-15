@@ -31,41 +31,7 @@ EDIT_PROMPT = (
     "Remove colour spill / halo on clothes edges."
 )
 
-# Main Gosuslugi edit — same quality bar as RESUME_SUIT_PROMPT, but keep original clothes
-# (no blazer/suit) and force pure #FFFFFF document background.
-GOSUSLUGI_EDIT_PROMPT = (
-    "Professional Russian Gosuslugi / passport ID photo from this selfie. "
-    "Keep the person's ORIGINAL clothing from the input — do NOT change the outfit, "
-    "do NOT add a blazer, suit jacket, dress shirt, or tie. "
-    "Replace the background with pure seamless #FFFFFF white "
-    "(no shadows, vignette, or room props). "
-    "Apply light natural retouch: even skin tone, soft shine reduction, "
-    "keep pores and real texture — no plastic skin, no heavy beauty filter, "
-    "no age change. "
-    "If the source is dark, underexposed, noisy or soft — mild exposure lift "
-    "and light denoise; if already well-lit and sharp, keep retouch minimal. "
-    "CRITICAL: preserve exact face identity, age, hair style/color, expression, "
-    "eye color, facial proportions, makeup, and clothing from the input. "
-    "Jewelry/accessories only if present on the input — do not add earrings, "
-    "nose rings, piercings, chains, or pendants. If the selfie has no earrings, "
-    "keep bare ears with no earrings. "
-    "Framing: face forward, looking at camera, neutral expression, shoulders visible. "
-    "Do not relight the face — keep the source exposure and natural shadows; "
-    "no studio fill, no overbright/glowing skin. "
-    "Hair: pure white only OUTSIDE the hair silhouette; never punch white holes, "
-    "swiss-cheese, or salt-pepper gaps into the hair mass — if unsure (hair vs wall), "
-    "keep hair. Clean wall crumbs behind ears without erasing cartilage. "
-    "No watermarks, text, logos, or frames. Photorealistic, natural look."
-)
-
-GOSUSLUGI_SCORING_PROMPT = (
-    "Prefer a pure #FFFFFF studio background with no room props or shadows on the "
-    "backdrop; keep face identity and original clothing (no invented blazer); "
-    "light natural retouch only, never beauty-filter; never punch white holes into hair; "
-    "clean ear edges without erasing cartilage."
-)
-
-# Resume / LinkedIn-style portrait — clothing swap + light retouch (separate SKU).
+# Resume / LinkedIn-style portrait — also used as the main Gosuslugi edit prompt.
 RESUME_SUIT_PROMPT = (
     "Professional resume / LinkedIn headshot from this selfie. "
     "Dress the person in a stylish modern business suit "
@@ -80,6 +46,15 @@ RESUME_SUIT_PROMPT = (
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
+# Main process edit uses the resume prompt as-is.
+GOSUSLUGI_EDIT_PROMPT = RESUME_SUIT_PROMPT
+
+GOSUSLUGI_SCORING_PROMPT = (
+    "Prefer a clean seamless studio backdrop; keep face identity pixel-faithful; "
+    "stylish modern business suit with light natural retouch only — "
+    "no plastic skin, no heavy beauty filter, no age change."
+)
+
 GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "white_bg",
@@ -90,7 +65,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "identity",
         "label": "Identity fidelity",
-        "description": "Same face, age, skin texture, hair, clothing as the input; no beautify.",
+        "description": "Same face, age, skin texture, hair as the input; business suit OK; no beautify.",
         "weight": 0.3,
     },
     {
