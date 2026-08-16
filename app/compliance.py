@@ -22,11 +22,22 @@ _LEFT_CHEEK = 234
 _RIGHT_CHEEK = 454
 
 
-def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
-    """Check crop against FMS п.34.3 geometry (35×45, face oval, head mm)."""
+def measure_compliance(
+    bgr: np.ndarray,
+    *,
+    expected_width: int | None = None,
+    expected_height: int | None = None,
+    dpi_target: int | None = None,
+) -> dict[str, Any]:
+    """Check crop against FMS §34.3 geometry (35×45, face oval, head mm)."""
     h, w = bgr.shape[:2]
     white = corner_whiteness(bgr)
-    size_ok = (w, h) == (config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT)
+    exp_w = int(expected_width if expected_width is not None else config.PASSPORT_WIDTH)
+    exp_h = int(
+        expected_height if expected_height is not None else config.PASSPORT_HEIGHT
+    )
+    dpi = int(dpi_target if dpi_target is not None else config.PASSPORT_DPI)
+    size_ok = (w, h) == (exp_w, exp_h)
 
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     result = _landmarker().detect(
@@ -36,7 +47,7 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
         return {
             "width": w,
             "height": h,
-            "dpi_target": config.PASSPORT_DPI,
+            "dpi_target": dpi,
             "size_ok": size_ok,
             "face_count": 0,
             "bg": white,
@@ -93,7 +104,7 @@ def measure_compliance(bgr: np.ndarray) -> dict[str, Any]:
     out: dict[str, Any] = {
         "width": w,
         "height": h,
-        "dpi_target": config.PASSPORT_DPI,
+        "dpi_target": dpi,
         "face_ratio": round(face_ratio, 3),
         "top_margin": round(top_margin, 3),
         "head_height_mm": round(head_h_mm, 1),

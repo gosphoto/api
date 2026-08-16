@@ -13,6 +13,24 @@ def test_passport_pixels_are_600dpi_35x45():
     assert config.PASSPORT_HEIGHT == 1063
 
 
+def test_zagran_preset_is_300dpi_35x45():
+    p = config.resolve_doc_preset("zagran")
+    assert p["doc_type"] == "zagran"
+    assert p["dpi"] == 300
+    assert p["width"] == round(35 / 25.4 * 300)
+    assert p["height"] == round(45 / 25.4 * 300)
+    assert p["width"] == 413
+    assert p["height"] == 531
+    assert p["jpeg_max_bytes"] == 2 * 1024 * 1024
+
+
+def test_resolve_doc_preset_defaults_to_passport_rf():
+    p = config.resolve_doc_preset(None)
+    assert p["doc_type"] == "passport_rf"
+    assert p["dpi"] == 600
+    assert config.resolve_doc_preset("nope")["doc_type"] == "passport_rf"
+
+
 def test_face_and_head_targets_match_rg():
     # Soft target 0.79 (~35.6 mm) — more shoulder room; still inside 32–36 mm
     # and above soft oval floor 0.78. Hard compliance remains 32–36 mm.
@@ -40,3 +58,19 @@ def test_encode_jpeg_respects_300kb_and_dpi():
     jpeg = encode_jpeg(bgr, quality=95)
     assert jpeg[:2] == b"\xff\xd8"
     assert len(jpeg) <= config.JPEG_MAX_BYTES
+
+
+def test_encode_jpeg_zagran_dpi_and_budget():
+    p = config.resolve_doc_preset("zagran")
+    bgr = np.full((p["height"], p["width"], 3), 255, dtype=np.uint8)
+    jpeg = encode_jpeg(
+        bgr, quality=95, max_bytes=p["jpeg_max_bytes"], dpi=p["dpi"]
+    )
+    assert jpeg[:2] == b"\xff\xd8"
+    assert len(jpeg) <= p["jpeg_max_bytes"]
+    from io import BytesIO
+
+    from PIL import Image
+
+    img = Image.open(BytesIO(jpeg))
+    assert img.info.get("dpi") == (300.0, 300.0) or img.info.get("dpi") == (300, 300)

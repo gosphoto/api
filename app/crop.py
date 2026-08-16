@@ -31,6 +31,8 @@ def _crop_once(
     crown_factor: float,
     face_ratio: float,
     top_margin: float,
+    out_w: int | None = None,
+    out_h: int | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     result = _landmarker().detect(mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb))
@@ -76,8 +78,8 @@ def _crop_once(
     face_h = max(chin_y - crown_y, 1.0)
     mid_x = ((le.x + re.x) / 2) * w
 
-    out_w = config.PASSPORT_WIDTH
-    out_h = config.PASSPORT_HEIGHT
+    out_w = int(out_w if out_w is not None else config.PASSPORT_WIDTH)
+    out_h = int(out_h if out_h is not None else config.PASSPORT_HEIGHT)
     target_face = face_ratio * out_h
     scale = target_face / face_h
 
@@ -203,13 +205,23 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     return out
 
 
-def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
+def run_crop_stage(
+    bgr: np.ndarray,
+    *,
+    width: int | None = None,
+    height: int | None = None,
+    dpi: int | None = None,
+) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
     """
-    White-bg portrait → 35×45 @600dpi passport BGR + metrics + compliance.
+    White-bg portrait → 35×45 passport BGR + metrics + compliance.
 
     Tries several crown/face geometries and keeps the best compliance result.
     Targets FMS §34.3: face oval ≥80%, head 32–36 mm.
+    Output pixel size follows width/height (default RF 600 dpi).
     """
+    out_w = int(width if width is not None else config.PASSPORT_WIDTH)
+    out_h = int(height if height is not None else config.PASSPORT_HEIGHT)
+    dpi_target = int(dpi if dpi is not None else config.PASSPORT_DPI)
     bald = analyze_baldness(bgr).as_dict()
     attempts = _crop_attempts(bald)
 
@@ -219,15 +231,26 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
     for crown_f, face_r, top_m in attempts:
         try:
             cropped, metrics = _crop_once(
-                bgr, crown_factor=crown_f, face_ratio=face_r, top_margin=top_m
+                bgr,
+                crown_factor=crown_f,
+                face_ratio=face_r,
+                top_margin=top_m,
+                out_w=out_w,
+                out_h=out_h,
             )
             cropped = force_white_background(cropped, tol=55)
-            comp = measure_compliance(cropped)
+            comp = measure_compliance(
+                cropped,
+                expected_width=out_w,
+                expected_height=out_h,
+                dpi_target=dpi_target,
+            )
             score = _score_compliance(comp)
             metrics = {
                 **metrics,
                 "attempt_score": round(score, 2),
                 "baldness": bald,
+                "dpi": dpi_target,
             }
             if best is None or score > best[3]:
                 best = (cropped, metrics, comp, score)
@@ -242,7 +265,7 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
     if best is None:
         # Last-resort center crop to 35×45
         h, w = bgr.shape[:2]
-        target_ratio = config.PASSPORT_WIDTH / config.PASSPORT_HEIGHT
+        target_ratio = out_w / out_h
         cur = w / max(h, 1)
         if cur > target_ratio:
             new_w = int(h * target_ratio)
@@ -254,18 +277,31 @@ def run_crop_stage(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any], dict[st
             patch = bgr[y0 : y0 + new_h, :]
         cropped = cv2.resize(
             patch,
-            (config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT),
+            (out_w, out_h),
             interpolation=cv2.INTER_AREA,
         )
         cropped = force_white_background(cropped, tol=55)
-        comp = measure_compliance(cropped)
-        metrics = {"fallback": True, "errors": errors[:4], "baldness": bald}
+        comp = measure_compliance(
+            cropped,
+            expected_width=out_w,
+            expected_height=out_h,
+            dpi_target=dpi_target,
+        )
+        metrics = {
+            "fallback": True,
+            "errors": errors[:4],
+            "baldness": bald,
+            "dpi": dpi_target,
+            "width": out_w,
+            "height": out_h,
+        }
         return cropped, metrics, comp
 
     cropped, metrics, comp, _ = best
     if errors:
         metrics["skipped_errors"] = errors[:3]
     metrics["baldness"] = bald
+    metrics["dpi"] = dpi_target
     return cropped, metrics, comp
 
 
@@ -273,15 +309,17 @@ def encode_jpeg(
     bgr: np.ndarray,
     quality: int | None = None,
     max_bytes: int | None = None,
+    dpi: int | None = None,
 ) -> bytes:
-    """JPEG with ≥600 DPI metadata; shrink quality until ≤300 KB (FMS §34.3)."""
+    """JPEG with DPI metadata; shrink quality until under max_bytes."""
     from io import BytesIO
 
     from PIL import Image
 
     q0 = int(quality if quality is not None else config.JPEG_QUALITY)
     limit = int(max_bytes if max_bytes is not None else config.JPEG_MAX_BYTES)
-    dpi = (config.PASSPORT_DPI, config.PASSPORT_DPI)
+    dpi_val = int(dpi if dpi is not None else config.PASSPORT_DPI)
+    dpi_tuple = (dpi_val, dpi_val)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     img = Image.fromarray(rgb)
 
@@ -292,7 +330,7 @@ def encode_jpeg(
             buf,
             format="JPEG",
             quality=max(1, q),
-            dpi=dpi,
+            dpi=dpi_tuple,
             optimize=True,
         )
         best = buf.getvalue()

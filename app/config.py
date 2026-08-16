@@ -102,6 +102,7 @@ RIVERFLOW_TIMEOUT_SEC = float(
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
 # https://rg.ru/documents/2011/08/22/pasport-dok.html
 # 35×45 mm @ ≥600 dpi → 827×1063 px; JPEG ≤300 KB
+# Загран (Госуслуги): same 35×45 @ ≥300 dpi, larger file budget
 PASSPORT_WIDTH_MM = 35.0
 PASSPORT_HEIGHT_MM = 45.0
 PASSPORT_DPI = int(os.getenv("PASSPORT_DPI", "600"))
@@ -127,6 +128,51 @@ HEAD_WIDTH_MM_MIN = float(os.getenv("HEAD_WIDTH_MM_MIN", "18"))
 HEAD_WIDTH_MM_MAX = float(os.getenv("HEAD_WIDTH_MM_MAX", "25"))
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "92"))
 JPEG_MAX_BYTES = int(os.getenv("JPEG_MAX_BYTES", str(300 * 1024)))
+
+DOC_TYPE_PASSPORT_RF = "passport_rf"
+DOC_TYPE_ZAGRAN = "zagran"
+DEFAULT_DOC_TYPE = DOC_TYPE_PASSPORT_RF
+ZAGRAN_DPI = int(os.getenv("ZAGRAN_DPI", "300"))
+ZAGRAN_JPEG_MAX_BYTES = int(
+    os.getenv("ZAGRAN_JPEG_MAX_BYTES", str(2 * 1024 * 1024))
+)
+
+
+def _doc_pixels(dpi: int) -> tuple[int, int]:
+    return (
+        round(PASSPORT_WIDTH_MM / 25.4 * dpi),
+        round(PASSPORT_HEIGHT_MM / 25.4 * dpi),
+    )
+
+
+_ZAGRAN_W, _ZAGRAN_H = _doc_pixels(ZAGRAN_DPI)
+
+DOC_PRESETS: dict[str, dict] = {
+    DOC_TYPE_PASSPORT_RF: {
+        "doc_type": DOC_TYPE_PASSPORT_RF,
+        "label": "Паспорт РФ",
+        "dpi": PASSPORT_DPI,
+        "width": PASSPORT_WIDTH,
+        "height": PASSPORT_HEIGHT,
+        "jpeg_max_bytes": JPEG_MAX_BYTES,
+    },
+    DOC_TYPE_ZAGRAN: {
+        "doc_type": DOC_TYPE_ZAGRAN,
+        "label": "Загранпаспорт",
+        "dpi": ZAGRAN_DPI,
+        "width": int(os.getenv("ZAGRAN_WIDTH", str(_ZAGRAN_W))),
+        "height": int(os.getenv("ZAGRAN_HEIGHT", str(_ZAGRAN_H))),
+        "jpeg_max_bytes": ZAGRAN_JPEG_MAX_BYTES,
+    },
+}
+
+
+def resolve_doc_preset(doc_type: str | None) -> dict:
+    """Return crop/encode preset for passport_rf | zagran (default RF)."""
+    key = (doc_type or "").strip().lower() or DEFAULT_DOC_TYPE
+    if key not in DOC_PRESETS:
+        key = DEFAULT_DOC_TYPE
+    return dict(DOC_PRESETS[key])
 
 # Failed gate uploads land here for review (mounted as a volume in compose).
 REJECTEDS_DIR = Path(

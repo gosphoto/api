@@ -100,6 +100,9 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "width": meta.get("width") or config.PASSPORT_WIDTH,
         "height": meta.get("height") or config.PASSPORT_HEIGHT,
         "dpi": meta.get("dpi") or config.PASSPORT_DPI,
+        "doc_type": meta.get("doc_type") or config.DEFAULT_DOC_TYPE,
+        "doc_label": meta.get("doc_label")
+        or config.DOC_PRESETS[config.DEFAULT_DOC_TYPE]["label"],
         "compliance": meta.get("compliance") or {},
         "print_sheet": print_meta,
         "preview_digital_url": f"/api/result/{result_id}/preview_digital.jpg",
@@ -414,8 +417,14 @@ def _run_passport_stages(
     data: bytes,
     *,
     mime: str,
+    preset: dict | None = None,
 ) -> dict:
     """Gate-passed input → readiness/edit → crop → JPEGs. Raises or returns error dict."""
+    preset = preset or config.resolve_doc_preset(None)
+    out_w = int(preset["width"])
+    out_h = int(preset["height"])
+    dpi = int(preset["dpi"])
+    jpeg_max = int(preset["jpeg_max_bytes"])
     readiness_meta: dict | None = None
     skipped_edit = False
     decoded = _decode_image(data)
@@ -449,7 +458,9 @@ def _run_passport_stages(
         return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
 
     try:
-        cropped, crop_metrics, compliance = run_crop_stage(edited)
+        cropped, crop_metrics, compliance = run_crop_stage(
+            edited, width=out_w, height=out_h, dpi=dpi
+        )
     except Exception as e:
         log.exception("Crop stage failed")
         return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
@@ -462,7 +473,9 @@ def _run_passport_stages(
         try:
             edited, edit_meta = run_edit_stage(data, mime=mime)
             edit_meta["escalated_from_skip"] = True
-            cropped, crop_metrics, compliance = run_crop_stage(edited)
+            cropped, crop_metrics, compliance = run_crop_stage(
+                edited, width=out_w, height=out_h, dpi=dpi
+            )
             skipped_edit = False
         except OpenRouterError as e:
             log.exception("Escalated edit OpenRouter error")
@@ -477,13 +490,13 @@ def _run_passport_stages(
             log.exception("Escalated edit/crop failed")
             return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
 
-    jpeg = encode_jpeg(cropped)
+    jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
     print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     compliance = {
         **compliance,
         "jpeg_bytes": len(jpeg),
-        "jpeg_max_bytes": config.JPEG_MAX_BYTES,
-        "jpeg_size_ok": len(jpeg) <= config.JPEG_MAX_BYTES,
+        "jpeg_max_bytes": jpeg_max,
+        "jpeg_size_ok": len(jpeg) <= jpeg_max,
     }
     print_meta = {
         k: print_sheet[k]
@@ -508,6 +521,7 @@ def _run_passport_stages(
         "readiness_meta": readiness_meta,
         "skipped_edit": skipped_edit,
         "edit_stage_name": edit_stage_name,
+        "preset": preset,
     }
 
 
@@ -516,8 +530,10 @@ def _run_process_pipeline(
     *,
     filename: str | None,
     mime: str,
+    doc_type: str | None = None,
 ) -> dict:
     """Sync gate → optional parallel passport+resume → save. Returns ok/error dict."""
+    preset = config.resolve_doc_preset(doc_type)
     data, gate = prepare_upload(data)
     if not gate.ok:
         save_rejected(
@@ -537,10 +553,11 @@ def _run_process_pipeline(
 
     torso = torso_mod.assess_torso(data)
     log.info(
-        "Torso check ok=%s reason=%s upsell=%s",
+        "Torso check ok=%s reason=%s upsell=%s doc_type=%s",
         torso.ok,
         torso.reason,
         config.RESUME_UPSELL_ENABLED,
+        preset["doc_type"],
     )
     run_suit = bool(config.RESUME_UPSELL_ENABLED and torso.ok)
 
@@ -550,7 +567,9 @@ def _run_process_pipeline(
 
     if run_suit:
         with ThreadPoolExecutor(max_workers=2) as pool:
-            fut_pass = pool.submit(_run_passport_stages, data, mime=mime)
+            fut_pass = pool.submit(
+                _run_passport_stages, data, mime=mime, preset=preset
+            )
             fut_suit = pool.submit(run_resume_suit_edit, data, mime)
             passport = fut_pass.result()
             try:
@@ -561,7 +580,7 @@ def _run_process_pipeline(
                 resume_jpeg = None
                 resume_meta = None
     else:
-        passport = _run_passport_stages(data, mime=mime)
+        passport = _run_passport_stages(data, mime=mime, preset=preset)
 
     if not passport.get("ok"):
         return passport
@@ -581,6 +600,8 @@ def _run_process_pipeline(
         pipeline.append("resume_suit")
 
     pair_meta = {
+        "doc_type": preset["doc_type"],
+        "doc_label": preset["label"],
         "gate": gate.metrics,
         "torso": {"ok": torso.ok, "reason": torso.reason, **torso.metrics},
         "torso_ok": torso.ok,
@@ -592,9 +613,9 @@ def _run_process_pipeline(
         "resume": resume_meta,
         "resume_error": resume_error,
         "pipeline": pipeline,
-        "width": config.PASSPORT_WIDTH,
-        "height": config.PASSPORT_HEIGHT,
-        "dpi": config.PASSPORT_DPI,
+        "width": preset["width"],
+        "height": preset["height"],
+        "dpi": preset["dpi"],
         "mime": "image/jpeg",
     }
     save_pair(
@@ -620,9 +641,11 @@ def _run_process_pipeline(
         "stage": "done",
         "message": done_msg,
         "mime": "image/jpeg",
-        "width": config.PASSPORT_WIDTH,
-        "height": config.PASSPORT_HEIGHT,
-        "dpi": config.PASSPORT_DPI,
+        "doc_type": preset["doc_type"],
+        "doc_label": preset["label"],
+        "width": preset["width"],
+        "height": preset["height"],
+        "dpi": preset["dpi"],
         "print_sheet": print_meta,
         "pipeline": pair_meta["pipeline"],
         "model": edit_meta.get("model"),
@@ -645,12 +668,12 @@ def _run_process_pipeline(
 
 
 @app.post("/api/process")
-async def process(file: UploadFile = File(...), format: str = "json"):
-    """RF passport: gate → Riverflow v2.5 Pro (solid white) → 35×45 crop.
-
-    Falls back to local cutout if Riverflow/OpenRouter fails.
-    Prefer /api/process/stream for UX progress events.
-    """
+async def process(
+    file: UploadFile = File(...),
+    format: str = "json",
+    doc_type: str | None = Form(None),
+):
+    """RF passport / zagran: gate → edit → 35×45 crop at doc preset DPI."""
     data = await _read_upload(file)
     mime = _guess_mime(file.filename, file.content_type)
     payload = await asyncio.to_thread(
@@ -658,6 +681,7 @@ async def process(file: UploadFile = File(...), format: str = "json"):
         data,
         filename=file.filename,
         mime=mime,
+        doc_type=doc_type,
     )
     if not payload.get("ok"):
         if payload.get("stage") == "gate":
@@ -688,7 +712,10 @@ async def process(file: UploadFile = File(...), format: str = "json"):
 
 
 @app.post("/api/process/stream")
-async def process_stream(file: UploadFile = File(...)):
+async def process_stream(
+    file: UploadFile = File(...),
+    doc_type: str | None = Form(None),
+):
     """Same pipeline as /api/process, but SSE progress every ~4s until done/error."""
     data = await _read_upload(file)
     mime = _guess_mime(file.filename, file.content_type)
@@ -700,6 +727,7 @@ async def process_stream(file: UploadFile = File(...)):
             data,
             filename=filename,
             mime=mime,
+            doc_type=doc_type,
         )
 
     async def events():
