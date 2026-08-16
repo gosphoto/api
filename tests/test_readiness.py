@@ -41,6 +41,18 @@ def test_white_with_shadow_band_not_ready():
     assert r.ready is False
 
 
+def test_near_white_studio_border_still_ready():
+    """Slightly off-white plate (~79% border white) must skip Riverflow."""
+    bgr = _portrait(bg=250)
+    # sparse soft spots on border (not a full vignette wall)
+    bgr[:12, 40:80] = (228, 228, 228)
+    bgr[-12:, 200:240] = (230, 230, 230)
+    r = assess_readiness(bgr)
+    assert r.scores["border_white_frac"] >= 0.75, r.as_dict()
+    assert r.ready is True, r.as_dict()
+    assert r.reason == "studio_ready"
+
+
 def test_tight_studio_white_shirt_in_corners_still_ready():
     """Light tee only in bottom corner chips; plate must stay studio-ready."""
     h, w = 400, 300

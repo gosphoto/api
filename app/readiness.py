@@ -11,13 +11,15 @@ from typing import Any
 import cv2
 import numpy as np
 
-# Border / bg thresholds (fail-closed).
+# Border / bg thresholds (fail-closed, but not hair-trigger).
+# Prod miss 2026-08-16: border_white_frac≈0.79 on near-white studio → Riverflow
+# rewrote clothes; loosen frac so crop-only still wins on "almost studio" plates.
 CORNER_WHITE_MIN = 245.0
-BORDER_WHITE_MIN = 242.0
-BORDER_WHITE_FRAC_MIN = 0.90
+BORDER_WHITE_MIN = 238.0
+BORDER_WHITE_FRAC_MIN = 0.75
 BORDER_BG_MIN_PIX = 200
-BG_LUMA_STD_MAX = 12.0
-BG_CHROMA_MEAN_MAX = 8.0
+BG_LUMA_STD_MAX = 14.0
+BG_CHROMA_MEAN_MAX = 10.0
 SUBJECT_AREA_FRAC_MIN = 0.08
 # Tight passport framing can fill most of the frame with torso/head.
 SUBJECT_AREA_FRAC_MAX = 0.92
