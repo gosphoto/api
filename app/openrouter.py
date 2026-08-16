@@ -51,10 +51,12 @@ GOSUSLUGI_EDIT_PROMPT = (
     "Professional resume / LinkedIn headshot from this selfie. "
     "Dress the person in a stylish modern business suit "
     "(well-fitted blazer, dress shirt, subtle tie optional if it fits the look). "
-    "Apply light natural retouch: even skin tone, soft shine reduction, "
-    "gently remove facial spots, blemishes, redness patches and uneven blotches — "
-    "keep pores and real texture — no plastic skin, no heavy beauty filter, "
-    "no age change. "
+    "Face exposure: keep the input face brightness and skin tone unchanged — "
+    "do not brighten, bleach, overexpose, flash-relight, or wash out the skin; "
+    "no high-key studio face lighting; cheeks/forehead must not turn chalky white. "
+    "Retouch only local spots: gently remove facial spots, blemishes and redness "
+    "patches without lifting overall exposure — keep pores, freckles and real "
+    "texture — no plastic skin, no heavy beauty filter, no age change. "
     "CRITICAL: preserve exact face identity, age, hair style/color, expression, "
     "eye color, facial proportions from the input. "
     "Posture: seat the person upright and straight — perfectly level shoulders "
@@ -64,17 +66,19 @@ GOSUSLUGI_EDIT_PROMPT = (
     "If eyeglasses are present: keep them, but remove all lens glare, reflections, "
     "hotspots and flash bounce — eyes must be fully visible through clear lenses; "
     "do not invent glasses if the input has none; no tinted lenses. "
-    "Framing: upper body / shoulders visible, face centered, soft studio lighting. "
+    "Framing: upper body / shoulders visible, face centered; "
+    "keep natural face lighting from the input (not a bright studio key light). "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
     "no shadows, vignette, or room props. "
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
-    "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity; "
+    "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
+    "natural skin exposure (no bleach/overexpose); "
     "stylish modern business suit; upright straight posture with perfectly level "
     "shoulders and no head tilt; if glasses present — zero lens glare, eyes fully "
-    "visible; light retouch that clears facial spots/blemishes "
+    "visible; light local spot cleanup only — "
     "without plastic skin or heavy beauty filter."
 )
 
@@ -88,7 +92,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "identity",
         "label": "Identity fidelity",
-        "description": "Same face, age, skin texture, hair as the input; business suit OK; no beautify.",
+        "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach or beautify; business suit OK.",
         "weight": 0.3,
     },
     {

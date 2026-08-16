@@ -39,6 +39,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "level shoulders" in g or "upright" in g
     assert "glare" in g or "reflection" in g
     assert "gray" in g or "grey" in g  # forbidden gray backdrop called out
+    assert "overexpose" in g or "bleach" in g
+    assert "soft studio lighting" not in g
+    assert "even skin tone" not in g
     lower = EDIT_PROMPT.lower()
     assert "underexposed" in lower or "dark" in lower
     assert "beauty" in lower
