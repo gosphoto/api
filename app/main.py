@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from concurrent.futures import ThreadPoolExecutor
 from . import config
+from . import doc_metrics as doc_metrics_mod
 from . import feedback as feedback_mod
 from . import payments as payments_mod
 from . import progress_events as progress_events_mod
@@ -629,6 +630,12 @@ def _run_process_pipeline(
         print_jpeg,
         meta=pair_meta,
         resume_jpeg=resume_jpeg,
+    )
+    doc_metrics_mod.record_doc_type(
+        doc_type=preset["doc_type"],
+        result_id=result_id,
+        dpi=preset["dpi"],
+        source="process",
     )
     if skipped_edit:
         done_msg = "Фото 35×45 (crop-only, без Riverflow) + лист 10×15 (4 фото)"
