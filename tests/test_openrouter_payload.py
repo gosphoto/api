@@ -47,6 +47,8 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
     assert "toy" in g or "foreign object" in g
+    assert "mole" in g or "freckle" in g
+    assert "invent" in g
     lower = EDIT_PROMPT.lower()
     assert "underexposed" in lower or "dark" in lower
     assert "beauty" in lower

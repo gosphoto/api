@@ -54,9 +54,13 @@ GOSUSLUGI_EDIT_PROMPT = (
     "Face exposure: keep the input face brightness and skin tone unchanged — "
     "do not brighten, bleach, overexpose, flash-relight, or wash out the skin; "
     "no high-key studio face lighting; cheeks/forehead must not turn chalky white. "
-    "Retouch only local spots: gently remove facial spots, blemishes and redness "
-    "patches without lifting overall exposure — keep pores, freckles and real "
-    "texture — no plastic skin, no heavy beauty filter, no age change. "
+    "Retouch only local temporary blemishes and redness patches without lifting "
+    "overall exposure — keep pores and real texture — no plastic skin, no heavy "
+    "beauty filter, no age change. "
+    "FORBIDDEN skin marks: do not invent, add, densify, or scatter moles, freckles, "
+    "birthmarks, age spots, or any new skin dots/patches that are not clearly "
+    "visible on the source face; if the input has few or no freckles/moles, the "
+    "output must match — zero invented spots. "
     "CRITICAL: preserve exact face identity, age, hair style/color, "
     "eye color, facial proportions from the input. "
     "Gosuslugi / RF passport rules: face must match the person's age; face fully "
@@ -85,7 +89,7 @@ GOSUSLUGI_EDIT_PROMPT = (
 
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
-    "natural skin exposure (no bleach/overexpose); "
+    "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "
     "open face, neutral no-smile expression, gaze at camera; "
     "stylish modern business suit; upright straight posture with perfectly level "
     "shoulders and no head tilt; if glasses present — zero lens glare, eyes fully "
@@ -104,7 +108,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "identity",
         "label": "Identity fidelity",
-        "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach or beautify; business suit OK.",
+        "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK.",
         "weight": 0.3,
     },
     {
