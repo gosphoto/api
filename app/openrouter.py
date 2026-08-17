@@ -385,7 +385,7 @@ def edit_selfie_riverflow(
     """Gosuslugi white-bg via OpenRouter /images.
 
     Riverflow models get native background_mode + scoring; other models
-    (e.g. black-forest-labs/flux.2-pro) use a plain edit payload.
+    (e.g. google/gemini-2.5-flash-image) use a plain edit payload.
     """
     use_prompt = prompt or GOSUSLUGI_EDIT_PROMPT
     if _is_riverflow_model() and use_prompt == GOSUSLUGI_EDIT_PROMPT:

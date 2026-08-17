@@ -190,7 +190,7 @@ jobs:
           # Sensible defaults if never set on this host
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
           data["EDIT_BACKEND"] = "riverflow"
-          data["RIVERFLOW_MODEL"] = "black-forest-labs/flux.2-pro"
+          data["RIVERFLOW_MODEL"] = "google/gemini-2.5-flash-image"
           data.setdefault("RIVERFLOW_BG_MODE", "solid")
           data.setdefault("RIVERFLOW_BG_HEX", "#FFFFFF")
           data.setdefault("OPENROUTER_TIMEOUT_SEC", "300")

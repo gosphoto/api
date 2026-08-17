@@ -85,9 +85,10 @@ OPENROUTER_TRANSPARENT_BG = os.getenv(
 ).strip().lower() in ("1", "true", "yes", "on")
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 
-# Live /api/process edit (OpenRouter /images). FLUX.2 Pro default after A/B.
+# Live /api/process edit (OpenRouter /images). Gemini after A/B vs FLUX.2 Pro
+# (cheaper, less invented cheek texture on SPUI8374 2026-08-17).
 RIVERFLOW_MODEL = os.getenv(
-    "RIVERFLOW_MODEL", "black-forest-labs/flux.2-pro"
+    "RIVERFLOW_MODEL", "google/gemini-2.5-flash-image"
 ).strip()
 RIVERFLOW_BG_MODE = os.getenv("RIVERFLOW_BG_MODE", "solid").strip().lower()
 RIVERFLOW_BG_HEX = os.getenv("RIVERFLOW_BG_HEX", "#FFFFFF").strip().strip('"').strip("'")

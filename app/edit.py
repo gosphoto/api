@@ -41,7 +41,7 @@ def run_edit_riverflow(
     data: bytes,
     mime: str = "image/jpeg",
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """White-bg edit via RIVERFLOW_MODEL (Riverflow or e.g. FLUX.2 Pro)."""
+    """White-bg edit via RIVERFLOW_MODEL (Riverflow or e.g. Gemini Flash Image)."""
     src = _decode_image(data)
     if src is None:
         raise RuntimeError("decode_error")
