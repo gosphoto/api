@@ -65,12 +65,24 @@ def warmup() -> None:
     _landmarker()
 
 
+@lru_cache(maxsize=1)
+def _register_heif_opener() -> None:
+    """Allow HEIC/HEIF (iPhone) even when uploaded as .jpg."""
+    try:
+        from pillow_heif import register_heif_opener
+
+        register_heif_opener()
+    except ImportError:
+        pass
+
+
 def _decode_image(data: bytes) -> np.ndarray | None:
     """Decode image bytes with EXIF orientation applied (phone selfies)."""
     from io import BytesIO
 
     from PIL import Image, ImageOps
 
+    _register_heif_opener()
     try:
         pil = Image.open(BytesIO(data))
         pil = ImageOps.exif_transpose(pil)
