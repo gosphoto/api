@@ -92,3 +92,13 @@ def test_gemini_keeps_3_4_aspect(monkeypatch):
     monkeypatch.setattr("app.openrouter.config.OPENROUTER_TRANSPARENT_BG", False)
     payload = build_edit_payload(b"fake", "image/jpeg")
     assert payload["aspect_ratio"] == "3:4"
+
+
+def test_riverflow_payload_uses_passed_model():
+    from app.openrouter import build_riverflow_images_payload
+
+    payload = build_riverflow_images_payload(
+        b"fake", "image/jpeg", model="sourceful/riverflow-v2.5-pro"
+    )
+    assert payload["model"] == "sourceful/riverflow-v2.5-pro"
+    assert payload["image_config"]["background_mode"] == "solid"

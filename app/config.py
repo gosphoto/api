@@ -91,6 +91,13 @@ OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 RIVERFLOW_MODEL = os.getenv(
     "RIVERFLOW_MODEL", "google/gemini-2.5-flash-image"
 ).strip()
+# Native white-bg + scoring payload. Used when messy hair sits on a light wall.
+RIVERFLOW_PRO_MODEL = os.getenv(
+    "RIVERFLOW_PRO_MODEL", "sourceful/riverflow-v2.5-pro"
+).strip()
+EDIT_ROUTE_PRO_ON_MESSY_HAIR = os.getenv(
+    "EDIT_ROUTE_PRO_ON_MESSY_HAIR", "1"
+).strip().lower() in ("1", "true", "yes", "on")
 RIVERFLOW_BG_MODE = os.getenv("RIVERFLOW_BG_MODE", "solid").strip().lower()
 RIVERFLOW_BG_HEX = os.getenv("RIVERFLOW_BG_HEX", "#FFFFFF").strip().strip('"').strip("'")
 if RIVERFLOW_BG_HEX and not RIVERFLOW_BG_HEX.startswith("#"):

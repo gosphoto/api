@@ -17,6 +17,7 @@ from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
 from .compose_bg import composite_on_white
 from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
+from .edit_router import choose_edit_model
 from .openrouter import edit_selfie, edit_selfie_resume, edit_selfie_riverflow
 from .whitening import force_white_background
 
@@ -53,7 +54,14 @@ def run_edit_riverflow(
         raise RuntimeError("encode_for_riverflow_failed")
     orig_jpg = buf.tobytes()
 
-    raw = edit_selfie_riverflow(orig_jpg, mime="image/jpeg")
+    route = choose_edit_model(src_p)
+    log.info(
+        "Edit route model=%s reason=%s scores=%s",
+        route.model,
+        route.reason,
+        route.scores,
+    )
+    raw = edit_selfie_riverflow(orig_jpg, mime="image/jpeg", model=route.model)
     decoded = _decode_any(raw)
     if decoded is None:
         raise RuntimeError("Riverflow decode failed")
@@ -62,11 +70,12 @@ def run_edit_riverflow(
     out = force_white_background(out, tol=48)
 
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
-    model = config.RIVERFLOW_MODEL
+    model = route.model
     cutout = "riverflow" if "riverflow" in model.lower() else "openrouter_edit"
     return out, {
         "model": model,
         "cutout": cutout,
+        "edit_route": route.as_dict(),
         "background_mode": bg_mode,
         "background_hex_color": (
             config.RIVERFLOW_BG_HEX if bg_mode == "solid" else None

@@ -341,15 +341,17 @@ def build_riverflow_images_payload(
     image_bytes: bytes,
     mime: str = "image/jpeg",
     *,
+    model: str | None = None,
     prompt: str | None = None,
 ) -> dict[str, Any]:
     """POST /images payload for Riverflow (fallback path)."""
+    model = model or config.RIVERFLOW_MODEL
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
     if bg_mode not in ("solid", "transparent", "original"):
         bg_mode = "solid"
     out_fmt = "png" if bg_mode == "transparent" else "jpeg"
     payload: dict[str, Any] = {
-        "model": config.RIVERFLOW_MODEL,
+        "model": model,
         "prompt": prompt or GOSUSLUGI_EDIT_PROMPT,
         "aspect_ratio": "3:4",
         "resolution": config.RIVERFLOW_IMAGE_SIZE or "1K",
@@ -395,6 +397,7 @@ def edit_selfie_riverflow(
     image_bytes: bytes,
     mime: str = "image/jpeg",
     *,
+    model: str | None = None,
     prompt: str | None = None,
 ) -> bytes:
     """Gosuslugi white-bg via OpenRouter /images.
@@ -402,14 +405,15 @@ def edit_selfie_riverflow(
     Riverflow models get native background_mode + scoring; other models
     (e.g. google/gemini-2.5-flash-image) use a plain edit payload.
     """
+    use_model = model or config.RIVERFLOW_MODEL
     use_prompt = prompt or GOSUSLUGI_EDIT_PROMPT
-    if _is_riverflow_model() and use_prompt == GOSUSLUGI_EDIT_PROMPT:
+    if _is_riverflow_model(use_model) and use_prompt == GOSUSLUGI_EDIT_PROMPT:
         payload = build_riverflow_images_payload(
-            image_bytes, mime, prompt=use_prompt
+            image_bytes, mime, model=use_model, prompt=use_prompt
         )
     else:
         payload = build_generic_edit_images_payload(
-            image_bytes, mime, prompt=use_prompt
+            image_bytes, mime, model=use_model, prompt=use_prompt
         )
     data = _post_json(
         "images",
