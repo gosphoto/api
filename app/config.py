@@ -122,8 +122,11 @@ PASSPORT_HEIGHT = int(
         str(round(PASSPORT_HEIGHT_MM / 25.4 * PASSPORT_DPI)),
     )
 )
-# Овал лица ≥80% (soft floor 0.78); голова 32–36 мм; цель 0.79 (~35.6 мм) — чуть больше плеч
-PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.79"))
+# Gosuslugi oval 70–80%; FMS head 32–36 mm.
+# 0.79 (~35.6 mm) sat on the 80% ceiling (hairstyle included). 5% smaller → 0.75 (~33.8 mm).
+PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
+# Accept the full 70–80% band so a 0.75 crop is not rejected back to 0.79.
+FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.70"))
 # Верхнее поле ~4.5 мм из 45 мм
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.10"))
 HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "32"))

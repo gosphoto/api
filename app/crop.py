@@ -164,11 +164,11 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     top_m = config.PASSPORT_TOP_MARGIN
     default: list[tuple[float, float, float]] = [
         (0.45, face_r, top_m),
-        (0.50, 0.79, 0.10),
-        (0.55, 0.78, 0.09),
-        (0.40, 0.79, 0.11),
-        (0.60, 0.78, 0.10),
-        (0.35, 0.80, 0.10),
+        (0.50, face_r, 0.10),
+        (0.55, max(0.70, face_r - 0.02), 0.09),
+        (0.40, face_r, 0.11),
+        (0.60, max(0.70, face_r - 0.02), 0.10),
+        (0.35, min(0.80, face_r + 0.02), 0.10),
     ]
     hinted = float(bald.get("crown_factor") or (0.22 if bald.get("is_bald") else 0.45))
     hinted = float(np.clip(hinted, 0.14, 0.65))
@@ -176,22 +176,22 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     if bald.get("is_bald"):
         priority: list[tuple[float, float, float]] = [
             (hinted, face_r, top_m),
-            (max(0.14, hinted - 0.04), 0.79, 0.10),
-            (min(0.34, hinted + 0.04), 0.79, 0.10),
-            (0.22, 0.79, 0.10),
-            (0.18, 0.80, 0.09),
-            (0.26, 0.78, 0.11),
-            (0.30, 0.79, 0.10),
-            (0.35, 0.78, 0.10),
+            (max(0.14, hinted - 0.04), face_r, 0.10),
+            (min(0.34, hinted + 0.04), face_r, 0.10),
+            (0.22, face_r, 0.10),
+            (0.18, min(0.80, face_r + 0.02), 0.09),
+            (0.26, max(0.70, face_r - 0.02), 0.11),
+            (0.30, face_r, 0.10),
+            (0.35, max(0.70, face_r - 0.02), 0.10),
         ]
     else:
         # High / average hair: try measured silhouette gap before blind grid.
         priority = [
             (hinted, face_r, top_m),
-            (hinted, 0.79, 0.10),
-            (float(np.clip(hinted - 0.04, 0.14, 0.65)), 0.79, 0.10),
-            (float(np.clip(hinted + 0.04, 0.14, 0.65)), 0.78, 0.11),
-            (hinted, 0.78, 0.11),
+            (hinted, face_r, 0.10),
+            (float(np.clip(hinted - 0.04, 0.14, 0.65)), face_r, 0.10),
+            (float(np.clip(hinted + 0.04, 0.14, 0.65)), max(0.70, face_r - 0.02), 0.11),
+            (hinted, max(0.70, face_r - 0.02), 0.11),
         ]
 
     seen: set[tuple[float, float, float]] = set()
@@ -216,7 +216,7 @@ def run_crop_stage(
     White-bg portrait → 35×45 passport BGR + metrics + compliance.
 
     Tries several crown/face geometries and keeps the best compliance result.
-    Targets FMS §34.3: face oval ≥80%, head 32–36 mm.
+    Targets Gosuslugi 70–80% oval / FMS §34.3 head 32–36 mm (crop aim 0.75).
     Output pixel size follows width/height (default RF 600 dpi).
     """
     out_w = int(width if width is not None else config.PASSPORT_WIDTH)

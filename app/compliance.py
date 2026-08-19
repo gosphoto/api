@@ -70,8 +70,8 @@ def measure_compliance(
     head_h_mm = face_ratio * config.PASSPORT_HEIGHT_MM
     head_w_mm = (face_w / w) * config.PASSPORT_WIDTH_MM
 
-    # Soft band around landmark noise; regulation: oval ≥80%, head 32–36×18–25 mm
-    face_oval_ok = face_ratio >= 0.78
+    # Gosuslugi oval 70–80% of frame; FMS head 32–36 mm.
+    face_oval_ok = face_ratio >= config.FACE_RATIO_MIN
     head_height_ok = (
         config.HEAD_HEIGHT_MM_MIN <= head_h_mm <= config.HEAD_HEIGHT_MM_MAX
     )

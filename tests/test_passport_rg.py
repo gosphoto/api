@@ -37,9 +37,9 @@ def test_resolve_doc_preset_defaults_to_passport_rf():
 
 
 def test_face_and_head_targets_match_rg():
-    # Soft target 0.79 (~35.6 mm) — more shoulder room; still inside 32–36 mm
-    # and above soft oval floor 0.78. Hard compliance remains 32–36 mm.
-    assert config.PASSPORT_FACE_RATIO == 0.79
+    # 5% smaller than the old 0.79 ceiling: 0.75 (~33.8 mm), still 32–36 mm / 70–80%.
+    assert config.PASSPORT_FACE_RATIO == 0.75
+    assert config.FACE_RATIO_MIN == 0.70
     assert config.HEAD_HEIGHT_MM_MIN == 32
     assert config.HEAD_HEIGHT_MM_MAX == 36
     assert config.JPEG_MAX_BYTES == 300 * 1024

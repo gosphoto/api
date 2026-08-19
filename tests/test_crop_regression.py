@@ -46,6 +46,10 @@ def test_crop_regression_case(case_dir: Path):
     assert fr >= expect["face_ratio_min"], (
         f"{case['id']}: face_ratio={fr} < {expect['face_ratio_min']}"
     )
+    if "face_ratio_max" in expect:
+        assert fr <= expect["face_ratio_max"], (
+            f"{case['id']}: face_ratio={fr} > {expect['face_ratio_max']}"
+        )
 
     hh = float(comp["head_height_mm"])
     assert expect["head_height_mm_min"] <= hh <= expect["head_height_mm_max"], (

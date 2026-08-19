@@ -10,7 +10,8 @@
     "pass": true,
     "top_margin_min": 0.08,
     "top_margin_max": 0.14,
-    "face_ratio_min": 0.78,
+    "face_ratio_min": 0.70,
+    "face_ratio_max": 0.78,
     "head_height_mm_min": 32.0,
     "head_height_mm_max": 36.0,
     "is_bald": false
