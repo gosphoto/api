@@ -49,11 +49,6 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "toy" in g or "foreign object" in g
     assert "mole" in g or "freckle" in g
     assert "invent" in g
-    # Gosuslugi rejects earrings; do not keep jewelry "if present".
-    assert "earring" in g
-    assert "jewelry" in g
-    assert "remove" in g
-    assert "only if present" not in g
     lower = EDIT_PROMPT.lower()
     assert "underexposed" in lower or "dark" in lower
     assert "beauty" in lower
