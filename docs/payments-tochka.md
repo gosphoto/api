@@ -4,7 +4,7 @@
 
 | Product | Price | Unlock |
 |---------|-------|--------|
-| Passport (`product=passport`) | 70 ₽ (`PRICE_KOPECKS`) | `digital.jpg` + `print.jpg` |
+| Passport (`product=passport`) | 100 ₽ (`PRICE_KOPECKS`) | `digital.jpg` + `print.jpg` |
 | Resume suit (`product=resume`) | 300 ₽ (`RESUME_PRICE_KOPECKS`) | `resume.jpg` |
 
 Оплаты независимы: можно купить резюме без паспортного unlock и наоборот.
@@ -18,7 +18,7 @@
 | `TOCHKA_MERCHANT_ID` | optional |
 | `TOCHKA_API_BASE_URL` | `https://enter.tochka.com` |
 | `PUBLIC_BASE_URL` | `https://gosphoto.ru` |
-| `PRICE_KOPECKS` | `7000` |
+| `PRICE_KOPECKS` | `10000` |
 | `RESUME_PRICE_KOPECKS` | `30000` |
 | `RESUME_UPSELL_ENABLED` | `1` (off → без suit-генерации) |
 | `FREE_DOWNLOAD_UNLOCK` | `false` |
