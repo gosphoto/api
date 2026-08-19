@@ -33,6 +33,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     g = GOSUSLUGI_EDIT_PROMPT.lower()
     assert "business suit" in g
     assert "blazer" in g
+    assert "child" in g
+    assert "t-shirt" in g or "tank" in g
+    assert "navy" in g or "charcoal" in g or "pale" in g
     assert "no age change" in g
     assert "#ffffff" in g
     assert "spot" in g or "blemish" in g
@@ -43,6 +46,11 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "soft studio lighting" not in g
     assert "even skin tone" not in g
     assert "neutral" in g and "smile" in g
+    assert "flyaway" in g or "stray" in g
+    assert "tuck" in g or "gather" in g
+    assert "do not cut hair" in g
+    assert "bun" in g or "updo" in g
+    assert "earring" in g
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
