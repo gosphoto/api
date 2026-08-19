@@ -1,3 +1,4 @@
+import math
 import os
 from pathlib import Path
 
@@ -103,7 +104,9 @@ RIVERFLOW_TIMEOUT_SEC = float(
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
 # https://rg.ru/documents/2011/08/22/pasport-dok.html
 # 35×45 mm @ ≥600 dpi → 827×1063 px; JPEG ≤300 KB
-# Загран (Госуслуги): same 35×45 @ ≥300 dpi, larger file budget
+# Загран (Госуслуги): same 35×45 @ ≥300 dpi, larger file budget.
+# 300 dpi + round() → 413×531, exactly the Gosuslugi floor — they reject it.
+# 360 dpi + ceil() → 497×638, still 35×45 mm, above the pixel/DPI minimum.
 PASSPORT_WIDTH_MM = 35.0
 PASSPORT_HEIGHT_MM = 45.0
 PASSPORT_DPI = int(os.getenv("PASSPORT_DPI", "600"))
@@ -133,16 +136,17 @@ JPEG_MAX_BYTES = int(os.getenv("JPEG_MAX_BYTES", str(300 * 1024)))
 DOC_TYPE_PASSPORT_RF = "passport_rf"
 DOC_TYPE_ZAGRAN = "zagran"
 DEFAULT_DOC_TYPE = DOC_TYPE_PASSPORT_RF
-ZAGRAN_DPI = int(os.getenv("ZAGRAN_DPI", "300"))
+ZAGRAN_DPI = int(os.getenv("ZAGRAN_DPI", "360"))
 ZAGRAN_JPEG_MAX_BYTES = int(
     os.getenv("ZAGRAN_JPEG_MAX_BYTES", str(2 * 1024 * 1024))
 )
 
 
 def _doc_pixels(dpi: int) -> tuple[int, int]:
+    """Pixel size for 35×45 mm at dpi. Ceil so we never undershoot the millimetres."""
     return (
-        round(PASSPORT_WIDTH_MM / 25.4 * dpi),
-        round(PASSPORT_HEIGHT_MM / 25.4 * dpi),
+        math.ceil(PASSPORT_WIDTH_MM / 25.4 * dpi),
+        math.ceil(PASSPORT_HEIGHT_MM / 25.4 * dpi),
     )
 
 

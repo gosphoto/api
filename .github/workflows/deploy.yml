@@ -200,6 +200,7 @@ jobs:
           data["RESUME_PRICE_KOPECKS"] = "30000"
           data.setdefault("FREE_DOWNLOAD_UNLOCK", "0")
           data.setdefault("PAYMENT_SYNC_INTERVAL_SECONDS", "30")
+          data["ZAGRAN_DPI"] = "360"
 
           # Resolve customerCode from Tochka using JWT if missing
           token = (data.get("TOCHKA_ACCESS_TOKEN") or "").strip()

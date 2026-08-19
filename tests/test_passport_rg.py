@@ -13,14 +13,19 @@ def test_passport_pixels_are_600dpi_35x45():
     assert config.PASSPORT_HEIGHT == 1063
 
 
-def test_zagran_preset_is_300dpi_35x45():
+def test_zagran_preset_is_above_gosuslugi_floor():
+    """Gosuslugi asks ≥413×531 @ 300dpi; 35×45@300 rounds down to 413 and fails."""
+    import math
+
     p = config.resolve_doc_preset("zagran")
     assert p["doc_type"] == "zagran"
-    assert p["dpi"] == 300
-    assert p["width"] == round(35 / 25.4 * 300)
-    assert p["height"] == round(45 / 25.4 * 300)
-    assert p["width"] == 413
-    assert p["height"] == 531
+    assert p["dpi"] == 360
+    assert p["width"] == math.ceil(35 / 25.4 * 360)
+    assert p["height"] == math.ceil(45 / 25.4 * 360)
+    assert p["width"] == 497
+    assert p["height"] == 638
+    assert p["width"] > 413
+    assert p["height"] > 531
     assert p["jpeg_max_bytes"] == 2 * 1024 * 1024
 
 
@@ -73,4 +78,4 @@ def test_encode_jpeg_zagran_dpi_and_budget():
     from PIL import Image
 
     img = Image.open(BytesIO(jpeg))
-    assert img.info.get("dpi") == (300.0, 300.0) or img.info.get("dpi") == (300, 300)
+    assert img.info.get("dpi") == (360.0, 360.0) or img.info.get("dpi") == (360, 360)
