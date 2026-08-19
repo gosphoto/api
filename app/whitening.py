@@ -127,7 +127,8 @@ def _studio_plate_mask(
 
     Landmark dilation on a 35×45 crop covers the ~10% top margin. Those pixels
     are still a uniform near-white plate connected to the frame edge — bleach
-    them. Do not walk through the subject below the chin (white shirt/collar).
+    them. Do not walk through a shirt island below the chin; gray behind
+    the shoulders is the same component as the top plate and must bleach.
     """
     h, w = bgr.shape[:2]
     f = bgr.astype(np.float32)
@@ -136,20 +137,15 @@ def _studio_plate_mask(
     blur = cv2.GaussianBlur(luma, (5, 5), 0)
     local_std = np.sqrt(np.maximum(cv2.blur((luma - blur) ** 2, (5, 5)), 0.0))
     cand = (luma >= float(luma_min)) & (chroma <= chroma_max) & (local_std <= std_max)
-    if chin_y is not None:
-        y = max(0, min(h - 1, int(chin_y)))
-        blocked = np.zeros((h, w), dtype=bool)
-        blocked[y:, :] = subject[y:] > 0
-        cand = cand & ~blocked
 
     seeds = cand.astype(np.uint8)
     work = np.zeros((h + 2, w + 2), np.uint8)
     work[1:-1, 1:-1] = seeds
-    # Outer frame is a single seed so any border candidate is reachable.
+    # Seed from the TOP edge only. Bottom-edge seeds would flood a white shirt
+    # that touches the 35×45 bottom; left/right full-height seeds would flood a
+    # light tee that meets the frame. Gray behind the shoulders is the same
+    # connected component as the top plate, so it fills from above.
     work[0, :] = 1
-    work[-1, :] = 1
-    work[:, 0] = 1
-    work[:, -1] = 1
     mask = np.zeros((h + 4, w + 4), np.uint8)
     cv2.floodFill(
         work,
