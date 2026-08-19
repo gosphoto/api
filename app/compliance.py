@@ -21,6 +21,27 @@ _FOREHEAD = 10
 _LEFT_CHEEK = 234
 _RIGHT_CHEEK = 454
 
+# Head 32–36 mm is the hard geometry. Oval % is informational (Gosuslugi 70–80%).
+HARD_CHECKS = (
+    "size_ok",
+    "head_height_mm_ok",
+    "top_margin_ok",
+    "bg_white_ok",
+    "single_face_ok",
+)
+
+
+def apply_pass(comp: dict[str, Any] | None) -> dict[str, Any]:
+    """Recompute pass without the dropped §34.3 oval ≥80% gate."""
+    if not comp:
+        return comp or {}
+    checks = comp.get("checks")
+    if not isinstance(checks, dict) or not checks:
+        return dict(comp)
+    out = dict(comp)
+    out["pass"] = all(bool(checks.get(k)) for k in HARD_CHECKS)
+    return out
+
 
 def measure_compliance(
     bgr: np.ndarray,
@@ -29,7 +50,7 @@ def measure_compliance(
     expected_height: int | None = None,
     dpi_target: int | None = None,
 ) -> dict[str, Any]:
-    """Check crop against FMS §34.3 geometry (35×45, face oval, head mm)."""
+    """Check crop against FMS head 32–36 mm / 35×45 geometry."""
     h, w = bgr.shape[:2]
     white = corner_whiteness(bgr)
     exp_w = int(expected_width if expected_width is not None else config.PASSPORT_WIDTH)
@@ -70,8 +91,9 @@ def measure_compliance(
     head_h_mm = face_ratio * config.PASSPORT_HEIGHT_MM
     head_w_mm = (face_w / w) * config.PASSPORT_WIDTH_MM
 
-    # Gosuslugi oval 70–80% of frame; FMS head 32–36 mm.
-    face_oval_ok = face_ratio >= config.FACE_RATIO_MIN
+    # Gosuslugi 70–80% ≈ FMS head 32–36 mm. §34.3 "oval ≥80%" is not a gate:
+    # 80% of 45 mm is 36 mm, so it contradicts the 32 mm floor.
+    face_oval_ok = config.FACE_RATIO_MIN <= face_ratio <= config.FACE_RATIO_MAX
     head_height_ok = (
         config.HEAD_HEIGHT_MM_MIN <= head_h_mm <= config.HEAD_HEIGHT_MM_MAX
     )
@@ -89,17 +111,8 @@ def measure_compliance(
         "top_margin_ok": top_margin_ok,
         "bg_white_ok": white["white_ok"],
         "single_face_ok": True,
-        # legacy alias for scoring / UI
-        "face_ratio_ok": face_oval_ok and head_height_ok,
+        "face_ratio_ok": head_height_ok,
     }
-    hard = (
-        "size_ok",
-        "face_oval_ok",
-        "head_height_mm_ok",
-        "top_margin_ok",
-        "bg_white_ok",
-        "single_face_ok",
-    )
 
     out: dict[str, Any] = {
         "width": w,
@@ -111,7 +124,7 @@ def measure_compliance(
         "head_width_mm": round(head_w_mm, 1),
         "bg": white,
         "checks": checks,
-        "pass": all(checks[k] for k in hard),
+        "pass": all(checks[k] for k in HARD_CHECKS),
         "source": "rg.ru/2011/08/22/pasport-dok.html §34.3",
     }
     if bald is not None:

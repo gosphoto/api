@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from concurrent.futures import ThreadPoolExecutor
 from . import config
+from . import compliance as compliance_mod
 from . import doc_metrics as doc_metrics_mod
 from . import feedback as feedback_mod
 from . import payments as payments_mod
@@ -104,7 +105,7 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "doc_type": meta.get("doc_type") or config.DEFAULT_DOC_TYPE,
         "doc_label": meta.get("doc_label")
         or config.DOC_PRESETS[config.DEFAULT_DOC_TYPE]["label"],
-        "compliance": meta.get("compliance") or {},
+        "compliance": compliance_mod.apply_pass(meta.get("compliance") or {}),
         "print_sheet": print_meta,
         "preview_digital_url": f"/api/result/{result_id}/preview_digital.jpg",
         "preview_print_url": f"/api/result/{result_id}/preview_print.jpg",

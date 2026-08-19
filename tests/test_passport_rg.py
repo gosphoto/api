@@ -40,9 +40,28 @@ def test_face_and_head_targets_match_rg():
     # 5% smaller than the old 0.79 ceiling: 0.75 (~33.8 mm), still 32–36 mm / 70–80%.
     assert config.PASSPORT_FACE_RATIO == 0.75
     assert config.FACE_RATIO_MIN == 0.70
+    assert config.FACE_RATIO_MAX == 0.80
     assert config.HEAD_HEIGHT_MM_MIN == 32
     assert config.HEAD_HEIGHT_MM_MAX == 36
     assert config.JPEG_MAX_BYTES == 300 * 1024
+
+
+def test_oval_percent_is_not_a_hard_gate():
+    from app.compliance import HARD_CHECKS, apply_pass
+
+    assert "face_oval_ok" not in HARD_CHECKS
+    stale = {
+        "pass": False,
+        "checks": {
+            "size_ok": True,
+            "face_oval_ok": False,
+            "head_height_mm_ok": True,
+            "top_margin_ok": True,
+            "bg_white_ok": True,
+            "single_face_ok": True,
+        },
+    }
+    assert apply_pass(stale)["pass"] is True
 
 
 def test_encode_jpeg_respects_300kb_and_dpi():

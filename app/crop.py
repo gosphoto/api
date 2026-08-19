@@ -131,7 +131,7 @@ def _score_compliance(comp: dict[str, Any]) -> float:
     score = 0.0
     for k in (
         "size_ok",
-        "face_oval_ok",
+        "face_oval_ok",  # informational 70–80%; not a hard gate
         "head_height_mm_ok",
         "head_width_mm_ok",
         "face_ratio_ok",
@@ -216,7 +216,7 @@ def run_crop_stage(
     White-bg portrait → 35×45 passport BGR + metrics + compliance.
 
     Tries several crown/face geometries and keeps the best compliance result.
-    Targets Gosuslugi 70–80% oval / FMS §34.3 head 32–36 mm (crop aim 0.75).
+    Targets Gosuslugi 70–80% / FMS head 32–36 mm (crop aim 0.75).
     Output pixel size follows width/height (default RF 600 dpi).
     """
     out_w = int(width if width is not None else config.PASSPORT_WIDTH)
