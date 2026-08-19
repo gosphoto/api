@@ -89,13 +89,20 @@ GOSUSLUGI_EDIT_PROMPT = (
     "keep natural face lighting from the input (not a bright studio key light). "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
     "no shadows, vignette, or room props. "
+    "Isolated flyaway wisps that stick out of the hair mass often keep leftover "
+    "original-wall pixels around them: hide or softly blur only those stray "
+    "hairs so the plate is clean #FFFFFF. Do not restyle the hair, do not tuck "
+    "it behind the ears, do not gather it, do not cut it, do not change length, "
+    "color, or volume. "
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "
-    "open face, neutral no-smile expression, gaze at camera; "
+    "open face, hide/blur isolated flyaway wisps that carry leftover wall "
+    "(do not restyle or tuck hair); "
+    "neutral no-smile expression, gaze at camera; "
     "adults: stylish modern business suit; children: dark child's t-shirt "
     "(navy/charcoal) — no pale/white tank or tee on white bg; "
     "upright straight posture with perfectly level "

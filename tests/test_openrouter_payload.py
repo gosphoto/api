@@ -46,6 +46,13 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "soft studio lighting" not in g
     assert "even skin tone" not in g
     assert "neutral" in g and "smile" in g
+    assert "flyaway" in g or "wisp" in g
+    assert "blur" in g
+    assert "hide" in g
+    assert "leftover" in g or "original-wall" in g or "wall" in g
+    assert "do not restyle" in g
+    assert "do not tuck" in g
+    assert "behind the ears" in g
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
