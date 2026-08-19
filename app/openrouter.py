@@ -80,6 +80,9 @@ GOSUSLUGI_EDIT_PROMPT = (
     "face oval clearly visible (e.g. hijab with open face). "
     "Subject alone in frame: no other people, no toys, no pacifiers, no foreign "
     "objects in hands or near the face (same rules for children as for adults). "
+    "Remove ALL jewelry: earrings, hoops, studs, rings, necklaces, chains, "
+    "pendants, piercings, watches, bracelets — Gosuslugi rejects accessories; "
+    "bare ears even if jewelry is on the selfie. "
     "Framing: upper body / shoulders visible, face centered; "
     "keep natural face lighting from the input (not a bright studio key light). "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
@@ -90,6 +93,7 @@ GOSUSLUGI_EDIT_PROMPT = (
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "
+    "no jewelry/earrings; "
     "open face, neutral no-smile expression, gaze at camera; "
     "stylish modern business suit; upright straight posture with perfectly level "
     "shoulders and no head tilt; if glasses present — zero lens glare, eyes fully "

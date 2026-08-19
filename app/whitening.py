@@ -9,15 +9,15 @@ import numpy as np
 from .gate import _landmarker
 
 
-def _subject_mask(bgr: np.ndarray) -> np.ndarray | None:
-    """Protect face + hair + shoulders from bleaching."""
+def _subject_mask(bgr: np.ndarray) -> tuple[np.ndarray | None, int | None]:
+    """Protect face + hair + shoulders from bleaching. Chin y, if known."""
     h, w = bgr.shape[:2]
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     result = _landmarker().detect(
         mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     )
     if not result.face_landmarks:
-        return None
+        return None, None
     lm = result.face_landmarks[0]
     xs = np.array([p.x * w for p in lm], dtype=np.float32)
     ys = np.array([p.y * h for p in lm], dtype=np.float32)
@@ -63,7 +63,7 @@ def _subject_mask(bgr: np.ndarray) -> np.ndarray | None:
     )
     # Do NOT punch corners out of the subject mask — on a tight 35×45 crop
     # shoulders/clothes often reach the bottom corners.
-    return mask
+    return mask, chin
 
 
 def defringe_near_white(
@@ -114,15 +114,69 @@ def _bleach_corner_chips(
     return out
 
 
+def _studio_plate_mask(
+    bgr: np.ndarray,
+    subject: np.ndarray,
+    *,
+    chin_y: int | None,
+    luma_min: int = 200,
+    chroma_max: float = 24.0,
+    std_max: float = 10.0,
+) -> np.ndarray:
+    """Border-connected flat light fill (Gemini gray studio), even under a fat mask.
+
+    Landmark dilation on a 35×45 crop covers the ~10% top margin. Those pixels
+    are still a uniform near-white plate connected to the frame edge — bleach
+    them. Do not walk through the subject below the chin (white shirt/collar).
+    """
+    h, w = bgr.shape[:2]
+    f = bgr.astype(np.float32)
+    luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    chroma = np.linalg.norm(f - f.mean(axis=2, keepdims=True), axis=2)
+    blur = cv2.GaussianBlur(luma, (5, 5), 0)
+    local_std = np.sqrt(np.maximum(cv2.blur((luma - blur) ** 2, (5, 5)), 0.0))
+    cand = (luma >= float(luma_min)) & (chroma <= chroma_max) & (local_std <= std_max)
+    if chin_y is not None:
+        y = max(0, min(h - 1, int(chin_y)))
+        blocked = np.zeros((h, w), dtype=bool)
+        blocked[y:, :] = subject[y:] > 0
+        cand = cand & ~blocked
+
+    seeds = cand.astype(np.uint8)
+    work = np.zeros((h + 2, w + 2), np.uint8)
+    work[1:-1, 1:-1] = seeds
+    # Outer frame is a single seed so any border candidate is reachable.
+    work[0, :] = 1
+    work[-1, :] = 1
+    work[:, 0] = 1
+    work[:, -1] = 1
+    mask = np.zeros((h + 4, w + 4), np.uint8)
+    cv2.floodFill(
+        work,
+        mask,
+        (0, 0),
+        1,
+        flags=4 | (255 << 8) | cv2.FLOODFILL_MASK_ONLY,
+    )
+    plate = (mask[2 : h + 2, 2 : w + 2] > 0).astype(np.uint8) * 255
+    plate = cv2.morphologyEx(plate, cv2.MORPH_CLOSE, np.ones((3, 3), np.uint8))
+    return plate
+
+
 def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     """Whiten bg-like pixels outside the subject; soft-clean corners."""
     h, w = bgr.shape[:2]
     if h < 8 or w < 8:
         return bgr
 
-    subject = _subject_mask(bgr)
+    subject, chin_y = _subject_mask(bgr)
     if subject is None:
         subject = np.zeros((h, w), np.uint8)
+        chin_y = None
+
+    plate = _studio_plate_mask(bgr, subject, chin_y=chin_y)
+    # Fat hair dilation is not the person — don't restore gray studio over it.
+    hard = (subject > 0) & (plate == 0)
 
     band = max(8, int(0.05 * min(h, w)))
     sample = np.concatenate(
@@ -138,8 +192,9 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     dist = np.linalg.norm(bgr.astype(np.float32) - med, axis=2)
     luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
 
-    # Color-similar light pixels outside subject
-    bg = ((dist <= float(tol)) & (luma >= 130) & (subject == 0)).astype(np.uint8) * 255
+    # Color-similar light pixels outside the hard subject
+    bg = ((dist <= float(tol)) & (luma >= 130) & (~hard)).astype(np.uint8) * 255
+    bg = cv2.bitwise_or(bg, plate)
 
     # Also flood from corners through that candidate set (fills soft bg holes)
     work = (bg > 0).astype(np.uint8)
@@ -154,23 +209,22 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
         cv2.floodFill(img, mask, (sx, sy), 1, flags=4 | (255 << 8) | cv2.FLOODFILL_MASK_ONLY)
         bg[mask[2 : h + 2, 2 : w + 2] > 0] = 255
 
-    bg[subject > 0] = 0
+    bg[hard] = 0
     bg = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
     bg = cv2.dilate(bg, np.ones((3, 3), np.uint8), iterations=1)
-    bg[subject > 0] = 0
+    bg[hard] = 0
 
     alpha = cv2.GaussianBlur(bg, (5, 5), 0).astype(np.float32) / 255.0
-    alpha[subject > 0] = 0.0
+    alpha[hard] = 0.0
 
     out = bgr.astype(np.float32)
     out = out * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
 
-    out[subject > 0] = bgr[subject > 0]
+    out[hard] = bgr[hard]
     cleaned = defringe_near_white(np.clip(out, 0, 255).astype(np.uint8))
-    protect = subject > 0
-    cleaned[protect] = bgr[protect]
-    cleaned = _bleach_corner_chips(cleaned, subject)
-    cleaned[protect] = bgr[protect]
+    cleaned[hard] = bgr[hard]
+    cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
+    cleaned[hard] = bgr[hard]
     return cleaned
 
 
