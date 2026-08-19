@@ -47,8 +47,10 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "even skin tone" not in g
     assert "neutral" in g and "smile" in g
     assert "flyaway" in g or "wisp" in g
-    assert "blur" in g
-    assert "hide" in g
+    assert "erase" in g or "remove" in g
+    assert "must" in g
+    assert "halo" in g
+    assert "zero stray" in g or "invisible" in g
     assert "leftover" in g or "original-wall" in g or "wall" in g
     assert "do not restyle" in g
     assert "do not tuck" in g
