@@ -201,6 +201,7 @@ jobs:
           data.setdefault("FREE_DOWNLOAD_UNLOCK", "0")
           data.setdefault("PAYMENT_SYNC_INTERVAL_SECONDS", "30")
           data["ZAGRAN_DPI"] = "360"
+          data["SKIP_EDIT_IF_READY"] = "0"
 
           # Resolve customerCode from Tochka using JWT if missing
           token = (data.get("TOCHKA_ACCESS_TOKEN") or "").strip()

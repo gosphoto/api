@@ -20,7 +20,7 @@ from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import prepare_skip_edit, run_edit_stage, run_resume_suit_edit
+from .edit import run_edit_stage, run_resume_suit_edit
 from .gate import _decode_image, prepare_upload, warmup, validate_image
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
@@ -429,22 +429,18 @@ def _run_passport_stages(
     readiness_meta: dict | None = None
     skipped_edit = False
     decoded = _decode_image(data)
-    if decoded is not None and config.SKIP_EDIT_IF_READY:
+    if decoded is not None:
         readiness = assess_readiness(decoded)
         readiness_meta = readiness.as_dict()
-        skipped_edit = bool(readiness.ready)
         log.info(
-            "Readiness ready=%s reason=%s scores=%s",
+            "Readiness ready=%s reason=%s scores=%s (edit always runs)",
             readiness.ready,
             readiness.reason,
             readiness.scores,
         )
 
     try:
-        if skipped_edit:
-            edited, edit_meta = prepare_skip_edit(data)
-        else:
-            edited, edit_meta = run_edit_stage(data, mime=mime)
+        edited, edit_meta = run_edit_stage(data, mime=mime)
     except OpenRouterError as e:
         log.exception("Edit stage OpenRouter error")
         return {
@@ -465,31 +461,6 @@ def _run_passport_stages(
     except Exception as e:
         log.exception("Crop stage failed")
         return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
-
-    if skipped_edit and not compliance.get("pass"):
-        log.info(
-            "Skip-edit compliance failed; escalating to Riverflow (%s)",
-            compliance.get("checks"),
-        )
-        try:
-            edited, edit_meta = run_edit_stage(data, mime=mime)
-            edit_meta["escalated_from_skip"] = True
-            cropped, crop_metrics, compliance = run_crop_stage(
-                edited, width=out_w, height=out_h, dpi=dpi
-            )
-            skipped_edit = False
-        except OpenRouterError as e:
-            log.exception("Escalated edit OpenRouter error")
-            return {
-                "ok": False,
-                "stage": "edit",
-                "message": str(e),
-                "provider_status": e.status,
-                "body": e.body,
-            }
-        except Exception as e:
-            log.exception("Escalated edit/crop failed")
-            return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
 
     jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
     print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)

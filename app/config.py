@@ -33,8 +33,8 @@ CORS_ORIGINS = [
 # EDIT_BACKEND=riverflow|openrouter|local|auto
 # EDIT_CUTOUT=silueta|u2netp|u2net|mediapipe|rembg|auto (local fallback)
 EDIT_BACKEND = os.getenv("EDIT_BACKEND", "riverflow").strip().lower()
-# Skip Riverflow when CPU readiness says input is already studio-white.
-SKIP_EDIT_IF_READY = os.getenv("SKIP_EDIT_IF_READY", "1").strip().lower() in (
+# Always run Gemini/Riverflow edit. Ready studio selfies still go through the model.
+SKIP_EDIT_IF_READY = os.getenv("SKIP_EDIT_IF_READY", "0").strip().lower() in (
     "1",
     "true",
     "yes",
