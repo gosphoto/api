@@ -159,6 +159,70 @@ def _studio_plate_mask(
     return plate
 
 
+def _y_cut(h: int, chin_y: int | None) -> int:
+    y = chin_y if chin_y is not None else int(0.62 * h)
+    return max(8, min(h - 1, int(y)))
+
+
+def _hair_wall_spill_mask(bgr: np.ndarray, *, chin_y: int | None) -> np.ndarray:
+    """Cool near-white crumbs sitting on the hair / #FFFFFF boundary.
+
+    Only pixels that touch the white plate *and* dark hair. Interior face,
+    bald scalp specks, and shirts below the chin never enter this mask.
+    """
+    h, w = bgr.shape[:2]
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    y_cut = _y_cut(h, chin_y)
+    hair = gray < 140
+    hair[y_cut:, :] = False
+    white = gray >= 250
+    k = np.ones((5, 5), np.uint8)
+    near_w = cv2.dilate(white.astype(np.uint8), k) > 0
+    near_h = cv2.dilate(hair.astype(np.uint8), k) > 0
+    band = near_w & near_h & (~hair)
+    band[y_cut:, :] = False
+    blue, green, red = cv2.split(bgr)
+    cool = (
+        band
+        & (gray >= 210)
+        & (gray < 252)
+        & (blue.astype(np.int16) + 2 >= red.astype(np.int16))
+        & (blue.astype(np.int16) >= green.astype(np.int16) - 2)
+    )
+    return cool
+
+
+def _is_hair_wall_spill_case(bgr: np.ndarray, chin_y: int | None = None) -> bool:
+    """True only for leftover-wall halo around hair (her Gosuslugi miss)."""
+    if bgr.size == 0 or min(bgr.shape[:2]) < 8:
+        return False
+    cool = _hair_wall_spill_mask(bgr, chin_y=chin_y)
+    n = int(cool.sum())
+    if n < 100:
+        return False
+    w = bgr.shape[1]
+    return int(cool[:, : w // 2].sum()) >= 20 and int(cool[:, w // 2 :].sum()) >= 20
+
+
+def _blur_hair_wall_spill(bgr: np.ndarray, chin_y: int | None = None) -> np.ndarray:
+    """Soften leftover wall on the hair edge. No-op when the case does not fire."""
+    if not _is_hair_wall_spill_case(bgr, chin_y=chin_y):
+        return bgr
+    h, w = bgr.shape[:2]
+    y_cut = _y_cut(h, chin_y)
+    cool = _hair_wall_spill_mask(bgr, chin_y=chin_y)
+    band = cv2.dilate(cool.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+    band[y_cut:, :] = False
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    band[gray < 140] = False
+    blurred = cv2.GaussianBlur(bgr, (7, 7), 0)
+    mix = cv2.addWeighted(blurred, 0.55, np.full_like(bgr, 255), 0.45, 0)
+    out = bgr.copy()
+    out[band] = mix[band]
+    out[gray < 140] = bgr[gray < 140]
+    return out
+
+
 def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     """Whiten bg-like pixels outside the subject; soft-clean corners."""
     h, w = bgr.shape[:2]
@@ -221,6 +285,8 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     cleaned[hard] = bgr[hard]
     cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
     cleaned[hard] = bgr[hard]
+    # Leftover wall on hair: only if the detector fires (not every portrait).
+    cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
     return cleaned
 
 

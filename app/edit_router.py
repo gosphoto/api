@@ -9,7 +9,12 @@ import cv2
 import numpy as np
 
 from . import config
-from .gate import _blur_score
+
+
+def _blur_score(bgr: np.ndarray) -> float:
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+
 
 GEMINI_FLASH_IMAGE = "google/gemini-2.5-flash-image"
 RIVERFLOW_PRO = "sourceful/riverflow-v2.5-pro"
@@ -18,10 +23,6 @@ RIVERFLOW_PRO = "sourceful/riverflow-v2.5-pro"
 LIGHT_BG_LUMA_MIN = 185.0
 # Gate floor is 10; Pro is wasted on mushy phone JPEGs.
 PRO_MIN_BLUR = 22.0
-HAIR_DARK_MAX = 125
-HAIR_Y_FRAC = 0.50
-WISP_FRAC_MIN = 0.05
-HAIR_PIX_MIN = 180
 
 
 @dataclass(frozen=True)
@@ -61,36 +62,8 @@ def _top_corner_luma(bgr: np.ndarray) -> float:
     return float(pix.mean())
 
 
-def _hair_wisp_frac(bgr: np.ndarray) -> tuple[float, int]:
-    """Fraction of upper dark mass that is thin (flyaways), vs a solid hair blob.
-
-    Always measured on a ~400px canvas so a 12MP selfie and a 400px fixture
-    share the same threshold.
-    """
-    h, w = bgr.shape[:2]
-    side = max(h, w)
-    if side > 400:
-        s = 400.0 / side
-        bgr = cv2.resize(
-            bgr,
-            (max(1, int(round(w * s))), max(1, int(round(h * s)))),
-            interpolation=cv2.INTER_AREA,
-        )
-        h, w = bgr.shape[:2]
-    y_cut = max(8, int(HAIR_Y_FRAC * h))
-    gray = cv2.cvtColor(bgr[:y_cut], cv2.COLOR_BGR2GRAY)
-    hair = (gray < HAIR_DARK_MAX).astype(np.uint8) * 255
-    n = int((hair > 0).sum())
-    if n < HAIR_PIX_MIN:
-        return 0.0, n
-    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7))
-    opened = cv2.morphologyEx(hair, cv2.MORPH_OPEN, k)
-    wisps = (hair > 0) & (opened == 0)
-    return float(wisps.sum()) / float(n), n
-
-
 def choose_edit_model(bgr: np.ndarray) -> EditRoute:
-    """Pro only when hair is messy, the wall is light, and the input is sharp."""
+    """Pro when the wall is light and the input is sharp."""
     if bgr is None or bgr.size == 0 or bgr.ndim != 3:
         return _gemini("empty", {})
 
@@ -100,21 +73,15 @@ def choose_edit_model(bgr: np.ndarray) -> EditRoute:
 
     luma = _top_corner_luma(bgr)
     blur = _blur_score(bgr)
-    wisp_frac, hair_pix = _hair_wisp_frac(bgr)
     scores = {
         "top_corner_luma": round(luma, 1),
         "blur": round(blur, 2),
-        "wisp_frac": round(wisp_frac, 3),
-        "hair_pix": hair_pix,
         "light_ok": luma >= LIGHT_BG_LUMA_MIN,
         "sharp_ok": blur >= PRO_MIN_BLUR,
-        "messy_ok": wisp_frac >= WISP_FRAC_MIN and hair_pix >= HAIR_PIX_MIN,
     }
 
     if not scores["light_ok"]:
         return _gemini("bg_not_light", scores)
     if not scores["sharp_ok"]:
         return _gemini("input_not_sharp", scores)
-    if not scores["messy_ok"]:
-        return _gemini("hair_neat", scores)
-    return _pro("messy_hair_light_sharp", scores)
+    return _pro("light_sharp", scores)

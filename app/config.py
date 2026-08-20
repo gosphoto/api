@@ -91,7 +91,7 @@ OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 RIVERFLOW_MODEL = os.getenv(
     "RIVERFLOW_MODEL", "google/gemini-2.5-flash-image"
 ).strip()
-# Native white-bg + scoring payload. Used when messy hair sits on a light wall.
+# Native white-bg + scoring payload. Used when the wall is light and the input is sharp.
 RIVERFLOW_PRO_MODEL = os.getenv(
     "RIVERFLOW_PRO_MODEL", "sourceful/riverflow-v2.5-pro"
 ).strip()
