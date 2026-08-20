@@ -34,7 +34,11 @@ EDIT_PROMPT = (
 # Resume / LinkedIn-style portrait (separate SKU).
 RESUME_SUIT_PROMPT = (
     "Professional resume / LinkedIn headshot from this selfie. "
-    "Dress the person in a stylish modern business suit "
+    "If the person wears religious clothing or a religious head covering "
+    "(hijab, khimar, tichel, turban, kippah, nun's veil, abaya, modest religious "
+    "dress) with the full face oval clearly visible: KEEP that clothing and "
+    "covering exactly — do NOT replace with a business suit, blazer, shirt, or tie. "
+    "Otherwise dress the person in a stylish modern business suit "
     "(well-fitted blazer, dress shirt, subtle tie optional if it fits the look). "
     "Apply light natural retouch: even skin tone, soft shine reduction, "
     "keep pores and real texture — no plastic skin, no heavy beauty filter, "
@@ -49,13 +53,20 @@ RESUME_SUIT_PROMPT = (
 # Main process edit = resume look, but pure white document background + clean face spots.
 GOSUSLUGI_EDIT_PROMPT = (
     "Professional resume / LinkedIn headshot from this selfie. "
-    "Dress an adult in a stylish modern business suit "
+    "CLOTHING: if the person wears religious clothing or a religious head covering "
+    "(hijab, khimar, tichel, turban, kippah, nun's veil, abaya, modest religious "
+    "dress) and the full face oval is clearly visible: KEEP that clothing and "
+    "covering exactly as on the input — do NOT replace with a business suit, "
+    "blazer, shirt, or tie. Face oval must stay fully open (no niqab/burqa "
+    "covering the face). "
+    "Otherwise dress an adult in a stylish modern business suit "
     "(well-fitted blazer, dress shirt, subtle tie optional if it fits the look). "
     "If the person is a child, or wears a light / white / off-white / pale-grey "
     "t-shirt, tank top, or undershirt that would vanish on a white backdrop: "
     "do NOT keep pale clothes. Children: replace with a dark solid child's "
     "t-shirt (navy, charcoal, or dark blue) — never a business suit, never pale "
-    "clothes on #FFFFFF. Adults in a light tank/tee: still the business suit. "
+    "clothes on #FFFFFF. Adults in a light tank/tee (and not in religious "
+    "clothing): still the business suit. "
     "Face exposure: keep the input face brightness and skin tone unchanged — "
     "do not brighten, bleach, overexpose, flash-relight, or wash out the skin; "
     "no high-key studio face lighting; cheeks/forehead must not turn chalky white. "
@@ -80,9 +91,10 @@ GOSUSLUGI_EDIT_PROMPT = (
     "all lens glare, reflections, hotspots and flash bounce; eyes must be fully "
     "visible through clear lenses; frames must not cover or hide the eyes; "
     "no sunglasses, no tinted lenses; do not invent glasses if the input has none. "
-    "No headwear, hats, caps, headbands, decorative scarves, or service/military "
-    "uniforms — exception only for religious head covering that keeps the full "
-    "face oval clearly visible (e.g. hijab with open face). "
+    "No secular headwear, hats, caps, headbands, decorative scarves, or "
+    "service/military uniforms. Religious head covering and religious clothing "
+    "must be kept when the full face oval is clearly visible "
+    "(e.g. hijab with open face) — never strip them for a suit. "
     "Subject alone in frame: no other people, no toys, no pacifiers, no foreign "
     "objects in hands or near the face (same rules for children as for adults). "
     "Framing: upper body / shoulders visible, face centered; "
@@ -104,11 +116,13 @@ GOSUSLUGI_SCORING_PROMPT = (
     "open face, MUST erase isolated flyaway wisps and leftover wall halo "
     "(do not restyle or tuck hair); "
     "neutral no-smile expression, gaze at camera; "
-    "adults: stylish modern business suit; children: dark child's t-shirt "
+    "adults: stylish modern business suit UNLESS religious clothing/covering "
+    "(keep hijab/abaya/etc. — no suit); children: dark child's t-shirt "
     "(navy/charcoal) — no pale/white tank or tee on white bg; "
     "upright straight posture with perfectly level "
     "shoulders and no head tilt; if glasses present — zero lens glare, eyes fully "
-    "visible under frames; no hats/uniforms (religious cover OK if face oval open); "
+    "visible under frames; no hats/uniforms (keep religious cover + clothing "
+    "if face oval open); "
     "alone in frame, no toys/objects; light local spot cleanup only — "
     "without plastic skin or heavy beauty filter."
 )
@@ -123,7 +137,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "identity",
         "label": "Identity fidelity",
-        "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK.",
+        "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
         "weight": 0.3,
     },
     {

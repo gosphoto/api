@@ -58,6 +58,14 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
+    assert "religious clothing" in g
+    assert "keep that clothing" in g
+    assert "do not replace" in g
+    assert "abaya" in g
+    r = RESUME_SUIT_PROMPT.lower()
+    assert "religious clothing" in r
+    assert "keep that clothing" in r
+    assert "do not replace" in r
     assert "toy" in g or "foreign object" in g
     assert "mole" in g or "freckle" in g
     assert "invent" in g
