@@ -1,4 +1,4 @@
-"""Regression: bald + high-hair crop cases. Run when changing crop/compliance."""
+"""Regression: bald + high-hair + hijab crop cases. Run when changing crop/compliance."""
 
 from __future__ import annotations
 

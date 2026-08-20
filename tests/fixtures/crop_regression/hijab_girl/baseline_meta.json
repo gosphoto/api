@@ -1,0 +1,204 @@
+{
+  "result_id": "8a00a598e4fcbfe88d91af89f49b6315",
+  "saved_at": "20260820T134721Z",
+  "digital": "digital.jpg",
+  "print": "print.jpg",
+  "preview_digital": "preview_digital.jpg",
+  "preview_print": "preview_print.jpg",
+  "digital_bytes": 38035,
+  "print_bytes": 124774,
+  "doc_type": "zagran",
+  "doc_label": "Загранпаспорт",
+  "gate": {
+    "blur": 20.38,
+    "width": 1206,
+    "height": 1468,
+    "face_count": 1,
+    "yaw": -1.51,
+    "pitch": 3.3,
+    "roll": 6.22,
+    "rotation_deg": 0,
+    "upright_yaw": -1.51,
+    "upright_pitch": 3.3,
+    "upright_roll": 6.22,
+    "upright_blur": 20.38,
+    "chin_below_forehead": true,
+    "face_center_y": 0.469
+  },
+  "torso": {
+    "ok": true,
+    "reason": "torso_ok",
+    "nose_y": 0.4918,
+    "left_shoulder": {
+      "x": 0.8254,
+      "y": 0.7855,
+      "visibility": 0.9994
+    },
+    "right_shoulder": {
+      "x": 0.1259,
+      "y": 0.7929,
+      "visibility": 0.9996
+    },
+    "min_visibility": 0.45,
+    "min_shoulder_drop": 0.06,
+    "min_shoulder_width": 0.12,
+    "shoulder_mid_y": 0.7892,
+    "shoulder_drop": 0.2974,
+    "shoulder_width": 0.6995
+  },
+  "torso_ok": true,
+  "readiness": {
+    "ready": true,
+    "reason": "studio_ready",
+    "reasons": [],
+    "scores": {
+      "corner_white_ok": true,
+      "corner_bgr": [
+        254.4,
+        254.3,
+        254.4
+      ],
+      "subject_area_frac": 0.344,
+      "border_white_frac": 0.985,
+      "border_luma_mean": 253.7,
+      "border_bg_pix": 286328,
+      "border_ok": true,
+      "border_sparse": false,
+      "bg_luma_std": 7.31,
+      "bg_chroma_mean": 0.9,
+      "bg_uniform_ok": true
+    },
+    "source": "cpu_studio"
+  },
+  "edit": {
+    "stage": "edit",
+    "model": "google/gemini-2.5-flash-image",
+    "cutout": "openrouter_edit",
+    "edit_route": {
+      "model": "google/gemini-2.5-flash-image",
+      "use_pro": false,
+      "reason": "input_not_sharp",
+      "scores": {
+        "top_corner_luma": 255.0,
+        "blur": 20.38,
+        "wisp_frac": 0.207,
+        "hair_pix": 4316,
+        "light_ok": true,
+        "sharp_ok": false,
+        "messy_ok": true
+      }
+    },
+    "background_mode": "solid",
+    "background_hex_color": "#FFFFFF",
+    "image_size": "1K",
+    "reasoning": null,
+    "face_protected": false,
+    "passes": 1,
+    "prompt": "gosuslugi_riverflow",
+    "src_size": [
+      1206,
+      1468
+    ],
+    "kept_model_aspect": true,
+    "width": 864,
+    "height": 1184
+  },
+  "crop": {
+    "roll_corrected_deg": 0.98,
+    "width": 497,
+    "height": 638,
+    "face_ratio_target": 0.75,
+    "crown_factor": 0.378,
+    "top_margin_target": 0.1,
+    "face_ratio_est": 0.75,
+    "attempt_score": 1000.0,
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.664,
+      "gap_ratio": 0.378,
+      "crown_factor": 0.378,
+      "source": "silhouette"
+    },
+    "dpi": 360
+  },
+  "compliance": {
+    "width": 497,
+    "height": 638,
+    "dpi_target": 360,
+    "face_ratio": 0.752,
+    "top_margin": 0.1,
+    "head_height_mm": 33.8,
+    "head_width_mm": 19.1,
+    "bg": {
+      "bgr": [
+        255.0,
+        255.0,
+        255.0
+      ],
+      "white_ok": true
+    },
+    "checks": {
+      "size_ok": true,
+      "face_oval_ok": true,
+      "head_height_mm_ok": true,
+      "head_width_mm_ok": true,
+      "top_margin_ok": true,
+      "bg_white_ok": true,
+      "single_face_ok": true,
+      "face_ratio_ok": true
+    },
+    "pass": true,
+    "source": "rg.ru/2011/08/22/pasport-dok.html §34.3",
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.585,
+      "gap_ratio": 0.359,
+      "crown_factor": 0.359,
+      "source": "silhouette"
+    },
+    "jpeg_bytes": 38035,
+    "jpeg_max_bytes": 2097152,
+    "jpeg_size_ok": true
+  },
+  "print_sheet": {
+    "width": 1181,
+    "height": 1772,
+    "dpi": 300,
+    "copies": 4,
+    "bytes": 124774,
+    "size_cm": [
+      10,
+      15
+    ],
+    "mime": "image/jpeg",
+    "layout": "2x2"
+  },
+  "resume": "resume.jpg",
+  "resume_error": null,
+  "pipeline": [
+    "gate",
+    "local_person",
+    "crop",
+    "print_10x15",
+    "resume_suit"
+  ],
+  "width": 497,
+  "height": 638,
+  "dpi": 360,
+  "mime": "image/jpeg",
+  "paid": false,
+  "resume_offer": true,
+  "paid_resume": false,
+  "preview_resume": "preview_resume.jpg",
+  "resume_bytes": 116806,
+  "reprocessed_at": "20260820T184552Z",
+  "reprocess_reason": "keep_religious_clothing",
+  "resume_meta": {
+    "stage": "resume_suit",
+    "model": "google/gemini-2.5-flash-image",
+    "prompt": "resume_suit",
+    "bytes": 116806,
+    "width": 864,
+    "height": 1184
+  }
+}

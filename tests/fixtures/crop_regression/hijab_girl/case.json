@@ -1,0 +1,19 @@
+{
+  "id": "hijab_girl",
+  "role": "religious_covering",
+  "title": "Девочка в хиджабе",
+  "notes": "Прод 2026-08-20 result 8a00a598e4fcbfe88d91af89f49b6315. in.jpg = селфи с белым хиджабом (сливался с #FFFFFF). white_in / baseline_out = 35×45 после перекраса хиджаба в тёмный. Кроп не должен считать покрытие лысиной.",
+  "input": "white_in.jpg",
+  "source_pair": "20260820T134721Z_IMG_9508",
+  "source_result": "8a00a598e4fcbfe88d91af89f49b6315",
+  "expect": {
+    "pass": true,
+    "top_margin_min": 0.08,
+    "top_margin_max": 0.14,
+    "face_ratio_min": 0.70,
+    "face_ratio_max": 0.78,
+    "head_height_mm_min": 32.0,
+    "head_height_mm_max": 36.0,
+    "is_bald": false
+  }
+}
