@@ -6,6 +6,7 @@ import json
 import logging
 import re
 import secrets
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -109,6 +110,66 @@ def save_result(
         return rid
     except Exception as e:
         log.warning("Failed to save result: %s", e)
+        return None
+
+
+_PAYMENT_META_KEYS = frozenset(
+    {
+        "paid",
+        "paid_at",
+        "payment_id",
+        "tochka_operation_id",
+        "paid_resume",
+        "paid_resume_at",
+        "resume_payment_id",
+        "resume_tochka_operation_id",
+    }
+)
+
+
+def clone_result(source_id: str) -> str | None:
+    """
+    Copy result files into a new unpaid result_id (for same-day process cache hits).
+    """
+    if not config.RESULTS_ENABLED:
+        return None
+    if not is_valid_result_id(source_id):
+        return None
+    src = result_dir(source_id)
+    if not (src / "meta.json").is_file():
+        return None
+    meta = load_meta(source_id)
+    if not meta:
+        return None
+    new_id = new_result_id()
+    dst = result_dir(new_id)
+    try:
+        dst.mkdir(parents=True, exist_ok=False)
+        for name in ALLOWED_FILES:
+            src_file = src / name
+            if src_file.is_file():
+                shutil.copy2(src_file, dst / name)
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        new_meta = {k: v for k, v in meta.items() if k not in _PAYMENT_META_KEYS}
+        new_meta.update(
+            {
+                "result_id": new_id,
+                "saved_at": ts,
+                "paid": False,
+                "paid_resume": False,
+                "cloned_from": source_id,
+            }
+        )
+        (dst / "meta.json").write_text(
+            json.dumps(new_meta, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        log.info("Cloned result source=%s new=%s", source_id, new_id)
+        return new_id
+    except Exception as e:
+        log.warning("Failed to clone result source=%s: %s", source_id, e)
+        if dst.exists():
+            shutil.rmtree(dst, ignore_errors=True)
         return None
 
 

@@ -13,5 +13,6 @@ testdata/
 rejecteds/
 pairs/
 results/
+cache/
 payments/
 tmp-smoke/

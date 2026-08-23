@@ -27,6 +27,8 @@ from .openrouter import OpenRouterError
 from .readiness import assess_readiness
 from .pairs import save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
+from .process_cache import lookup as process_cache_lookup
+from .process_cache import put as process_cache_put
 from .rejecteds import save_rejected
 from .results import (
     is_paid,
@@ -498,6 +500,61 @@ def _run_passport_stages(
     }
 
 
+def _build_process_done_payload(
+    result_id: str | None,
+    meta: dict,
+    *,
+    from_cache: bool = False,
+) -> dict:
+    edit_meta = meta.get("edit") or {}
+    print_meta = meta.get("print_sheet") or {}
+    compliance = meta.get("compliance") or {}
+    readiness_meta = meta.get("readiness") or {}
+    crop_metrics = meta.get("crop") or {}
+    pipeline = meta.get("pipeline") or []
+    resume_offer = bool(meta.get("resume_offer"))
+    edit_stage = pipeline[1] if len(pipeline) > 1 else ""
+    if edit_stage == "skip_edit":
+        done_msg = "Фото 35×45 (crop-only, без Riverflow) + лист 10×15 (4 фото)"
+    else:
+        done_msg = "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)"
+    if resume_offer:
+        done_msg += " + превью для резюме"
+    if from_cache:
+        done_msg += " (из кеша)"
+    payload = {
+        "ok": True,
+        "stage": "done",
+        "message": done_msg,
+        "mime": meta.get("mime") or "image/jpeg",
+        "doc_type": meta.get("doc_type") or config.DEFAULT_DOC_TYPE,
+        "doc_label": meta.get("doc_label")
+        or config.DOC_PRESETS[config.DEFAULT_DOC_TYPE]["label"],
+        "width": meta.get("width") or config.PASSPORT_WIDTH,
+        "height": meta.get("height") or config.PASSPORT_HEIGHT,
+        "dpi": meta.get("dpi") or config.PASSPORT_DPI,
+        "print_sheet": print_meta,
+        "pipeline": pipeline,
+        "model": edit_meta.get("model"),
+        "edit_backend": edit_meta.get("cutout") or config.EDIT_BACKEND,
+        "edit_cutout": edit_meta.get("cutout") or config.EDIT_CUTOUT,
+        "gate": meta.get("gate") or {},
+        "torso": meta.get("torso") or {},
+        "resume_offer": resume_offer,
+        "price_resume_rub": payments_mod.resume_price_rub(),
+        "readiness": readiness_meta,
+        "edit": edit_meta,
+        "crop": crop_metrics,
+        "compliance": compliance,
+        "price_rub": payments_mod.price_rub(),
+        "from_cache": from_cache,
+    }
+    if result_id:
+        payload["result_id"] = result_id
+        payload["result_path"] = f"/result/{result_id}"
+    return payload
+
+
 def _run_process_pipeline(
     data: bytes,
     *,
@@ -523,6 +580,16 @@ def _run_process_pipeline(
             "message": gate.message,
             "metrics": gate.metrics,
         }
+
+    cached_id = process_cache_lookup(data, preset["doc_type"])
+    if cached_id:
+        cached_meta = load_meta(cached_id)
+        if cached_meta:
+            return _build_process_done_payload(
+                cached_id,
+                cached_meta,
+                from_cache=True,
+            )
 
     torso = torso_mod.assess_torso(data)
     log.info(
@@ -603,6 +670,8 @@ def _run_process_pipeline(
         meta=pair_meta,
         resume_jpeg=resume_jpeg,
     )
+    if result_id:
+        process_cache_put(data, preset["doc_type"], result_id)
     doc_metrics_mod.record_doc_type(
         doc_type=preset["doc_type"],
         result_id=result_id,
@@ -615,34 +684,8 @@ def _run_process_pipeline(
         done_msg = "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)"
     if resume_jpeg:
         done_msg += " + превью для резюме"
-    payload = {
-        "ok": True,
-        "stage": "done",
-        "message": done_msg,
-        "mime": "image/jpeg",
-        "doc_type": preset["doc_type"],
-        "doc_label": preset["label"],
-        "width": preset["width"],
-        "height": preset["height"],
-        "dpi": preset["dpi"],
-        "print_sheet": print_meta,
-        "pipeline": pair_meta["pipeline"],
-        "model": edit_meta.get("model"),
-        "edit_backend": edit_meta.get("cutout") or config.EDIT_BACKEND,
-        "edit_cutout": edit_meta.get("cutout") or config.EDIT_CUTOUT,
-        "gate": gate.metrics,
-        "torso": pair_meta["torso"],
-        "resume_offer": bool(resume_jpeg),
-        "price_resume_rub": payments_mod.resume_price_rub(),
-        "readiness": readiness_meta,
-        "edit": edit_meta,
-        "crop": crop_metrics,
-        "compliance": compliance,
-        "price_rub": payments_mod.price_rub(),
-    }
-    if result_id:
-        payload["result_id"] = result_id
-        payload["result_path"] = f"/result/{result_id}"
+    payload = _build_process_done_payload(result_id, pair_meta)
+    payload["message"] = done_msg
     return payload
 
 

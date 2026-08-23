@@ -231,6 +231,22 @@ RESULTS_ENABLED = os.getenv("RESULTS_ENABLED", "1").strip().lower() in (
     "on",
 )
 
+# Same-day /api/process dedup: cache/<YYYYMMDD>/<sha256>_<doc>_v<ver>.json
+PROCESS_CACHE_DIR = Path(
+    os.getenv(
+        "PROCESS_CACHE_DIR",
+        str(Path(__file__).resolve().parent.parent / "cache"),
+    )
+)
+PROCESS_CACHE_ENABLED = os.getenv("PROCESS_CACHE_ENABLED", "1").strip().lower() in (
+    "1",
+    "true",
+    "yes",
+    "on",
+)
+# Bump to invalidate today's cache after prompt/model changes.
+PROCESS_CACHE_VERSION = os.getenv("PROCESS_CACHE_VERSION", "1").strip()
+
 # Feedback form → SMTP (mail.antonbutov.com)
 SMTP_HOST = os.getenv("SMTP_HOST", "mail.antonbutov.com").strip()
 SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
