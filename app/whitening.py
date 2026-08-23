@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import os
+
 import cv2
 import mediapipe as mp
 import numpy as np
@@ -164,6 +166,96 @@ def _y_cut(h: int, chin_y: int | None) -> int:
     return max(8, min(h - 1, int(y)))
 
 
+def _face_geom(bgr: np.ndarray) -> tuple[int, int, float, float] | None:
+    """Chin y, crown y, face center x, face width — for hair soften zoning."""
+    h, w = bgr.shape[:2]
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    result = _landmarker().detect(
+        mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+    )
+    if not result.face_landmarks:
+        return None
+    lm = result.face_landmarks[0]
+    xs = np.array([p.x * w for p in lm], dtype=np.float32)
+    ys = np.array([p.y * h for p in lm], dtype=np.float32)
+    return (
+        int(ys.max()),
+        int(ys.min()),
+        float(xs.mean()),
+        float(max(xs.max() - xs.min(), 1.0)),
+    )
+
+
+def _ring_band(mask: np.ndarray, *, px: int = 6) -> np.ndarray:
+    """Thin ring around a boolean region."""
+    u8 = mask.astype(np.uint8)
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (px * 2 + 1, px * 2 + 1))
+    outer = cv2.dilate(u8, k) > 0
+    inner = cv2.erode(u8, k) > 0
+    return outer & (~inner)
+
+
+def _head_hair_region(
+    *,
+    chin_y: int,
+    crown_y: int,
+    cx: float,
+    face_w: float,
+    h: int,
+    w: int,
+) -> np.ndarray:
+    """Head ellipse + narrow side locks. Geometry only — never reaches shoulders."""
+    region = np.zeros((h, w), bool)
+    cy = int(crown_y + 0.52 * (chin_y - crown_y))
+    ax = max(int(face_w * 1.24), 12)
+    ay = max(int((chin_y - crown_y) * 1.15 + face_w * 0.20), 12)
+    head = np.zeros((h, w), np.uint8)
+    cv2.ellipse(head, (int(cx), cy), (ax, ay), 0, 0, 360, 255, -1)
+    region |= head > 0
+
+    # Clip dome before neck / shoulders.
+    y_cap = min(h, chin_y + int(face_w * 0.18))
+    region[y_cap:, :] = False
+
+    # Side locks: outer strips only, short — ends before shoulder line.
+    y_side_end = min(h, chin_y + int(face_w * 0.32))
+    x_in = max(0, int(cx - face_w * 0.50))
+    x_out = min(w, int(cx + face_w * 0.50))
+    if y_side_end > chin_y:
+        region[chin_y:y_side_end, :x_in] = True
+        region[chin_y:y_side_end, x_out:] = True
+
+    return region
+
+
+def _hair_soften_band(
+    bgr: np.ndarray,
+    *,
+    chin_y: int,
+    crown_y: int,
+    cx: float,
+    face_w: float,
+) -> np.ndarray:
+    """Ring on real head silhouette (flyaways included), only where it meets white."""
+    h, w = bgr.shape[:2]
+    region = _head_hair_region(
+        chin_y=chin_y, crown_y=crown_y, cx=cx, face_w=face_w, h=h, w=w
+    )
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    white = gray >= 240
+    person = (gray < 240) & region
+    person = (
+        cv2.morphologyEx(
+            person.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8)
+        )
+        > 0
+    )
+    ring_px = int(os.getenv("HAIR_EDGE_SOFTEN_RING_PX", "3"))
+    ring = _ring_band(person, px=ring_px)
+    near_white = cv2.dilate(white.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+    return ring & near_white & region
+
+
 def _hair_wall_spill_mask(bgr: np.ndarray, *, chin_y: int | None) -> np.ndarray:
     """Cool near-white crumbs sitting on the hair / #FFFFFF boundary.
 
@@ -221,6 +313,100 @@ def _blur_hair_wall_spill(bgr: np.ndarray, chin_y: int | None = None) -> np.ndar
     out[band] = mix[band]
     out[gray < 140] = bgr[gray < 140]
     return out
+
+
+def _hair_core_mask(gray: np.ndarray, region: np.ndarray) -> np.ndarray:
+    """Dark subject core — excludes gray Gemini fringe at the silhouette."""
+    core = (gray < 168) & region
+    u8 = core.astype(np.uint8)
+    u8 = cv2.morphologyEx(u8, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
+    u8 = cv2.morphologyEx(u8, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+    return u8 > 0
+
+
+def soften_hair_edge_and_bg(
+    bgr: np.ndarray,
+    *,
+    chin_y: int | None = None,
+    subject_hard: np.ndarray | None = None,
+) -> np.ndarray:
+    """Anti-alias hair↔#FFFFFF: bleach gray fringe + feather tight silhouette."""
+    if bgr.size == 0 or min(bgr.shape[:2]) < 16:
+        return bgr
+
+    h, w = bgr.shape[:2]
+    geom = _face_geom(bgr)
+    if geom is not None:
+        chin_i, crown_i, cx, face_w = geom
+    else:
+        chin_i = _y_cut(h, chin_y)
+        crown_i = max(8, chin_i - int(h * 0.22))
+        cx, face_w = w / 2.0, w * 0.35
+
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    region = _head_hair_region(
+        chin_y=chin_i, crown_y=crown_i, cx=cx, face_w=face_w, h=h, w=w
+    )
+
+    band = _hair_soften_band(
+        bgr, chin_y=chin_i, crown_y=crown_i, cx=cx, face_w=face_w
+    )
+
+    from .face_protect import face_protect_mask
+
+    fpm = face_protect_mask(bgr)
+    if fpm is not None:
+        band = band & (fpm < 0.20)
+
+    if int(band.sum()) < 20:
+        return bgr
+
+    # Tight dark core → morph open eats 1–2px jaggies before feather.
+    if subject_hard is not None and subject_hard.size:
+        core = (subject_hard > 0) & region
+    else:
+        core = (gray < 185) & region
+    core_u8 = cv2.morphologyEx(
+        core.astype(np.uint8), cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8)
+    )
+    core_u8 = cv2.morphologyEx(core_u8, cv2.MORPH_OPEN, np.ones((3, 3), np.uint8))
+
+    out = bgr.astype(np.float32)
+
+    # Color smooth in band (visible on cutout, no full-frame white smear).
+    color_sigma = float(os.getenv("HAIR_EDGE_SOFTEN_COLOR_SIGMA", "5"))
+    src = np.clip(out, 0, 255).astype(np.uint8)
+    smoothed = cv2.GaussianBlur(src, (0, 0), color_sigma)
+    smoothed = cv2.GaussianBlur(smoothed, (0, 0), color_sigma * 0.65)
+    mix_color = cv2.GaussianBlur(band.astype(np.float32), (0, 0), 1.5)
+    mix_color = np.clip(mix_color * 0.85, 0.0, 1.0)
+    out = out * (1.0 - mix_color[:, :, None]) + smoothed.astype(np.float32) * mix_color[
+        :, :, None
+    ]
+
+    # Alpha feather on core — narrow anti-alias (~5px), low white pull.
+    sigma = float(os.getenv("HAIR_EDGE_SOFTEN_SIGMA", "2.5"))
+    alpha = cv2.GaussianBlur(core_u8.astype(np.float32) / 255.0, (0, 0), sigma)
+    alpha = np.clip(alpha, 0.0, 1.0)
+    lighten = float(os.getenv("HAIR_EDGE_SOFTEN_LIGHTEN", "0.18"))
+    bg_layer = out * (1.0 - lighten) + 255.0 * lighten
+    feathered = out * alpha[:, :, None] + bg_layer * (1.0 - alpha[:, :, None])
+
+    mix = cv2.GaussianBlur(band.astype(np.float32), (0, 0), 1.5)
+    mix = np.clip(
+        mix * float(os.getenv("HAIR_EDGE_SOFTEN_STRENGTH", "1.0")), 0.0, 1.0
+    )
+    out = out * (1.0 - mix[:, :, None]) + feathered * mix[:, :, None]
+    return np.clip(out, 0, 255).astype(np.uint8)
+
+
+def _hair_edge_soften_enabled() -> bool:
+    return os.getenv("HAIR_EDGE_SOFTEN", "0").strip().lower() in (
+        "1",
+        "true",
+        "yes",
+        "on",
+    )
 
 
 def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
@@ -287,6 +473,12 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     cleaned[hard] = bgr[hard]
     # Leftover wall on hair: only if the detector fires (not every portrait).
     cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
+    if _hair_edge_soften_enabled():
+        cleaned = soften_hair_edge_and_bg(
+            cleaned,
+            chin_y=chin_y,
+            subject_hard=np.where(hard, 255, 0).astype(np.uint8),
+        )
     return cleaned
 
 
