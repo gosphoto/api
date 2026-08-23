@@ -96,7 +96,7 @@ RIVERFLOW_PRO_MODEL = os.getenv(
     "RIVERFLOW_PRO_MODEL", "sourceful/riverflow-v2.5-pro"
 ).strip()
 EDIT_ROUTE_PRO_ON_MESSY_HAIR = os.getenv(
-    "EDIT_ROUTE_PRO_ON_MESSY_HAIR", "1"
+    "EDIT_ROUTE_PRO_ON_MESSY_HAIR", "0"
 ).strip().lower() in ("1", "true", "yes", "on")
 RIVERFLOW_BG_MODE = os.getenv("RIVERFLOW_BG_MODE", "solid").strip().lower()
 RIVERFLOW_BG_HEX = os.getenv("RIVERFLOW_BG_HEX", "#FFFFFF").strip().strip('"').strip("'")

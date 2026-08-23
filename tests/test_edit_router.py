@@ -45,7 +45,10 @@ def _sharpen_texture(bgr: np.ndarray) -> np.ndarray:
     return cv2.add(bgr, noise)
 
 
-def test_messy_hair_light_sharp_uses_pro():
+def test_messy_hair_light_sharp_uses_pro(monkeypatch):
+    import app.edit_router as router
+
+    monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", True)
     bgr = _canvas((232, 228, 224))
     _paint_head(bgr, messy=True)
     bgr = _sharpen_texture(bgr)
@@ -55,7 +58,10 @@ def test_messy_hair_light_sharp_uses_pro():
     assert d.reason == "messy_hair_light_sharp"
 
 
-def test_neat_hair_light_sharp_uses_gemini():
+def test_neat_hair_light_sharp_uses_gemini(monkeypatch):
+    import app.edit_router as router
+
+    monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", True)
     bgr = _canvas((232, 228, 224))
     _paint_head(bgr, messy=False)
     bgr = _sharpen_texture(bgr)
@@ -65,7 +71,10 @@ def test_neat_hair_light_sharp_uses_gemini():
     assert d.reason == "hair_neat"
 
 
-def test_messy_hair_dark_bg_uses_gemini():
+def test_messy_hair_dark_bg_uses_gemini(monkeypatch):
+    import app.edit_router as router
+
+    monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", True)
     bgr = _canvas((36, 40, 48))
     _paint_head(bgr, messy=True)
     bgr = _sharpen_texture(bgr)
@@ -75,7 +84,10 @@ def test_messy_hair_dark_bg_uses_gemini():
     assert d.reason == "bg_not_light"
 
 
-def test_messy_hair_light_blurry_uses_gemini():
+def test_messy_hair_light_blurry_uses_gemini(monkeypatch):
+    import app.edit_router as router
+
+    monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", True)
     bgr = _canvas((232, 228, 224))
     _paint_head(bgr, messy=True)
     bgr = cv2.GaussianBlur(bgr, (21, 21), 0)

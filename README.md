@@ -50,7 +50,8 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | `DEPLOY_USER` | да | SSH user (обычно `root`) |
 | `OPENROUTER_API_KEY` | да | Riverflow / OpenRouter image edit |
 | `RIVERFLOW_MODEL` | нет | default Gemini Flash Image (дешёвый путь) |
-| `RIVERFLOW_PRO_MODEL` | нет | `sourceful/riverflow-v2.5-pro` — если волосы растрёпаны, фон светлый, вход резкий |
+| `RIVERFLOW_PRO_MODEL` | нет | `sourceful/riverflow-v2.5-pro` (выключен: `EDIT_ROUTE_PRO_ON_MESSY_HAIR=0`) |
+| `EDIT_ROUTE_PRO_ON_MESSY_HAIR` | нет | `0` — всегда Gemini; `1` — Pro на messy hair + светлый фон |
 | `RIVERFLOW_BG_MODE` / `RIVERFLOW_BG_HEX` | нет | `solid` / `#FFFFFF` |
 | `OPENROUTER_IMAGE_MODEL` | нет | legacy model for non-Riverflow `/api/edit` |
 
