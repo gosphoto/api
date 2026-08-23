@@ -5,7 +5,7 @@
 - `POST /api/validate` — gate (MediaPipe Face Landmarker)
 - `POST /api/process` — gate → **Riverflow v2.5 Pro** (`background_mode=solid` `#FFFFFF`) → 35×45 crop → **лист 10×15** → `result_id` (без полного base64); fallback — local cutout
 - `GET /api/result/{id}` — meta + preview URLs; `paid` / цена
-- `POST /api/result/{id}/pay` — Tochka checkout (100 ₽) → unlock download
+- `POST /api/result/{id}/pay` — Tochka checkout (150 ₽) → unlock download
 - `POST /api/payments/tochka/webhook` — webhook Точки
 - `GET /api/result/{id}/digital.jpg|print.jpg` — только после оплаты
 - `POST /api/result/{id}/email` — JSON `{ "email" }` → SMTP с вложениями (только после оплаты)

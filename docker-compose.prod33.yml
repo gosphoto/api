@@ -43,7 +43,7 @@ services:
       RESULTS_DIR: /app/results
       PAYMENTS_DIR: /app/payments
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:-https://gosphoto.ru}
-      PRICE_KOPECKS: ${PRICE_KOPECKS:-10000}
+      PRICE_KOPECKS: ${PRICE_KOPECKS:-15000}
       RESUME_PRICE_KOPECKS: ${RESUME_PRICE_KOPECKS:-30000}
       RESUME_UPSELL_ENABLED: ${RESUME_UPSELL_ENABLED:-1}
       POSE_MODEL_PATH: /app/models/pose_landmarker_lite.task
