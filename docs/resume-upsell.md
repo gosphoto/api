@@ -11,7 +11,7 @@
 
 | Env | Default | Role |
 |-----|---------|------|
-| `RESUME_UPSELL_ENABLED` | `1` | Master switch |
+| `RESUME_UPSELL_ENABLED` | `0` | Master switch (off by default) |
 | `RESUME_PRICE_KOPECKS` | `30000` | 300 ₽ |
 | `POSE_MODEL_PATH` | `models/pose_landmarker_lite.task` | Pose model |
 | `TORSO_MIN_VISIBILITY` | `0.45` | Shoulder visibility |

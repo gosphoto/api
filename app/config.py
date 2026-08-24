@@ -273,7 +273,7 @@ TOCHKA_API_BASE_URL = os.getenv(
     "TOCHKA_API_BASE_URL", "https://enter.tochka.com"
 ).rstrip("/")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://gosphoto.ru").rstrip("/")
-PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "15000"))
+PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "25000"))
 FREE_DOWNLOAD_UNLOCK = os.getenv("FREE_DOWNLOAD_UNLOCK", "0").strip().lower() in (
     "1",
     "true",
@@ -295,7 +295,7 @@ PAYMENTS_ENABLED = os.getenv("PAYMENTS_ENABLED", "1").strip().lower() in (
 )
 
 # Resume suit upsell (experimental): Pose torso → parallel suit edit → 300 ₽
-RESUME_UPSELL_ENABLED = os.getenv("RESUME_UPSELL_ENABLED", "1").strip().lower() in (
+RESUME_UPSELL_ENABLED = os.getenv("RESUME_UPSELL_ENABLED", "0").strip().lower() in (
     "1",
     "true",
     "yes",
