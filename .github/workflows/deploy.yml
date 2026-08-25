@@ -199,7 +199,7 @@ jobs:
           data.setdefault("OPENROUTER_TIMEOUT_SEC", "300")
           data.setdefault("RIVERFLOW_TIMEOUT_SEC", "300")
           data.setdefault("PUBLIC_BASE_URL", "https://gosphoto.ru")
-          data["PRICE_KOPECKS"] = "25000"
+          data["PRICE_KOPECKS"] = "30000"
           data["RESUME_PRICE_KOPECKS"] = "30000"
           data["RESUME_UPSELL_ENABLED"] = "0"
           data.setdefault("FREE_DOWNLOAD_UNLOCK", "0")

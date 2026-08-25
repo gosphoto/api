@@ -27,7 +27,7 @@ def _setup_dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PAYMENTS_DIR", tmp_path / "payments")
     monkeypatch.setattr(config, "RESULTS_ENABLED", True)
     monkeypatch.setattr(config, "PAYMENTS_ENABLED", True)
-    monkeypatch.setattr(config, "PRICE_KOPECKS", 25000)
+    monkeypatch.setattr(config, "PRICE_KOPECKS", 30000)
     monkeypatch.setattr(config, "RESUME_PRICE_KOPECKS", 30000)
     monkeypatch.setattr(config, "FREE_DOWNLOAD_UNLOCK", False)
     monkeypatch.setattr(config, "PUBLIC_BASE_URL", "https://gosphoto.ru")
@@ -190,7 +190,7 @@ def test_jpeg_forbidden_until_paid(tmp_path, monkeypatch):
     assert r.status_code == 200
     body = r.json()
     assert body["paid"] is False
-    assert body["price_rub"] == 250
+    assert body["price_rub"] == 300
     assert body["digital_url"] is None
     assert body["preview_digital_url"].endswith("preview_digital.jpg")
 
