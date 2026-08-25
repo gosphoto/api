@@ -374,25 +374,14 @@ def _light_bg_portrait(bgr: np.ndarray) -> bool:
 
     return _top_corner_luma(bgr) >= 185.0
 
-
-def _light_bg_low_contrast(bgr: np.ndarray) -> bool:
-    """Light gray wall (not passport-white studio plate)."""
-    cw = corner_whiteness(bgr)
-    if cw.get("white_ok"):
-        return False
-    corner = cw.get("bgr") or [255.0, 255.0, 255.0]
-    return float(np.mean(corner)) >= 185.0
-
 def _is_hair_wall_spill_case(bgr: np.ndarray, chin_y: int | None = None) -> bool:
     """True for leftover-wall halo around hair (incl. light studio walls)."""
     if bgr.size == 0 or min(bgr.shape[:2]) < 8:
         return False
     cool = _hair_wall_spill_mask(bgr, chin_y=chin_y)
     n = int(cool.sum())
-    if _light_bg_low_contrast(bgr) and n >= 30:
-        w = bgr.shape[1]
-        if int(cool[:, : w // 2].sum()) >= 10 and int(cool[:, w // 2 :].sum()) >= 10:
-            return True
+    if _light_bg_portrait(bgr) and n >= 30:
+        return True
     if n < 100:
         return False
     w = bgr.shape[1]
@@ -570,19 +559,21 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     out = out * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
 
     out[hard] = bgr[hard]
-    light_bg = _light_bg_low_contrast(bgr)
+    light_bg = _light_bg_portrait(bgr)
+    defringe_luma = 220 if light_bg else 200
     cleaned = defringe_near_white(
         np.clip(out, 0, 255).astype(np.uint8),
-        luma_min=200,
+        luma_min=defringe_luma,
     )
     cleaned[hard] = bgr[hard]
-    cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
-    cleaned[hard] = bgr[hard]
-    cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
-    if light_bg and measure_outline_symmetry(cleaned) > 3.0:
-        geom = _face_geom(cleaned) or _face_geom(bgr)
+    if light_bg:
+        geom = _face_geom(bgr)
         cx = float(geom[2]) if geom is not None else None
         cleaned = _symmetrize_hair_outline(cleaned, chin_y=chin_y, cx=cx)
+    cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
+    cleaned[hard] = bgr[hard]
+    # Leftover wall on hair: only if the detector fires (not every portrait).
+    cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
     if _hair_edge_soften_enabled():
         cleaned = soften_hair_edge_and_bg(
             cleaned,
