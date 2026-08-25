@@ -48,8 +48,11 @@ def test_validate_full_name_rejects(monkeypatch):
         feedback.validate_full_name("Имя От " + ("Ф" * 30))
 
 
-def test_validate_photo_optional_none():
-    assert feedback.validate_photo(None, None, None) is None
+def test_validate_photo_required():
+    with pytest.raises(feedback.FeedbackValidationError) as e:
+        feedback.validate_photo(None, None, None)
+    assert e.value.status_code == 400
+    assert "фото" in e.value.detail.lower()
 
 
 def test_validate_photo_rejects_type_and_size(monkeypatch):
@@ -143,7 +146,7 @@ def _mini_feedback_app():
         email: str = Form(...),
         full_name: str = Form(...),
         message: str = Form(...),
-        photo: UploadFile | None = File(None),
+        photo: UploadFile = File(...),
     ):
         ip = request.client.host if request.client else "unknown"
         xff = request.headers.get("x-forwarded-for")
@@ -155,10 +158,10 @@ def _mini_feedback_app():
             email_n = feedback.validate_email(email)
             full_name_n = feedback.validate_full_name(full_name)
             message_n = feedback.validate_message(message)
-            raw = await photo.read() if photo is not None else None
+            raw = await photo.read()
             photo_n = feedback.validate_photo(
-                photo.filename if photo else None,
-                photo.content_type if photo else None,
+                photo.filename,
+                photo.content_type,
                 raw,
             )
             msg = feedback.build_feedback_email(
@@ -185,10 +188,14 @@ def _mini_feedback_app():
         return {
             "endpoint": "/api/feedback",
             "method": "POST",
-            "fields": ["email", "full_name", "message", "photo?"],
+            "fields": ["email", "full_name", "message", "photo"],
         }
 
     return app
+
+
+def _tiny_jpeg_bytes() -> bytes:
+    return b"\xff\xd8\xff\xd9"
 
 
 def test_http_feedback_ok(monkeypatch):
@@ -205,9 +212,28 @@ def test_http_feedback_ok(monkeypatch):
             "full_name": "Иван Сергеевич П.",
             "message": "Hello, need help please",
         },
+        files={"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")},
     )
     assert res.status_code == 200
     assert res.json() == {"ok": True}
+
+
+def test_http_feedback_requires_photo(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    feedback._RATE.clear()
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
+    client = TestClient(_mini_feedback_app())
+    res = client.post(
+        "/api/feedback",
+        data={
+            "email": "a@b.co",
+            "full_name": "Иван Сергеевич П.",
+            "message": "Hello, need help please",
+        },
+    )
+    assert res.status_code == 422
 
 
 def test_http_feedback_requires_full_name(monkeypatch):
@@ -220,6 +246,7 @@ def test_http_feedback_requires_full_name(monkeypatch):
     res = client.post(
         "/api/feedback",
         data={"email": "a@b.co", "message": "Hello, need help please"},
+        files={"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")},
     )
     assert res.status_code == 422
 
@@ -233,13 +260,14 @@ def test_http_feedback_rate_limit(monkeypatch):
     monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
     monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
     client = TestClient(_mini_feedback_app())
-    payload = {
+    data = {
         "email": "a@b.co",
         "full_name": "Иван Сергеевич П.",
         "message": "Hello, need help please",
     }
-    assert client.post("/api/feedback", data=payload).status_code == 200
-    assert client.post("/api/feedback", data=payload).status_code == 429
+    files = {"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")}
+    assert client.post("/api/feedback", data=data, files=files).status_code == 200
+    assert client.post("/api/feedback", data=data, files=files).status_code == 429
 
 
 def test_http_feedback_get_info():
@@ -249,4 +277,5 @@ def test_http_feedback_get_info():
     res = client.get("/api/feedback")
     assert res.status_code == 200
     assert res.json()["method"] == "POST"
-    assert "full_name" in res.json()["fields"]
+    assert "photo" in res.json()["fields"]
+    assert "photo?" not in res.json()["fields"]

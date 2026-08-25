@@ -959,7 +959,7 @@ async def post_feedback(
     email: str = Form(...),
     full_name: str = Form(...),
     message: str = Form(...),
-    photo: UploadFile | None = File(None),
+    photo: UploadFile = File(...),
 ):
     ip = _client_ip(request)
     ua = request.headers.get("user-agent", "")
@@ -968,10 +968,10 @@ async def post_feedback(
         email_n = feedback_mod.validate_email(email)
         full_name_n = feedback_mod.validate_full_name(full_name)
         message_n = feedback_mod.validate_message(message)
-        raw = await photo.read() if photo is not None else None
+        raw = await photo.read()
         photo_n = feedback_mod.validate_photo(
-            photo.filename if photo else None,
-            photo.content_type if photo else None,
+            photo.filename,
+            photo.content_type,
             raw,
         )
         msg = feedback_mod.build_feedback_email(
@@ -1003,7 +1003,7 @@ def feedback_info():
             "email": "required, reply-to",
             "full_name": "required, Имя Отчество Ф. (e.g. Иван Сергеевич П.)",
             "message": "required, 10–4000 chars",
-            "photo": "optional, JPEG/PNG/WebP ≤5MB",
+            "photo": "required, JPEG/PNG/WebP ≤5MB",
         },
         "to": config.FEEDBACK_TO,
     }

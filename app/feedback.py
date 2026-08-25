@@ -71,9 +71,9 @@ def validate_full_name(value: str) -> str:
 
 def validate_photo(
     filename: str | None, content_type: str | None, data: bytes | None
-) -> tuple[str, bytes] | None:
+) -> tuple[str, bytes]:
     if data is None or data == b"":
-        return None
+        raise FeedbackValidationError(400, "Приложите фото")
     if len(data) > config.FEEDBACK_MAX_PHOTO_BYTES:
         raise FeedbackValidationError(413, "Photo too large")
     ct = (content_type or "").lower().strip()
@@ -114,7 +114,7 @@ def build_feedback_email(
     message: str,
     client_ip: str,
     user_agent: str,
-    photo: tuple[str, bytes] | None,
+    photo: tuple[str, bytes],
 ) -> EmailMessage:
     snippet = message.replace("\n", " ").strip()
     if len(snippet) > 60:
@@ -136,17 +136,16 @@ def build_feedback_email(
             ]
         )
     )
-    if photo:
-        filename, data = photo
-        subtype = "jpeg"
-        lower = filename.lower()
-        if lower.endswith(".png"):
-            subtype = "png"
-        elif lower.endswith(".webp"):
-            subtype = "webp"
-        msg.add_attachment(
-            data, maintype="image", subtype=subtype, filename=filename
-        )
+    filename, data = photo
+    subtype = "jpeg"
+    lower = filename.lower()
+    if lower.endswith(".png"):
+        subtype = "png"
+    elif lower.endswith(".webp"):
+        subtype = "webp"
+    msg.add_attachment(
+        data, maintype="image", subtype=subtype, filename=filename
+    )
     return msg
 
 
