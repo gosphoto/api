@@ -24,6 +24,26 @@ def test_validate_message_bounds(monkeypatch):
         feedback.validate_message("x" * 21)
 
 
+def test_validate_full_name_ok(monkeypatch):
+    monkeypatch.setattr(config, "FEEDBACK_MIN_FULL_NAME_CHARS", 5)
+    monkeypatch.setattr(config, "FEEDBACK_MAX_FULL_NAME_CHARS", 200)
+    assert (
+        feedback.validate_full_name("  Иван  Иванович  Иванов  ")
+        == "Иван Иванович Иванов"
+    )
+
+
+def test_validate_full_name_rejects(monkeypatch):
+    monkeypatch.setattr(config, "FEEDBACK_MIN_FULL_NAME_CHARS", 5)
+    monkeypatch.setattr(config, "FEEDBACK_MAX_FULL_NAME_CHARS", 20)
+    with pytest.raises(feedback.FeedbackValidationError):
+        feedback.validate_full_name("Иван")
+    with pytest.raises(feedback.FeedbackValidationError):
+        feedback.validate_full_name("А Б")
+    with pytest.raises(feedback.FeedbackValidationError):
+        feedback.validate_full_name("Имя " + ("Ф" * 30))
+
+
 def test_validate_photo_optional_none():
     assert feedback.validate_photo(None, None, None) is None
 
@@ -54,6 +74,7 @@ def test_build_feedback_email_with_photo():
 
     msg = feedback.build_feedback_email(
         email="user@example.com",
+        full_name="Иван Иванович Иванов",
         message="Need help with my passport photo please",
         client_ip="203.0.113.9",
         user_agent="pytest",
@@ -65,6 +86,7 @@ def test_build_feedback_email_with_photo():
     assert msg["Subject"].startswith("[GoSphoto feedback]")
     body = msg.get_body(preferencelist=("plain",)).get_content()
     assert "user@example.com" in body
+    assert "Иван Иванович Иванов" in body
     assert "203.0.113.9" in body
     assert len(list(msg.iter_attachments())) == 1
 
@@ -115,6 +137,7 @@ def _mini_feedback_app():
     async def post_feedback(
         request: Request,
         email: str = Form(...),
+        full_name: str = Form(...),
         message: str = Form(...),
         photo: UploadFile | None = File(None),
     ):
@@ -126,6 +149,7 @@ def _mini_feedback_app():
         try:
             feedback.check_rate_limit(ip)
             email_n = feedback.validate_email(email)
+            full_name_n = feedback.validate_full_name(full_name)
             message_n = feedback.validate_message(message)
             raw = await photo.read() if photo is not None else None
             photo_n = feedback.validate_photo(
@@ -135,6 +159,7 @@ def _mini_feedback_app():
             )
             msg = feedback.build_feedback_email(
                 email=email_n,
+                full_name=full_name_n,
                 message=message_n,
                 client_ip=ip,
                 user_agent=ua,
@@ -156,7 +181,7 @@ def _mini_feedback_app():
         return {
             "endpoint": "/api/feedback",
             "method": "POST",
-            "fields": ["email", "message", "photo?"],
+            "fields": ["email", "full_name", "message", "photo?"],
         }
 
     return app
@@ -171,10 +196,28 @@ def test_http_feedback_ok(monkeypatch):
     client = TestClient(_mini_feedback_app())
     res = client.post(
         "/api/feedback",
-        data={"email": "a@b.co", "message": "Hello, need help please"},
+        data={
+            "email": "a@b.co",
+            "full_name": "Иван Иванович Иванов",
+            "message": "Hello, need help please",
+        },
     )
     assert res.status_code == 200
     assert res.json() == {"ok": True}
+
+
+def test_http_feedback_requires_full_name(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    feedback._RATE.clear()
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
+    client = TestClient(_mini_feedback_app())
+    res = client.post(
+        "/api/feedback",
+        data={"email": "a@b.co", "message": "Hello, need help please"},
+    )
+    assert res.status_code == 422
 
 
 def test_http_feedback_rate_limit(monkeypatch):
@@ -186,20 +229,13 @@ def test_http_feedback_rate_limit(monkeypatch):
     monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
     monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
     client = TestClient(_mini_feedback_app())
-    assert (
-        client.post(
-            "/api/feedback",
-            data={"email": "a@b.co", "message": "Hello, need help please"},
-        ).status_code
-        == 200
-    )
-    assert (
-        client.post(
-            "/api/feedback",
-            data={"email": "a@b.co", "message": "Hello, need help please"},
-        ).status_code
-        == 429
-    )
+    payload = {
+        "email": "a@b.co",
+        "full_name": "Иван Иванов",
+        "message": "Hello, need help please",
+    }
+    assert client.post("/api/feedback", data=payload).status_code == 200
+    assert client.post("/api/feedback", data=payload).status_code == 429
 
 
 def test_http_feedback_get_info():
@@ -209,3 +245,4 @@ def test_http_feedback_get_info():
     res = client.get("/api/feedback")
     assert res.status_code == 200
     assert res.json()["method"] == "POST"
+    assert "full_name" in res.json()["fields"]

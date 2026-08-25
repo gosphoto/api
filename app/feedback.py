@@ -55,6 +55,23 @@ def validate_message(value: str) -> str:
     return msg
 
 
+def validate_full_name(value: str) -> str:
+    """ФИО as on the payment card — for refunds."""
+    name = re.sub(r"\s+", " ", (value or "").strip())
+    if len(name) < config.FEEDBACK_MIN_FULL_NAME_CHARS:
+        raise FeedbackValidationError(
+            400, "Укажите ФИО (имя, отчество и фамилию), как на карте"
+        )
+    if len(name) > config.FEEDBACK_MAX_FULL_NAME_CHARS:
+        raise FeedbackValidationError(400, "ФИО слишком длинное")
+    parts = [p for p in name.split(" ") if p]
+    if len(parts) < 2:
+        raise FeedbackValidationError(
+            400, "Укажите минимум имя и фамилию (лучше полное ФИО)"
+        )
+    return name
+
+
 def validate_photo(
     filename: str | None, content_type: str | None, data: bytes | None
 ) -> tuple[str, bytes] | None:
@@ -96,6 +113,7 @@ def check_rate_limit(ip: str) -> None:
 def build_feedback_email(
     *,
     email: str,
+    full_name: str,
     message: str,
     client_ip: str,
     user_agent: str,
@@ -113,6 +131,7 @@ def build_feedback_email(
         "\n".join(
             [
                 f"From: {email}",
+                f"ФИО: {full_name}",
                 f"IP: {client_ip}",
                 f"User-Agent: {user_agent}",
                 "",

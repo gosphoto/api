@@ -957,6 +957,7 @@ async def email_result(result_id: str, body: ResultEmailBody, request: Request):
 async def post_feedback(
     request: Request,
     email: str = Form(...),
+    full_name: str = Form(...),
     message: str = Form(...),
     photo: UploadFile | None = File(None),
 ):
@@ -965,6 +966,7 @@ async def post_feedback(
     try:
         feedback_mod.check_rate_limit(ip)
         email_n = feedback_mod.validate_email(email)
+        full_name_n = feedback_mod.validate_full_name(full_name)
         message_n = feedback_mod.validate_message(message)
         raw = await photo.read() if photo is not None else None
         photo_n = feedback_mod.validate_photo(
@@ -974,6 +976,7 @@ async def post_feedback(
         )
         msg = feedback_mod.build_feedback_email(
             email=email_n,
+            full_name=full_name_n,
             message=message_n,
             client_ip=ip,
             user_agent=ua,
@@ -998,6 +1001,7 @@ def feedback_info():
         "method": "POST",
         "fields": {
             "email": "required, reply-to",
+            "full_name": "required, ФИО as on card (refunds)",
             "message": "required, 10–4000 chars",
             "photo": "optional, JPEG/PNG/WebP ≤5MB",
         },
