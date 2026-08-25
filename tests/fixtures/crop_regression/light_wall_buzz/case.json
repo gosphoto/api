@@ -1,0 +1,19 @@
+{
+  "id": "light_wall_buzz",
+  "role": "light_wall",
+  "title": "Buzz-cut on light gray wall (IMG_7187)",
+  "notes": "Local cutout + crop on near-white wall; guards compliance after light-bg silhouette fixes.",
+  "input": "white_in.jpg",
+  "source_pair": "20260825T151828Z_IMG_7187",
+  "expect": {
+    "pass": true,
+    "top_margin_min": 0.08,
+    "top_margin_max": 0.14,
+    "face_ratio_min": 0.70,
+    "face_ratio_max": 0.80,
+    "head_height_mm_min": 32.0,
+    "head_height_mm_max": 36.0,
+    "is_bald": true,
+    "outline_symmetry_max_px": 40.0
+  }
+}

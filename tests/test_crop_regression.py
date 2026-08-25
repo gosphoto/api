@@ -62,3 +62,11 @@ def test_crop_regression_case(case_dir: Path):
             f"{case['id']}: is_bald={bald.get('is_bald')} expected {expect['is_bald']} "
             f"({bald})"
         )
+
+    if "outline_symmetry_max_px" in expect:
+        from app.whitening import measure_outline_symmetry
+
+        sym = measure_outline_symmetry(cropped)
+        assert sym <= float(expect["outline_symmetry_max_px"]), (
+            f"{case['id']}: outline_symmetry={sym} > {expect['outline_symmetry_max_px']}"
+        )

@@ -40,8 +40,12 @@ class BaldnessAnalysis:
         return asdict(self)
 
 
-def person_mask(bgr: np.ndarray, *, tol: int = 40) -> np.ndarray:
+def person_mask(bgr: np.ndarray, *, tol: int | None = None) -> np.ndarray:
     """True where pixel is not near-white (subject on passport bg)."""
+    if tol is None:
+        from .bg import adaptive_tol
+
+        tol = adaptive_tol(bgr)
     return (255 - bgr.astype(np.int16)).max(axis=2) > tol
 
 
