@@ -28,7 +28,11 @@ def test_validate_full_name_ok(monkeypatch):
     monkeypatch.setattr(config, "FEEDBACK_MIN_FULL_NAME_CHARS", 5)
     monkeypatch.setattr(config, "FEEDBACK_MAX_FULL_NAME_CHARS", 200)
     assert (
-        feedback.validate_full_name("  Иван  Иванович  Иванов  ")
+        feedback.validate_full_name("  Иван  Сергеевич  П.  ")
+        == "Иван Сергеевич П."
+    )
+    assert (
+        feedback.validate_full_name("Иван Иванович Иванов")
         == "Иван Иванович Иванов"
     )
 
@@ -39,9 +43,9 @@ def test_validate_full_name_rejects(monkeypatch):
     with pytest.raises(feedback.FeedbackValidationError):
         feedback.validate_full_name("Иван")
     with pytest.raises(feedback.FeedbackValidationError):
-        feedback.validate_full_name("А Б")
+        feedback.validate_full_name("Иван Иванов")
     with pytest.raises(feedback.FeedbackValidationError):
-        feedback.validate_full_name("Имя " + ("Ф" * 30))
+        feedback.validate_full_name("Имя От " + ("Ф" * 30))
 
 
 def test_validate_photo_optional_none():
@@ -74,7 +78,7 @@ def test_build_feedback_email_with_photo():
 
     msg = feedback.build_feedback_email(
         email="user@example.com",
-        full_name="Иван Иванович Иванов",
+        full_name="Иван Сергеевич П.",
         message="Need help with my passport photo please",
         client_ip="203.0.113.9",
         user_agent="pytest",
@@ -86,7 +90,7 @@ def test_build_feedback_email_with_photo():
     assert msg["Subject"].startswith("[GoSphoto feedback]")
     body = msg.get_body(preferencelist=("plain",)).get_content()
     assert "user@example.com" in body
-    assert "Иван Иванович Иванов" in body
+    assert "Иван Сергеевич П." in body
     assert "203.0.113.9" in body
     assert len(list(msg.iter_attachments())) == 1
 
@@ -198,7 +202,7 @@ def test_http_feedback_ok(monkeypatch):
         "/api/feedback",
         data={
             "email": "a@b.co",
-            "full_name": "Иван Иванович Иванов",
+            "full_name": "Иван Сергеевич П.",
             "message": "Hello, need help please",
         },
     )
@@ -231,7 +235,7 @@ def test_http_feedback_rate_limit(monkeypatch):
     client = TestClient(_mini_feedback_app())
     payload = {
         "email": "a@b.co",
-        "full_name": "Иван Иванов",
+        "full_name": "Иван Сергеевич П.",
         "message": "Hello, need help please",
     }
     assert client.post("/api/feedback", data=payload).status_code == 200

@@ -1001,7 +1001,7 @@ def feedback_info():
         "method": "POST",
         "fields": {
             "email": "required, reply-to",
-            "full_name": "required, ФИО as on card (refunds)",
+            "full_name": "required, Имя Отчество Ф. (e.g. Иван Сергеевич П.)",
             "message": "required, 10–4000 chars",
             "photo": "optional, JPEG/PNG/WebP ≤5MB",
         },

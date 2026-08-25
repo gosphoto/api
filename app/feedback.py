@@ -56,19 +56,16 @@ def validate_message(value: str) -> str:
 
 
 def validate_full_name(value: str) -> str:
-    """ФИО as on the payment card — for refunds."""
+    """Имя Отчество Ф. as on the payment card — for refunds."""
     name = re.sub(r"\s+", " ", (value or "").strip())
+    hint = "Укажите Имя Отчество Ф., например: Иван Сергеевич П."
     if len(name) < config.FEEDBACK_MIN_FULL_NAME_CHARS:
-        raise FeedbackValidationError(
-            400, "Укажите ФИО (имя, отчество и фамилию), как на карте"
-        )
+        raise FeedbackValidationError(400, hint)
     if len(name) > config.FEEDBACK_MAX_FULL_NAME_CHARS:
         raise FeedbackValidationError(400, "ФИО слишком длинное")
     parts = [p for p in name.split(" ") if p]
-    if len(parts) < 2:
-        raise FeedbackValidationError(
-            400, "Укажите минимум имя и фамилию (лучше полное ФИО)"
-        )
+    if len(parts) < 3:
+        raise FeedbackValidationError(400, hint)
     return name
 
 
