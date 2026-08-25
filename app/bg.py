@@ -129,37 +129,6 @@ def _face_lock_mask(bgr: np.ndarray) -> np.ndarray:
     return m
 
 
-def _top_corner_luma(bgr: np.ndarray) -> float:
-    h, w = bgr.shape[:2]
-    s = max(8, int(0.08 * min(h, w)))
-    patches = [bgr[:s, :s], bgr[:s, -s:]]
-    pix = np.concatenate([p.reshape(-1, 3) for p in patches], axis=0).astype(np.float32)
-    return float(pix.mean())
-
-
-def adaptive_tol(bgr: np.ndarray, *, default: int = 40) -> int:
-    """Lower tolerance on light walls so hair does not merge with the plate."""
-    luma = _top_corner_luma(bgr)
-    if luma < 170:
-        return default
-    tol = int(90 - luma * 0.35)
-    return int(np.clip(tol, 22, 40))
-
-
-def _light_bg_cutout_params(bgr: np.ndarray) -> dict[str, int]:
-    if _top_corner_luma(bgr) >= 185.0:
-        return {"close_k": 31, "erode": 1}
-    return {"close_k": 41, "erode": 2}
-
-
-def _post_cutout_soften(bgr: np.ndarray) -> np.ndarray:
-    if _top_corner_luma(bgr) < 185.0:
-        return bgr
-    from .whitening import soften_hair_edge_and_bg
-
-    return soften_hair_edge_and_bg(bgr)
-
-
 def _onnx_confidence(bgr: np.ndarray, model: str) -> np.ndarray:
     path = _onnx_model_path(model)
     sess = _onnx_session(str(path))
@@ -211,10 +180,8 @@ def _white_bg_onnx(bgr: np.ndarray, model: str) -> np.ndarray:
     bgr = prepare_for_cutout(bgr)
     conf = _onnx_confidence(bgr, model)
     face = _face_lock_mask(bgr)
-    params = _light_bg_cutout_params(bgr)
-    alpha = _silhouette_alpha(conf, face, **params)
-    out = _composite_on_white(bgr, alpha)
-    return _post_cutout_soften(out)
+    alpha = _silhouette_alpha(conf, face)
+    return _composite_on_white(bgr, alpha)
 
 
 def _white_bg_mediapipe(bgr: np.ndarray) -> np.ndarray:
@@ -228,10 +195,8 @@ def _white_bg_mediapipe(bgr: np.ndarray) -> np.ndarray:
         result.confidence_masks[0].numpy_view(), (bgr.shape[1], bgr.shape[0])
     )
     face = _face_lock_mask(bgr)
-    params = _light_bg_cutout_params(bgr)
-    alpha = _silhouette_alpha(conf, face, thr=0.35, close_k=params["close_k"], erode=params["erode"])
-    out = _composite_on_white(bgr, alpha)
-    return _post_cutout_soften(out)
+    alpha = _silhouette_alpha(conf, face, thr=0.35, close_k=35, erode=1)
+    return _composite_on_white(bgr, alpha)
 
 
 @lru_cache(maxsize=1)

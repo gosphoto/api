@@ -19,7 +19,6 @@ from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
 from .edit_router import choose_edit_model
 from .openrouter import edit_selfie, edit_selfie_resume, edit_selfie_riverflow
-from .readiness import assess_readiness
 from .whitening import force_white_background
 
 log = logging.getLogger("gosphoto-gate")
@@ -55,8 +54,7 @@ def run_edit_riverflow(
         raise RuntimeError("encode_for_riverflow_failed")
     orig_jpg = buf.tobytes()
 
-    readiness_meta = assess_readiness(src_p).as_dict()
-    route = choose_edit_model(src_p, readiness=readiness_meta)
+    route = choose_edit_model(src_p)
     log.info(
         "Edit route model=%s reason=%s scores=%s",
         route.model,

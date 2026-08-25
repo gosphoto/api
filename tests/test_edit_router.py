@@ -55,36 +55,20 @@ def test_messy_hair_light_sharp_uses_pro(monkeypatch):
     d = choose_edit_model(bgr)
     assert d.use_pro is True, d.as_dict()
     assert d.model == RIVERFLOW_PRO
-    assert d.reason in ("messy_hair_light_sharp", "light_bg_low_contrast")
+    assert d.reason == "messy_hair_light_sharp"
 
 
 def test_neat_hair_light_sharp_uses_gemini(monkeypatch):
     import app.edit_router as router
 
     monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", True)
-    bgr = _canvas((250, 250, 250))
+    bgr = _canvas((232, 228, 224))
     _paint_head(bgr, messy=False)
     bgr = _sharpen_texture(bgr)
     d = choose_edit_model(bgr)
     assert d.use_pro is False, d.as_dict()
     assert d.model == GEMINI_FLASH_IMAGE
     assert d.reason == "hair_neat"
-
-
-def test_light_bg_low_contrast_neat_uses_pro(monkeypatch):
-    import app.edit_router as router
-
-    monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", False)
-    bgr = _canvas((188, 188, 188))
-    _paint_head(bgr, messy=False)
-    bgr = _sharpen_texture(bgr)
-    d = choose_edit_model(
-        bgr,
-        readiness={"reasons": ["bg_not_white"], "scores": {"corner_white_ok": False}},
-    )
-    assert d.use_pro is True, d.as_dict()
-    assert d.model == RIVERFLOW_PRO
-    assert d.reason == "light_bg_low_contrast"
 
 
 def test_messy_hair_dark_bg_uses_gemini(monkeypatch):
@@ -113,11 +97,11 @@ def test_messy_hair_light_blurry_uses_gemini(monkeypatch):
     assert d.reason == "input_not_sharp"
 
 
-def test_flag_off_dark_bg_uses_gemini(monkeypatch):
+def test_flag_off_always_gemini(monkeypatch):
     import app.edit_router as router
 
     monkeypatch.setattr(router.config, "EDIT_ROUTE_PRO_ON_MESSY_HAIR", False)
-    bgr = _canvas((36, 40, 48))
+    bgr = _canvas((232, 228, 224))
     _paint_head(bgr, messy=True)
     bgr = _sharpen_texture(bgr)
     d = choose_edit_model(bgr)

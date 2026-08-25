@@ -94,52 +94,27 @@ def _hair_wisp_frac(bgr: np.ndarray) -> tuple[float, int]:
     return float(wisps.sum()) / float(n), n
 
 
-def _is_bg_not_white(
-    bgr: np.ndarray,
-    readiness: dict[str, Any] | None,
-) -> bool:
-    """Cheap signal that the wall is not passport-white (low subject/bg contrast)."""
-    if readiness:
-        reasons = readiness.get("reasons") or []
-        if "bg_not_white" in reasons or readiness.get("reason") == "bg_not_white":
-            return True
-        scores = readiness.get("scores") or {}
-        if scores.get("corner_white_ok") is False:
-            return True
-    from .whitening import corner_whiteness
-
-    return not bool(corner_whiteness(bgr).get("white_ok", True))
-
-
-def choose_edit_model(
-    bgr: np.ndarray,
-    *,
-    readiness: dict[str, Any] | None = None,
-) -> EditRoute:
-    """Route Pro for light low-contrast walls; optional messy-hair Pro when enabled."""
+def choose_edit_model(bgr: np.ndarray) -> EditRoute:
+    """Pro only when hair is messy, the wall is light, and the input is sharp."""
     if bgr is None or bgr.size == 0 or bgr.ndim != 3:
         return _gemini("empty", {})
+
+    scores: dict[str, Any] = {}
+    if not config.EDIT_ROUTE_PRO_ON_MESSY_HAIR:
+        return _gemini("route_disabled", scores)
 
     luma = _top_corner_luma(bgr)
     blur = _blur_score(bgr)
     wisp_frac, hair_pix = _hair_wisp_frac(bgr)
-    bg_not_white = _is_bg_not_white(bgr, readiness)
-    scores: dict[str, Any] = {
+    scores = {
         "top_corner_luma": round(luma, 1),
         "blur": round(blur, 2),
         "wisp_frac": round(wisp_frac, 3),
         "hair_pix": hair_pix,
-        "bg_not_white": bg_not_white,
         "light_ok": luma >= LIGHT_BG_LUMA_MIN,
         "sharp_ok": blur >= PRO_MIN_BLUR,
         "messy_ok": wisp_frac >= WISP_FRAC_MIN and hair_pix >= HAIR_PIX_MIN,
     }
-
-    if scores["light_ok"] and bg_not_white and scores["sharp_ok"]:
-        return _pro("light_bg_low_contrast", scores)
-
-    if not config.EDIT_ROUTE_PRO_ON_MESSY_HAIR:
-        return _gemini("route_disabled", scores)
 
     if not scores["light_ok"]:
         return _gemini("bg_not_light", scores)

@@ -284,104 +284,12 @@ def _hair_wall_spill_mask(bgr: np.ndarray, *, chin_y: int | None) -> np.ndarray:
     return cool
 
 
-def measure_outline_symmetry(
-    bgr: np.ndarray,
-    *,
-    gray_thr: int = 200,
-    asym_thr_px: int = 3,
-) -> float:
-    """Max left/right silhouette extent gap in the crown band (pixels)."""
-    geom = _face_geom(bgr)
-    if geom is None:
-        return 0.0
-    chin_i, crown_i, cx, face_w = geom
-    h, w = bgr.shape[:2]
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    region = _head_hair_region(
-        chin_y=chin_i, crown_y=crown_i, cx=cx, face_w=face_w, h=h, w=w
-    )
-    y0 = max(0, crown_i)
-    y1 = min(h, crown_i + max(8, int((chin_i - crown_i) * 0.35)))
-    max_asym = 0.0
-    for y in range(y0, y1):
-        row = region[y, :] & (gray[y, :] < gray_thr)
-        if not row.any():
-            continue
-        xs = np.flatnonzero(row)
-        left_x, right_x = int(xs.min()), int(xs.max())
-        asym = abs((cx - left_x) - (right_x - cx))
-        max_asym = max(max_asym, float(asym))
-    return max_asym if max_asym > asym_thr_px else 0.0
-
-
-def _symmetrize_hair_outline(
-    bgr: np.ndarray,
-    *,
-    chin_y: int | None = None,
-    cx: float | None = None,
-    gray_thr: int = 200,
-    asym_thr_px: int = 3,
-) -> np.ndarray:
-    """Feather a protruding hair side instead of bleaching it away on light walls."""
-    geom = _face_geom(bgr)
-    h, w = bgr.shape[:2]
-    if geom is not None:
-        chin_i, crown_i, cx_f, face_w = geom
-    elif cx is not None and chin_y is not None:
-        chin_i = int(chin_y)
-        crown_i = max(8, chin_i - int(h * 0.22))
-        cx_f = float(cx)
-        face_w = w * 0.35
-    else:
-        return bgr
-    if cx is not None:
-        cx_f = float(cx)
-    if chin_y is not None:
-        chin_i = int(chin_y)
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    region = _head_hair_region(
-        chin_y=chin_i, crown_y=crown_i, cx=cx_f, face_w=face_w, h=h, w=w
-    )
-    y0 = max(0, crown_i)
-    y1 = min(h, crown_i + max(8, int((chin_i - crown_i) * 0.35)))
-    protect = np.zeros((h, w), bool)
-    for y in range(y0, y1):
-        row = region[y, :] & (gray[y, :] < gray_thr)
-        if not row.any():
-            continue
-        xs = np.flatnonzero(row)
-        left_x, right_x = int(xs.min()), int(xs.max())
-        left_ext = cx_f - left_x
-        right_ext = right_x - cx_f
-        if left_ext > right_ext + asym_thr_px:
-            protect[y, left_x : int(cx_f)] = True
-        elif right_ext > left_ext + asym_thr_px:
-            protect[y, int(cx_f) : right_x + 1] = True
-    if not protect.any():
-        return bgr
-    out = bgr.astype(np.float32)
-    band = cv2.dilate(protect.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
-    blurred = cv2.GaussianBlur(bgr, (3, 3), 0)
-    mix = cv2.GaussianBlur(band.astype(np.float32), (0, 0), 1.0) * 0.45
-    mix = np.clip(mix, 0.0, 1.0)[:, :, None]
-    return np.clip(out * (1.0 - mix) + blurred.astype(np.float32) * mix, 0, 255).astype(
-        np.uint8
-    )
-
-
-def _light_bg_portrait(bgr: np.ndarray) -> bool:
-    from .bg import _top_corner_luma
-
-    return _top_corner_luma(bgr) >= 185.0
-
 def _is_hair_wall_spill_case(bgr: np.ndarray, chin_y: int | None = None) -> bool:
-    """True for leftover-wall halo around hair (incl. light studio walls)."""
+    """True only for leftover-wall halo around hair (her Gosuslugi miss)."""
     if bgr.size == 0 or min(bgr.shape[:2]) < 8:
         return False
     cool = _hair_wall_spill_mask(bgr, chin_y=chin_y)
     n = int(cool.sum())
-    if _light_bg_portrait(bgr) and n >= 30:
-        return True
     if n < 100:
         return False
     w = bgr.shape[1]
@@ -559,17 +467,8 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     out = out * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
 
     out[hard] = bgr[hard]
-    light_bg = _light_bg_portrait(bgr)
-    defringe_luma = 220 if light_bg else 200
-    cleaned = defringe_near_white(
-        np.clip(out, 0, 255).astype(np.uint8),
-        luma_min=defringe_luma,
-    )
+    cleaned = defringe_near_white(np.clip(out, 0, 255).astype(np.uint8))
     cleaned[hard] = bgr[hard]
-    if light_bg:
-        geom = _face_geom(bgr)
-        cx = float(geom[2]) if geom is not None else None
-        cleaned = _symmetrize_hair_outline(cleaned, chin_y=chin_y, cx=cx)
     cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
     cleaned[hard] = bgr[hard]
     # Leftover wall on hair: only if the detector fires (not every portrait).
