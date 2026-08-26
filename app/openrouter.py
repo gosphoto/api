@@ -110,6 +110,11 @@ GOSUSLUGI_EDIT_PROMPT = (
     "mass (temples, crown, sides, neck). Those wisps leave leftover original-wall "
     "/ gray halo on #FFFFFF — remove them completely or fade them until invisible. "
     "Zero stray strands, zero halo, zero leftover wall pixels around hair. "
+    "CRITICAL hair edge quality: no sharp breaks, jagged cutouts, notches, "
+    "or abrupt geometric slices in the hair mass — especially at the hair↔#FFFFFF "
+    "boundary (crown, temples, sides, ends). The hair silhouette must transition "
+    "smoothly and naturally into the white background — no hard cutout artifacts, "
+    "no stair-step edges, no sudden straight-line chops through hair. "
     "Do not restyle the hair mass, do not tuck it behind the ears, do not gather "
     "it, do not cut the main hair, do not change length, color, or volume. "
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
@@ -118,8 +123,9 @@ GOSUSLUGI_EDIT_PROMPT = (
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "
-    "open face, MUST erase isolated flyaway wisps and leftover wall halo "
-    "(do not restyle or tuck hair); "
+    "open face, smooth natural hair edge — no sharp cutouts or jagged breaks "
+    "at the hair↔#FFFFFF boundary; MUST erase isolated flyaway wisps and leftover "
+    "wall halo (do not restyle or tuck hair); "
     "neutral no-smile expression, gaze at camera; "
     "adults: stylish modern business suit UNLESS religious clothing/covering "
     "(keep hijab/abaya — no suit; if white/pale hijab recolor navy/charcoal); "
@@ -149,7 +155,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "hair_integrity",
         "label": "Hair without white holes",
-        "description": "No swiss-cheese / salt-pepper white gaps inside the hair mass.",
+        "description": "Smooth hair silhouette — no sharp cutouts, jagged breaks, or hard notches at the hair↔#FFFFFF edge.",
         "weight": 0.25,
     },
     {
