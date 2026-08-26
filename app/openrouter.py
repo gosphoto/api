@@ -112,6 +112,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "Zero stray strands, zero halo, zero leftover wall pixels around hair. "
     "Do not restyle the hair mass, do not tuck it behind the ears, do not gather "
     "it, do not cut the main hair, do not change length, color, or volume. "
+    "Ensure no white cutouts, holes, or gaps inside the person — the subject "
+    "silhouette must stay fully solid (no white patches in hair, face, or clothing). "
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
