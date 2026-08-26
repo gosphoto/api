@@ -106,10 +106,20 @@ GOSUSLUGI_EDIT_PROMPT = (
     "keep natural face lighting from the input (not a bright studio key light). "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
     "no shadows, vignette, or room props. "
-    "MUST erase every isolated flyaway / stray hair that sticks out of the hair "
-    "mass (temples, crown, sides, neck). Those wisps leave leftover original-wall "
-    "/ gray halo on #FFFFFF — remove them completely or fade them until invisible. "
-    "Zero stray strands, zero halo, zero leftover wall pixels around hair. "
+    "CRITICAL hair solidity: the hair mass must be fully opaque — zero white "
+    "voids, holes, cutouts, cavities, or #FFFFFF specks INSIDE the hair volume. "
+    "Never let the white background bleed through gaps between strands, at the "
+    "crown, temples, part line, or thinning areas. Especially on gray, silver, "
+    "salt-and-pepper, white, blond, or sparse/thinning hair: fill every internal "
+    "gap with solid hair color matching the input — no swiss-cheese, no "
+    "salt-and-pepper white dots, no translucent or lace-like hair against white. "
+    "The hair must read as one continuous opaque mass, not a net pattern on "
+    "#FFFFFF. "
+    "MUST erase every isolated flyaway / stray hair that sticks out OUTSIDE the "
+    "hair mass (temples, crown, sides, neck). Those wisps leave leftover "
+    "original-wall / gray halo on #FFFFFF — remove them completely or fade them "
+    "until invisible. Zero stray strands, zero halo, zero leftover wall pixels "
+    "around the outer hair edge. "
     "Do not restyle the hair mass, do not tuck it behind the ears, do not gather "
     "it, do not cut the main hair, do not change length, color, or volume. "
     "Ensure no white cutouts, holes, or gaps inside the person — the subject "
@@ -120,7 +130,9 @@ GOSUSLUGI_EDIT_PROMPT = (
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "
-    "open face, MUST erase isolated flyaway wisps and leftover wall halo "
+    "open face, hair mass fully opaque with zero white voids/holes inside "
+    "(especially gray/silver/light/thinning hair — no bg bleed-through); "
+    "MUST erase isolated flyaway wisps and leftover wall halo "
     "(do not restyle or tuck hair); "
     "neutral no-smile expression, gaze at camera; "
     "adults: stylish modern business suit UNLESS religious clothing/covering "
@@ -151,7 +163,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "hair_integrity",
         "label": "Hair without white holes",
-        "description": "No swiss-cheese / salt-pepper white gaps inside the hair mass.",
+        "description": "Hair mass fully opaque — no white voids, holes, or #FFFFFF bleed-through inside hair (critical on gray/silver/light/thinning hair).",
         "weight": 0.25,
     },
     {
