@@ -245,7 +245,7 @@ PROCESS_CACHE_ENABLED = os.getenv("PROCESS_CACHE_ENABLED", "1").strip().lower() 
     "on",
 )
 # Bump to invalidate today's cache after prompt/model changes.
-PROCESS_CACHE_VERSION = os.getenv("PROCESS_CACHE_VERSION", "2").strip()
+PROCESS_CACHE_VERSION = os.getenv("PROCESS_CACHE_VERSION", "1").strip()
 
 # Feedback form → SMTP (mail.antonbutov.com)
 SMTP_HOST = os.getenv("SMTP_HOST", "mail.antonbutov.com").strip()
