@@ -121,17 +121,21 @@ GOSUSLUGI_EDIT_PROMPT = (
 )
 
 POST_CROP_CLEANUP_PROMPT = (
-    "EDIT ONLY BACKGROUND PIXELS. "
+    "EDIT ONLY BACKGROUND PIXELS, except for repairing obvious cutout artifacts "
+    "inside the hair mass. "
     "Do not change geometry. Do not change the face. Do not change the hairstyle. "
     "Do not change the clothing. "
     "Check whether any gray or grey background remains behind the person. "
     "The entire background must be one uniform pure white #FFFFFF only. "
     "Remove only gray areas, shadows, seams, halos, and remnants of the previous "
-    "background. Do not change the person: preserve the exact face, identity, "
+    "background. If you see unnatural cut-out holes, gaps, or missing chunks in "
+    "the hair, repair only those artifacts naturally while preserving the exact "
+    "hairline, hairstyle, length, color, and volume. "
+    "Do not otherwise change the person: preserve the exact face, identity, "
     "skin, hair, ears, neck, clothing, shoulders, colors, proportions, sharpness, "
-    "position, framing, and 35x45 crop. Do not retouch, redraw, relight, beautify, "
-    "recolor, or add anything. Output the same photo with only the background "
-    "cleaned to solid #FFFFFF."
+    "position, framing, and 35x45 crop. Apart from that narrow hair-artifact repair, "
+    "do not retouch, redraw, relight, beautify, recolor, or add anything. Output "
+    "the same photo with the background cleaned to solid #FFFFFF."
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
