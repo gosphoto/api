@@ -112,7 +112,7 @@ POST_CROP_CLEANUP_ENABLED = os.getenv(
     "POST_CROP_CLEANUP_ENABLED", "1"
 ).strip().lower() in ("1", "true", "yes", "on")
 POST_CROP_CLEANUP_MODEL = os.getenv(
-    "POST_CROP_CLEANUP_MODEL", "google/gemini-3.1-flash-lite-image"
+    "POST_CROP_CLEANUP_MODEL", "google/gemini-2.5-flash-image"
 ).strip()
 
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС

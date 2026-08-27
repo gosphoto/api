@@ -26,6 +26,11 @@ def test_post_crop_prompt_only_cleans_background():
     assert "hair" in prompt
     assert "clothing" in prompt
     assert "framing" in prompt or "crop" in prompt
+    assert "only background pixels" in prompt
+    assert "do not change geometry" in prompt
+    assert "do not change the face" in prompt
+    assert "do not change the hairstyle" in prompt
+    assert "do not change the clothing" in prompt
 
 
 def test_cleanup_runs_before_final_soft_whitening(monkeypatch):

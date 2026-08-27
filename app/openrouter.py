@@ -121,6 +121,9 @@ GOSUSLUGI_EDIT_PROMPT = (
 )
 
 POST_CROP_CLEANUP_PROMPT = (
+    "EDIT ONLY BACKGROUND PIXELS. "
+    "Do not change geometry. Do not change the face. Do not change the hairstyle. "
+    "Do not change the clothing. "
     "Check whether any gray or grey background remains behind the person. "
     "The entire background must be one uniform pure white #FFFFFF only. "
     "Remove only gray areas, shadows, seams, halos, and remnants of the previous "
