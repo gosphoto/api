@@ -107,6 +107,13 @@ RIVERFLOW_REASONING = os.getenv("RIVERFLOW_REASONING", "medium").strip().lower()
 RIVERFLOW_TIMEOUT_SEC = float(
     os.getenv("RIVERFLOW_TIMEOUT_SEC", str(OPENROUTER_TIMEOUT_SEC))
 )
+# One narrow cleanup pass after the final 35×45 crop and before local edge softening.
+POST_CROP_CLEANUP_ENABLED = os.getenv(
+    "POST_CROP_CLEANUP_ENABLED", "1"
+).strip().lower() in ("1", "true", "yes", "on")
+POST_CROP_CLEANUP_MODEL = os.getenv(
+    "POST_CROP_CLEANUP_MODEL", "google/gemini-3.1-flash-lite-image"
+).strip()
 
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
 # https://rg.ru/documents/2011/08/22/pasport-dok.html

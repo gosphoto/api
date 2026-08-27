@@ -6,6 +6,7 @@ Retries crown/face-ratio variants until compliance is closest to pass.
 
 from __future__ import annotations
 
+import logging
 import math
 from typing import Any
 
@@ -16,8 +17,12 @@ import numpy as np
 from . import config
 from .baldness import analyze_baldness
 from .compliance import measure_compliance
+from .compose_bg import composite_on_white
 from .gate import _landmarker
+from .openrouter import POST_CROP_CLEANUP_PROMPT, edit_selfie_riverflow
 from .whitening import force_white_background
+
+log = logging.getLogger("gosphoto-gate")
 
 _LEFT_EYE = 33
 _RIGHT_EYE = 263
@@ -205,6 +210,102 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     return out
 
 
+def _finalize_crop(cropped: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
+    """Run one narrow model cleanup, then the final local soft whitening."""
+    model = config.POST_CROP_CLEANUP_MODEL or config.RIVERFLOW_MODEL
+    meta: dict[str, Any] = {"applied": False, "model": model}
+    cleaned = cropped
+
+    if config.POST_CROP_CLEANUP_ENABLED and config.OPENROUTER_API_KEY:
+        try:
+            ok, buf = cv2.imencode(
+                ".jpg",
+                cropped,
+                [int(cv2.IMWRITE_JPEG_QUALITY), 95],
+            )
+            if not ok:
+                raise RuntimeError("post_crop_encode_failed")
+            raw = edit_selfie_riverflow(
+                buf.tobytes(),
+                "image/jpeg",
+                model=model,
+                prompt=POST_CROP_CLEANUP_PROMPT,
+            )
+            decoded = cv2.imdecode(
+                np.frombuffer(raw, dtype=np.uint8),
+                cv2.IMREAD_UNCHANGED,
+            )
+            if decoded is None:
+                raise RuntimeError("post_crop_decode_failed")
+            if decoded.ndim == 2:
+                decoded = cv2.cvtColor(decoded, cv2.COLOR_GRAY2BGR)
+            else:
+                decoded = composite_on_white(decoded)
+            cleaned = cv2.resize(
+                decoded,
+                (cropped.shape[1], cropped.shape[0]),
+                interpolation=cv2.INTER_LANCZOS4,
+            )
+            meta["applied"] = True
+        except Exception as exc:
+            meta["error"] = str(exc)[:200]
+            log.warning("Post-crop background cleanup failed; using crop: %s", exc)
+    else:
+        meta["reason"] = (
+            "disabled"
+            if not config.POST_CROP_CLEANUP_ENABLED
+            else "openrouter_key_missing"
+        )
+
+    return force_white_background(cleaned, tol=55, soften=True), meta
+
+
+def _finalize_with_compliance(
+    cropped: np.ndarray,
+    baseline_comp: dict[str, Any],
+    *,
+    out_w: int,
+    out_h: int,
+    dpi_target: int,
+) -> tuple[np.ndarray, dict[str, Any], dict[str, Any]]:
+    """Reject a model cleanup if it turns a passing crop into a failing one."""
+    finalized, cleanup_meta = _finalize_crop(cropped)
+    comp = measure_compliance(
+        finalized,
+        expected_width=out_w,
+        expected_height=out_h,
+        dpi_target=dpi_target,
+    )
+    if (
+        cleanup_meta.get("applied")
+        and baseline_comp.get("pass")
+        and not comp.get("pass")
+    ):
+        failed_checks = [
+            key for key, passed in (comp.get("checks") or {}).items() if not passed
+        ]
+        finalized = force_white_background(cropped, tol=55, soften=True)
+        comp = measure_compliance(
+            finalized,
+            expected_width=out_w,
+            expected_height=out_h,
+            dpi_target=dpi_target,
+        )
+        cleanup_meta.update(
+            {
+                "applied": False,
+                "rejected": True,
+                "reason": "compliance_regression",
+                "failed_checks": failed_checks,
+            }
+        )
+        log.warning(
+            "Rejected post-crop cleanup because compliance regressed: %s",
+            failed_checks,
+        )
+    return finalized, cleanup_meta, comp
+
+
 def run_crop_stage(
     bgr: np.ndarray,
     *,
@@ -238,7 +339,7 @@ def run_crop_stage(
                 out_w=out_w,
                 out_h=out_h,
             )
-            cropped = force_white_background(cropped, tol=55)
+            cropped = force_white_background(cropped, tol=55, soften=False)
             comp = measure_compliance(
                 cropped,
                 expected_width=out_w,
@@ -280,11 +381,18 @@ def run_crop_stage(
             (out_w, out_h),
             interpolation=cv2.INTER_AREA,
         )
-        cropped = force_white_background(cropped, tol=55)
-        comp = measure_compliance(
+        cropped = force_white_background(cropped, tol=55, soften=False)
+        baseline_comp = measure_compliance(
             cropped,
             expected_width=out_w,
             expected_height=out_h,
+            dpi_target=dpi_target,
+        )
+        cropped, cleanup_meta, comp = _finalize_with_compliance(
+            cropped,
+            baseline_comp,
+            out_w=out_w,
+            out_h=out_h,
             dpi_target=dpi_target,
         )
         metrics = {
@@ -294,14 +402,23 @@ def run_crop_stage(
             "dpi": dpi_target,
             "width": out_w,
             "height": out_h,
+            "post_crop_cleanup": cleanup_meta,
         }
         return cropped, metrics, comp
 
-    cropped, metrics, comp, _ = best
+    cropped, metrics, baseline_comp, _ = best
+    cropped, cleanup_meta, comp = _finalize_with_compliance(
+        cropped,
+        baseline_comp,
+        out_w=out_w,
+        out_h=out_h,
+        dpi_target=dpi_target,
+    )
     if errors:
         metrics["skipped_errors"] = errors[:3]
     metrics["baldness"] = bald
     metrics["dpi"] = dpi_target
+    metrics["post_crop_cleanup"] = cleanup_meta
     return cropped, metrics, comp
 
 

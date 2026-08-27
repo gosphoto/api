@@ -191,7 +191,9 @@ jobs:
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
           data["EDIT_BACKEND"] = "riverflow"
           data["RIVERFLOW_MODEL"] = "google/gemini-2.5-flash-image"
-          data["PROCESS_CACHE_VERSION"] = "gray-collar-v1"
+          data["POST_CROP_CLEANUP_ENABLED"] = "1"
+          data["POST_CROP_CLEANUP_MODEL"] = "google/gemini-3.1-flash-lite-image"
+          data["PROCESS_CACHE_VERSION"] = "post-crop-cleanup-v1"
           data["RIVERFLOW_PRO_MODEL"] = "sourceful/riverflow-v2.5-pro"
           data["EDIT_ROUTE_PRO_ON_MESSY_HAIR"] = "0"
           data["HAIR_EDGE_SOFTEN"] = "1"

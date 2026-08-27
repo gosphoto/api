@@ -120,6 +120,17 @@ GOSUSLUGI_EDIT_PROMPT = (
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
+POST_CROP_CLEANUP_PROMPT = (
+    "Check whether any gray or grey background remains behind the person. "
+    "The entire background must be one uniform pure white #FFFFFF only. "
+    "Remove only gray areas, shadows, seams, halos, and remnants of the previous "
+    "background. Do not change the person: preserve the exact face, identity, "
+    "skin, hair, ears, neck, clothing, shoulders, colors, proportions, sharpness, "
+    "position, framing, and 35x45 crop. Do not retouch, redraw, relight, beautify, "
+    "recolor, or add anything. Output the same photo with only the background "
+    "cleaned to solid #FFFFFF."
+)
+
 GOSUSLUGI_SCORING_PROMPT = (
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "

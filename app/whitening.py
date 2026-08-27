@@ -409,8 +409,13 @@ def _hair_edge_soften_enabled() -> bool:
     )
 
 
-def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
-    """Whiten bg-like pixels outside the subject; soft-clean corners."""
+def force_white_background(
+    bgr: np.ndarray,
+    tol: int = 52,
+    *,
+    soften: bool = True,
+) -> np.ndarray:
+    """Whiten bg-like pixels; optionally run final hair/background softening."""
     h, w = bgr.shape[:2]
     if h < 8 or w < 8:
         return bgr
@@ -471,9 +476,10 @@ def force_white_background(bgr: np.ndarray, tol: int = 52) -> np.ndarray:
     cleaned[hard] = bgr[hard]
     cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
     cleaned[hard] = bgr[hard]
-    # Leftover wall on hair: only if the detector fires (not every portrait).
-    cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
-    if _hair_edge_soften_enabled():
+    # Defer both soft passes until after the optional post-crop model cleanup.
+    if soften:
+        cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
+    if soften and _hair_edge_soften_enabled():
         cleaned = soften_hair_edge_and_bg(
             cleaned,
             chin_y=chin_y,
