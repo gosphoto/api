@@ -89,7 +89,7 @@ OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 # Live /api/process edit (OpenRouter /images). Gemini after A/B vs FLUX.2 Pro
 # (cheaper, less invented cheek texture on SPUI8374 2026-08-17).
 RIVERFLOW_MODEL = os.getenv(
-    "RIVERFLOW_MODEL", "google/gemini-3.1-flash-lite-image"
+    "RIVERFLOW_MODEL", "google/gemini-2.5-flash-image"
 ).strip()
 # Native white-bg + scoring payload. Used when messy hair sits on a light wall.
 RIVERFLOW_PRO_MODEL = os.getenv(

@@ -16,7 +16,7 @@ def _blur_score(bgr: np.ndarray) -> float:
     return float(cv2.Laplacian(gray, cv2.CV_64F).var())
 
 
-GEMINI_FLASH_IMAGE = "google/gemini-3.1-flash-lite-image"
+GEMINI_FLASH_IMAGE = "google/gemini-2.5-flash-image"
 RIVERFLOW_PRO = "sourceful/riverflow-v2.5-pro"
 
 # Top-corner wall: her selfie ~231; dark rooms sit well below this.

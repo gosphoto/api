@@ -22,7 +22,7 @@ def test_passport_stages_always_calls_edit_even_if_studio_ready(monkeypatch):
 
     def fake_edit(data, mime="image/jpeg"):
         edit_calls.append((data, mime))
-        return edited, {"cutout": "openrouter_edit", "model": "google/gemini-3.1-flash-lite-image"}
+        return edited, {"cutout": "openrouter_edit", "model": "google/gemini-2.5-flash-image"}
 
     monkeypatch.setattr(main_mod, "_decode_image", lambda _d: edited)
     monkeypatch.setattr(main_mod, "assess_readiness", lambda _im: ready)

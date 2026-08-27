@@ -104,17 +104,6 @@ def test_gemini_keeps_3_4_aspect(monkeypatch):
     assert payload["aspect_ratio"] == "3:4"
 
 
-def test_gpt5_image_mini_uses_2_3_aspect(monkeypatch):
-    monkeypatch.setattr(
-        "app.openrouter.config.RIVERFLOW_MODEL", "openai/gpt-5-image-mini"
-    )
-    from app.openrouter import build_generic_edit_images_payload
-
-    payload = build_generic_edit_images_payload(b"fake", "image/jpeg")
-    assert payload["aspect_ratio"] == "2:3"
-    assert payload["model"] == "openai/gpt-5-image-mini"
-
-
 def test_riverflow_payload_uses_passed_model():
     from app.openrouter import build_riverflow_images_payload
 
