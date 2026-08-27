@@ -49,7 +49,7 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | `DEPLOY_SSH_PRIVATE_KEY` | да | SSH на VPS |
 | `DEPLOY_USER` | да | SSH user (обычно `root`) |
 | `OPENROUTER_API_KEY` | да | Riverflow / OpenRouter image edit |
-| `RIVERFLOW_MODEL` | нет | default Gemini 3.1 Flash Lite Image (дешёвый путь) |
+| `RIVERFLOW_MODEL` | нет | default OpenAI GPT-5 Image Mini (дешёвый путь) |
 | `RIVERFLOW_PRO_MODEL` | нет | `sourceful/riverflow-v2.5-pro` (выключен: `EDIT_ROUTE_PRO_ON_MESSY_HAIR=0`) |
 | `EDIT_ROUTE_PRO_ON_MESSY_HAIR` | нет | `0` — всегда Gemini; `1` — Pro на messy hair + светлый фон |
 | `RIVERFLOW_BG_MODE` / `RIVERFLOW_BG_HEX` | нет | `solid` / `#FFFFFF` |

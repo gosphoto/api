@@ -173,9 +173,9 @@ def _data_url(image_bytes: bytes, mime: str = "image/jpeg") -> str:
 
 
 def _aspect_ratio_for_model(model: str) -> str:
-    """gpt-image-* accepts 1:1|3:2|2:3|auto — not 3:4 (causes HTTP 400)."""
+    """OpenAI image models accept 1:1|3:2|2:3|auto — not 3:4 (HTTP 400)."""
     m = (model or "").lower()
-    if "gpt-image" in m:
+    if "gpt-image" in m or "gpt-5-image" in m or "gpt-5.4-image" in m:
         return "2:3"
     return "3:4"
 

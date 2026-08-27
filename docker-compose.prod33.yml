@@ -24,7 +24,7 @@ services:
       # 33 IP blocked by OpenRouter — egress via nginx proxy on 91
       OPENROUTER_BASE_URL: ${OPENROUTER_BASE_URL:-http://91.207.75.72:8787/api/v1}
       OPENROUTER_TIMEOUT_SEC: ${OPENROUTER_TIMEOUT_SEC:-300}
-      RIVERFLOW_MODEL: ${RIVERFLOW_MODEL:-google/gemini-3.1-flash-lite-image}
+      RIVERFLOW_MODEL: ${RIVERFLOW_MODEL:-openai/gpt-5-image-mini}
       RIVERFLOW_PRO_MODEL: ${RIVERFLOW_PRO_MODEL:-sourceful/riverflow-v2.5-pro}
       EDIT_ROUTE_PRO_ON_MESSY_HAIR: ${EDIT_ROUTE_PRO_ON_MESSY_HAIR:-0}
       HAIR_EDGE_SOFTEN: ${HAIR_EDGE_SOFTEN:-1}
