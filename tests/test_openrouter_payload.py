@@ -42,6 +42,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "level shoulders" in g or "upright" in g
     assert "glare" in g or "reflection" in g
     assert "gray" in g or "grey" in g  # forbidden gray backdrop called out
+    assert "contour" in g or "silhouette" in g or "outline" in g
+    assert "carefully" in g or "meticulous" in g
+    assert "zero gray" in g or "zero leftover" in g or "solid #ffffff" in g
     assert "overexpose" in g or "bleach" in g
     assert "soft studio lighting" not in g
     assert "even skin tone" not in g
