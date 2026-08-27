@@ -104,12 +104,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "objects in hands or near the face (same rules for children as for adults). "
     "Framing: upper body / shoulders visible, face centered; "
     "keep natural face lighting from the input (not a bright studio key light). "
-    "Background: carefully replace every gray / off-white / wall / soft-matte "
-    "backdrop with pure seamless #FFFFFF white only. Be meticulous at the "
-    "person silhouette contour: outside the human outline there must be ZERO "
-    "gray, ZERO off-white, ZERO leftover wall, ZERO soft gray fringe or shadow "
-    "matte — only solid #FFFFFF pixels. Paint over any gray halo until it is "
-    "pure white. No gray, no off-white, no shadows, vignette, or room props. "
+    "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
+    "no shadows, vignette, or room props. "
     "MUST erase every isolated flyaway / stray hair that sticks out of the hair "
     "mass (temples, crown, sides, neck). Those wisps leave leftover original-wall "
     "/ gray halo on #FFFFFF — remove them completely or fade them until invisible. "
@@ -120,9 +116,7 @@ GOSUSLUGI_EDIT_PROMPT = (
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
-    "Prefer a pure #FFFFFF seamless backdrop; carefully erase every gray / "
-    "off-white / soft-matte pixel outside the person contour — backdrop must "
-    "be solid #FFFFFF only (not gray); keep face identity and "
+    "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "natural skin exposure (no bleach/overexpose); no invented moles/freckles; "
     "open face, MUST erase isolated flyaway wisps and leftover wall halo "
     "(do not restyle or tuck hair); "
@@ -143,7 +137,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "white_bg",
         "label": "Pure white background",
-        "description": "Backdrop is solid #FFFFFF; no gray/off-white/soft-matte fringe outside the person silhouette; no shadows, vignette, or room objects.",
+        "description": "Backdrop is solid #FFFFFF with no shadows, vignette, or room objects.",
         "weight": 0.3,
     },
     {
