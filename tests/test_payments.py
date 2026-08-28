@@ -360,3 +360,31 @@ def test_resume_independent_of_passport_payment(tmp_path, monkeypatch):
     assert results.is_paid(rid) is True
     assert results.is_paid_resume(rid) is False
     assert client.get(f"/api/result/{rid}/resume.jpg").status_code == 403
+
+
+def test_create_checkout_reuses_pending(tmp_path, monkeypatch):
+    _setup_dirs(tmp_path, monkeypatch)
+    rid = results.save_result(_tiny_jpeg(), _tiny_jpeg())
+    first = payments_mod.create_checkout(rid)
+    second = payments_mod.create_checkout(rid)
+    assert first["payment_id"] == second["payment_id"]
+    assert first["payment_url"] == second["payment_url"]
+    assert second.get("reused") is True
+    pays = list((tmp_path / "payments").glob("*.json"))
+    assert len(pays) == 1
+    record = payments_mod.load_payment(first["payment_id"])
+    assert record["payment_url"] == first["payment_url"]
+
+
+def test_create_checkout_resume_reuses_pending(tmp_path, monkeypatch):
+    _setup_dirs(tmp_path, monkeypatch)
+    rid = results.save_result(
+        _tiny_jpeg(),
+        _tiny_jpeg(),
+        resume_jpeg=_tiny_jpeg(),
+    )
+    first = payments_mod.create_checkout_resume(rid)
+    second = payments_mod.create_checkout_resume(rid)
+    assert first["payment_id"] == second["payment_id"]
+    assert second.get("reused") is True
+    assert first["product"] == "resume"

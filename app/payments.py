@@ -87,6 +87,57 @@ def find_pending_by_result(result_id: str) -> list[dict[str, Any]]:
     return out
 
 
+def _product_of(record: dict[str, Any]) -> str:
+    return str(record.get("product") or PRODUCT_PASSPORT)
+
+
+def latest_pending(result_id: str, product: str) -> dict[str, Any] | None:
+    matches = [
+        p for p in find_pending_by_result(result_id) if _product_of(p) == product
+    ]
+    if not matches:
+        return None
+    return max(matches, key=lambda p: str(p.get("created_at") or ""))
+
+
+def _reuse_pending_checkout(
+    result_id: str, product: str
+) -> dict[str, Any] | None:
+    """Return existing Tochka link instead of a second charge."""
+    record = latest_pending(result_id, product)
+    if not record:
+        return None
+    payment_url = record.get("payment_url")
+    if not payment_url:
+        return None
+    is_resume = product == PRODUCT_RESUME
+    price = resume_price_rub() if is_resume else price_rub()
+    kopecks = (
+        config.RESUME_PRICE_KOPECKS if is_resume else config.PRICE_KOPECKS
+    )
+    body: dict[str, Any] = {
+        "ok": True,
+        "paid": False,
+        "payment_required": True,
+        "product": product,
+        "payment_id": record["payment_id"],
+        "payment_url": payment_url,
+        "result_id": result_id,
+        "price_kopecks": kopecks,
+        "price_rub": price,
+        "reused": True,
+    }
+    if is_resume:
+        body["paid_resume"] = False
+    log.info(
+        "Reusing pending checkout payment_id=%s result_id=%s product=%s",
+        record["payment_id"],
+        result_id,
+        product,
+    )
+    return body
+
+
 def find_all_pending() -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for path in _payments_dir().glob("*.json"):
@@ -162,6 +213,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
     if not meta:
         raise FileNotFoundError("result not found")
 
+    sync_pending_for_result(result_id)
     if results.is_paid(result_id) or config.FREE_DOWNLOAD_UNLOCK:
         if not results.is_paid(result_id):
             payment_id = str(uuid.uuid4())
@@ -194,6 +246,10 @@ def create_checkout(result_id: str) -> dict[str, Any]:
             "message": "Скачивание уже доступно",
         }
 
+    reused = _reuse_pending_checkout(result_id, PRODUCT_PASSPORT)
+    if reused:
+        return reused
+
     payment_id = str(uuid.uuid4())
     metadata = {
         "payment_link_id": payment_id,
@@ -225,6 +281,7 @@ def create_checkout(result_id: str) -> dict[str, Any]:
         "amount_kopecks": config.PRICE_KOPECKS,
         "status": "pending",
         "tochka_operation_id": tochka.operation_id,
+        "payment_url": tochka.payment_url,
         "created_at": ts,
         "paid_at": None,
     }
@@ -252,6 +309,7 @@ def create_checkout_resume(result_id: str) -> dict[str, Any]:
     if not meta.get("resume_offer"):
         raise ValueError("resume offer not available")
 
+    sync_pending_for_result(result_id)
     if results.is_paid_resume(result_id) or config.FREE_DOWNLOAD_UNLOCK:
         if not results.is_paid_resume(result_id):
             payment_id = str(uuid.uuid4())
@@ -284,6 +342,10 @@ def create_checkout_resume(result_id: str) -> dict[str, Any]:
             "price_rub": resume_price_rub(),
             "message": "Фото для резюме уже доступно",
         }
+
+    reused = _reuse_pending_checkout(result_id, PRODUCT_RESUME)
+    if reused:
+        return reused
 
     payment_id = str(uuid.uuid4())
     metadata = {
@@ -318,6 +380,7 @@ def create_checkout_resume(result_id: str) -> dict[str, Any]:
         "amount_kopecks": config.RESUME_PRICE_KOPECKS,
         "status": "pending",
         "tochka_operation_id": tochka.operation_id,
+        "payment_url": tochka.payment_url,
         "created_at": ts,
         "paid_at": None,
     }
