@@ -38,6 +38,11 @@ def test_post_crop_prompt_only_cleans_background():
     assert "stretch" in prompt
     assert "warp" in prompt
     assert "facial proportions" in prompt
+    assert "look very carefully" in prompt
+    assert "braid" in prompt or "pigtail" in prompt
+    assert "смотри внимательнее" in POST_CROP_CLEANUP_PROMPT
+    assert "косичками" in POST_CROP_CLEANUP_PROMPT
+    assert "рядом с лицом" in POST_CROP_CLEANUP_PROMPT
 
 
 def test_cleanup_runs_before_final_soft_whitening(monkeypatch):
