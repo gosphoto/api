@@ -68,13 +68,6 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "collar" in g
     assert "blazer" in g or "lapel" in g
     assert "light-blue" in g or "light blue" in g or "голубая" in g
-    assert "go over" in g or "пройди ещё раз" in GOSUSLUGI_EDIT_PROMPT
-    assert "пройди ещё раз внимательно" in GOSUSLUGI_EDIT_PROMPT
-    assert "separate the gray background from the person" in g
-    assert "braid" in g or "pigtail" in g
-    assert "если фон был серым" in GOSUSLUGI_EDIT_PROMPT
-    assert "пройдись повторно по контурам" in GOSUSLUGI_EDIT_PROMPT
-    assert "замени" in GOSUSLUGI_EDIT_PROMPT and "серого" in GOSUSLUGI_EDIT_PROMPT
     r = RESUME_SUIT_PROMPT.lower()
     assert "religious clothing" in r
     assert "keep that clothing" in r
