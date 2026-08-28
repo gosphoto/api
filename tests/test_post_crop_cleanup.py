@@ -31,6 +31,13 @@ def test_post_crop_prompt_only_cleans_background():
     assert "do not change the face" in prompt
     assert "do not change the hairstyle" in prompt
     assert "do not change the clothing" in prompt
+    assert "under no circumstances change face geometry" in prompt
+    assert "ни в коем случае не меняй геометрию лица" in POST_CROP_CLEANUP_PROMPT
+    assert "shorten" in prompt
+    assert "widen" in prompt
+    assert "stretch" in prompt
+    assert "warp" in prompt
+    assert "facial proportions" in prompt
 
 
 def test_cleanup_runs_before_final_soft_whitening(monkeypatch):

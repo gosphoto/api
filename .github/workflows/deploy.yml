@@ -193,7 +193,7 @@ jobs:
           data["RIVERFLOW_MODEL"] = "google/gemini-2.5-flash-image"
           data["POST_CROP_CLEANUP_ENABLED"] = "1"
           data["POST_CROP_CLEANUP_MODEL"] = data["RIVERFLOW_MODEL"]
-          data["PROCESS_CACHE_VERSION"] = "post-crop-cleanup-v1"
+          data["PROCESS_CACHE_VERSION"] = "post-crop-cleanup-v2"
           data["RIVERFLOW_PRO_MODEL"] = "sourceful/riverflow-v2.5-pro"
           data["EDIT_ROUTE_PRO_ON_MESSY_HAIR"] = "0"
           data["HAIR_EDGE_SOFTEN"] = "1"

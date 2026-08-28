@@ -122,6 +122,10 @@ GOSUSLUGI_EDIT_PROMPT = (
 
 POST_CROP_CLEANUP_PROMPT = (
     "EDIT ONLY BACKGROUND PIXELS. "
+    "UNDER NO CIRCUMSTANCES change face geometry — "
+    "ни в коем случае не меняй геометрию лица: "
+    "do not shorten, widen, round, slim, stretch, warp, or reshape the face, "
+    "jaw, cheeks, chin, eyes, nose, mouth, or facial proportions. "
     "Do not change geometry. Do not change the face. Do not change the hairstyle. "
     "Do not change the clothing. "
     "Check whether any gray or grey background remains behind the person. "
