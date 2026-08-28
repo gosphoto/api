@@ -38,6 +38,8 @@ def test_post_crop_prompt_only_cleans_background():
     assert "stretch" in prompt
     assert "warp" in prompt
     assert "facial proportions" in prompt
+    assert "especially control the background behind hair or braids" in prompt
+    assert "особенно контролируй фон за волосами или косичками" in POST_CROP_CLEANUP_PROMPT
 
 
 def test_cleanup_runs_before_final_soft_whitening(monkeypatch):

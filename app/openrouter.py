@@ -129,6 +129,8 @@ POST_CROP_CLEANUP_PROMPT = (
     "Do not change geometry. Do not change the face. Do not change the hairstyle. "
     "Do not change the clothing. "
     "Check whether any gray or grey background remains behind the person. "
+    "Especially control the background behind hair or braids — "
+    "особенно контролируй фон за волосами или косичками. "
     "The entire background must be one uniform pure white #FFFFFF only. "
     "Remove only gray areas, shadows, seams, halos, and remnants of the previous "
     "background. Do not change the person: preserve the exact face, identity, "
