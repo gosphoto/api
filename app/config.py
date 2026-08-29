@@ -149,10 +149,9 @@ HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "32"))
 HEAD_HEIGHT_MM_MAX = float(os.getenv("HEAD_HEIGHT_MM_MAX", "36"))
 HEAD_WIDTH_MM_MIN = float(os.getenv("HEAD_WIDTH_MM_MIN", "18"))
 HEAD_WIDTH_MM_MAX = float(os.getenv("HEAD_WIDTH_MM_MAX", "25"))
-# Crop window width vs 35×45. "auto" = (35/45) / (src_w/src_h): Gemini 3:4 → ~1.066
-# so resize to passport slightly squeezes the face (looks wider in a shorter frame).
-# Explicit 1.0 = off. Clipped to [1, PASSPORT_CROP_WIDTH_CORR_MAX].
-PASSPORT_CROP_WIDTH_CORR = os.getenv("PASSPORT_CROP_WIDTH_CORR", "auto").strip()
+# Crop window width vs 35×45. "auto" squeezes 3:4 Gemini into 35×45 (~1.066) —
+# looked too narrow on prod, default off (1.0). Clipped to [1, MAX].
+PASSPORT_CROP_WIDTH_CORR = os.getenv("PASSPORT_CROP_WIDTH_CORR", "1").strip()
 PASSPORT_CROP_WIDTH_CORR_MAX = float(os.getenv("PASSPORT_CROP_WIDTH_CORR_MAX", "1.12"))
 JPEG_QUALITY = int(os.getenv("JPEG_QUALITY", "92"))
 JPEG_MAX_BYTES = int(os.getenv("JPEG_MAX_BYTES", str(300 * 1024)))

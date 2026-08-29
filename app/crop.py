@@ -2,8 +2,7 @@
 
 Expects a white-background portrait (local cutout). No generative rewrite.
 Post-crop Gemini cleanup is off by default: it widens face oval 3–8%.
-3:4 model frames get PASSPORT_CROP_WIDTH_CORR=auto (~1.066 window) so 35×45
-does not make the face look wider than the edit.
+PASSPORT_CROP_WIDTH_CORR default 1 (off); auto squeezed 3:4 too narrow.
 Retries crown/face-ratio variants until compliance is closest to pass.
 """
 
