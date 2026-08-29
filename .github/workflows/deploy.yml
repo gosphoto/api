@@ -38,10 +38,11 @@ jobs:
           test -f tests/test_gate_upright.py
           test -d tests/fixtures/upright_regression
           test -f tests/fixtures/upright_regression/inverted_selfie/in.jpg
+          test -f tests/test_process_cache.py
           echo "API OK"
 
   test:
-    name: Unit + crop regression
+    name: Unit + crop + process-cache
     runs-on: ubuntu-latest
     timeout-minutes: 20
     steps:
