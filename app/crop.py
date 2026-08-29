@@ -2,6 +2,8 @@
 
 Expects a white-background portrait (local cutout). No generative rewrite.
 Post-crop Gemini cleanup is off by default: it widens face oval 3–8%.
+3:4 model frames get PASSPORT_CROP_WIDTH_CORR=auto (~1.066 window) so 35×45
+does not make the face look wider than the edit.
 Retries crown/face-ratio variants until compliance is closest to pass.
 """
 
@@ -19,6 +21,7 @@ from . import config
 from .baldness import analyze_baldness
 from .compliance import measure_compliance
 from .compose_bg import composite_on_white
+from .crop_geom import crop_width_correction
 from .gate import _landmarker
 from .openrouter import POST_CROP_CLEANUP_PROMPT, edit_selfie_riverflow
 from .whitening import force_white_background
@@ -90,7 +93,8 @@ def _crop_once(
     scale = target_face / face_h
 
     crop_h = out_h / scale
-    crop_w = out_w / scale
+    width_corr = crop_width_correction(w, h, out_w, out_h)
+    crop_w = out_w / scale * width_corr
     top = crown_y - top_margin * crop_h
     left = mid_x - crop_w / 2
 
@@ -125,6 +129,8 @@ def _crop_once(
         "crown_factor": crown_factor,
         "top_margin_target": top_margin,
         "face_ratio_est": round(float(face_h * scale / out_h), 3),
+        "width_corr": round(width_corr, 4),
+        "src_aspect": round(w / max(h, 1), 4),
     }
     return out, metrics
 
