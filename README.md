@@ -3,7 +3,7 @@
 Бэкенд для https://gosphoto.ru
 
 - `POST /api/validate` — gate (MediaPipe Face Landmarker)
-- `POST /api/process` — gate → **Riverflow v2.5 Pro** (`background_mode=solid` `#FFFFFF`) → 35×45 crop → **лист 10×15** → `result_id` (без полного base64); fallback — local cutout
+- `POST /api/process` — gate → **Gemini Flash Image** (белый фон + костюм) → 35×45 crop → **лист 10×15** → `result_id`. Второй Gemini после кропа (`POST_CROP_CLEANUP`) **выключен**: раздувает овал лица, [замер](docs/post-crop-cleanup-face-widen.md). Fallback — local cutout
 - `GET /api/result/{id}` — meta + preview URLs; `paid` / цена
 - `POST /api/result/{id}/pay` — Tochka checkout (400 ₽) → unlock download
 - `POST /api/payments/tochka/webhook` — webhook Точки

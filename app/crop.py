@@ -1,6 +1,7 @@
 """Passport crop: roll-align → fit face/margins → 35×45 @ 600dpi (FMS §34.3).
 
 Expects a white-background portrait (local cutout). No generative rewrite.
+Post-crop Gemini cleanup is off by default: it widens face oval 3–8%.
 Retries crown/face-ratio variants until compliance is closest to pass.
 """
 
@@ -211,7 +212,7 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
 
 
 def _finalize_crop(cropped: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
-    """Run one narrow model cleanup, then the final local soft whitening."""
+    """Optional second Gemini pass (off by default — widens faces), then local whitening."""
     model = config.POST_CROP_CLEANUP_MODEL or config.RIVERFLOW_MODEL
     meta: dict[str, Any] = {"applied": False, "model": model}
     cleaned = cropped

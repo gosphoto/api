@@ -107,9 +107,11 @@ RIVERFLOW_REASONING = os.getenv("RIVERFLOW_REASONING", "medium").strip().lower()
 RIVERFLOW_TIMEOUT_SEC = float(
     os.getenv("RIVERFLOW_TIMEOUT_SEC", str(OPENROUTER_TIMEOUT_SEC))
 )
-# One narrow cleanup pass after the final 35×45 crop and before local edge softening.
+# Second Gemini pass after 35×45 crop. Off: it widens the face oval 3–8%
+# even with a “do not change geometry” prompt (see docs/post-crop-cleanup-face-widen.md).
+# Keep the code path; re-enable only after the model stops reshaping faces.
 POST_CROP_CLEANUP_ENABLED = os.getenv(
-    "POST_CROP_CLEANUP_ENABLED", "1"
+    "POST_CROP_CLEANUP_ENABLED", "0"
 ).strip().lower() in ("1", "true", "yes", "on")
 POST_CROP_CLEANUP_MODEL = os.getenv(
     "POST_CROP_CLEANUP_MODEL", "google/gemini-2.5-flash-image"

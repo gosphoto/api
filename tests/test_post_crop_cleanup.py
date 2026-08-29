@@ -152,3 +152,28 @@ def test_crop_stage_rejects_cleanup_that_breaks_compliance(monkeypatch):
     assert cleanup["applied"] is False
     assert cleanup["rejected"] is True
     assert cleanup["reason"] == "compliance_regression"
+
+
+def test_cleanup_skipped_when_disabled(monkeypatch):
+    source = np.full((100, 70, 3), 241, np.uint8)
+    called: list[str] = []
+
+    monkeypatch.setattr(crop.config, "POST_CROP_CLEANUP_ENABLED", False)
+    monkeypatch.setattr(crop.config, "OPENROUTER_API_KEY", "test-key")
+    monkeypatch.setattr(
+        crop,
+        "edit_selfie_riverflow",
+        lambda *args, **kwargs: called.append("model") or _jpeg(255),
+    )
+    monkeypatch.setattr(
+        crop,
+        "force_white_background",
+        lambda image, tol=52, *, soften=True: image,
+    )
+
+    out, meta = crop._finalize_crop(source)
+
+    np.testing.assert_array_equal(out, source)
+    assert called == []
+    assert meta["applied"] is False
+    assert meta["reason"] == "disabled"
