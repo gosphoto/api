@@ -110,9 +110,19 @@ def _resize_max_side(bgr: np.ndarray, max_side: int) -> np.ndarray:
     )
 
 
+# Flat studio / cutout backdrop (~#FFF) has ~0 Laplacian and drags full-frame
+# variance under MIN_BLUR_VARIANCE (p03.jpg: 6.45 whole vs ~10.5 on the person).
+_BLUR_IGNORE_LUMA = 250
+_BLUR_MIN_SUBJECT_FRAC = 0.12
+
+
 def _blur_score(bgr: np.ndarray) -> float:
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    return float(cv2.Laplacian(gray, cv2.CV_64F).var())
+    lap = cv2.Laplacian(gray, cv2.CV_64F)
+    subject = gray < _BLUR_IGNORE_LUMA
+    if int(subject.sum()) >= int(_BLUR_MIN_SUBJECT_FRAC * gray.size):
+        return float(lap[subject].var())
+    return float(lap.var())
 
 
 def _euler_from_matrix(mat4: np.ndarray) -> tuple[float, float, float]:

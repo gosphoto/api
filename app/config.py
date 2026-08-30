@@ -17,7 +17,8 @@ MAX_YAW_DEG = float(os.getenv("GATE_MAX_YAW_DEG", "25"))
 MAX_PITCH_DEG = float(os.getenv("GATE_MAX_PITCH_DEG", "25"))
 MAX_ROLL_DEG = float(os.getenv("GATE_MAX_ROLL_DEG", "28"))
 
-# Laplacian variance below this → blur
+# Laplacian variance below this → blur. Scored on non-white pixels so a
+# studio cutout is not punished for a flat #FFF backdrop.
 # Soft studio / baby phone JPEGs often land ~10–25; keep only trash (<~10) out.
 MIN_BLUR_VARIANCE = float(os.getenv("GATE_MIN_BLUR_VARIANCE", "10"))
 
