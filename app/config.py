@@ -289,7 +289,7 @@ TOCHKA_API_BASE_URL = os.getenv(
     "TOCHKA_API_BASE_URL", "https://enter.tochka.com"
 ).rstrip("/")
 PUBLIC_BASE_URL = os.getenv("PUBLIC_BASE_URL", "https://gosphoto.ru").rstrip("/")
-PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "40000"))
+PRICE_KOPECKS = int(os.getenv("PRICE_KOPECKS", "35000"))
 FREE_DOWNLOAD_UNLOCK = os.getenv("FREE_DOWNLOAD_UNLOCK", "0").strip().lower() in (
     "1",
     "true",
