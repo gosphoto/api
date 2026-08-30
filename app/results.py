@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from . import config
-from .preview import make_preview_jpeg
+from .preview import make_preview_jpeg, make_view_jpeg
 
 log = logging.getLogger("gosphoto-gate")
 
@@ -23,6 +23,7 @@ ALLOWED_FILES = frozenset(
         "print.jpg",
         "preview_digital.jpg",
         "preview_print.jpg",
+        "view_digital.jpg",
         "resume.jpg",
         "preview_resume.jpg",
     }
@@ -272,6 +273,10 @@ def load_file(result_id: str, name: str) -> bytes | None:
         rebuilt = ensure_preview(result_id, name)
         if rebuilt:
             return rebuilt
+    if name == "view_digital.jpg":
+        rebuilt = ensure_view(result_id)
+        if rebuilt:
+            return rebuilt
     path = result_dir(result_id) / name
     if not path.is_file():
         return None
@@ -302,4 +307,19 @@ def ensure_preview(result_id: str, preview_name: str) -> bytes | None:
         return preview
     except Exception as e:
         log.warning("Failed to build preview id=%s name=%s: %s", result_id, preview_name, e)
+        return None
+
+
+def ensure_view(result_id: str) -> bytes | None:
+    """Rebuild full-size watermarked view JPEG from digital.jpg."""
+    folder = result_dir(result_id)
+    source = folder / "digital.jpg"
+    if not source.is_file():
+        return None
+    try:
+        view = make_view_jpeg(source.read_bytes())
+        (folder / "view_digital.jpg").write_bytes(view)
+        return view
+    except Exception as e:
+        log.warning("Failed to build view jpeg id=%s: %s", result_id, e)
         return None

@@ -2,7 +2,7 @@ import io
 
 from PIL import Image
 
-from app.preview import make_preview_jpeg
+from app.preview import make_preview_jpeg, make_view_jpeg
 
 
 def _solid_jpeg(color=(255, 255, 255), size=(373, 480)) -> bytes:
@@ -38,3 +38,17 @@ def test_preview_preserves_subject_colors():
     for r, g, b in samples:
         delta = abs(r - 180) + abs(g - 140) + abs(b - 120)
         assert delta < 25, f"subject colors drifted: {samples}"
+
+
+def test_view_jpeg_keeps_source_size():
+    src = _solid_jpeg(size=(413, 531))
+    out = make_view_jpeg(src)
+    img = Image.open(io.BytesIO(out))
+    assert img.size == (413, 531)
+
+
+def test_view_jpeg_has_watermark_on_white():
+    src = _solid_jpeg((255, 255, 255), size=(413, 531))
+    out = make_view_jpeg(src)
+    extrema = Image.open(io.BytesIO(out)).convert("RGB").getextrema()
+    assert any(mn < 250 for mn, _mx in extrema), f"expected watermark overlay, extrema={extrema}"

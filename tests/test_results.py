@@ -53,6 +53,8 @@ def test_save_and_load_result(tmp_path, monkeypatch):
     assert load_file(rid, "digital.jpg") == dig
     assert load_file(rid, "print.jpg") == prn
     assert load_file(rid, "preview_digital.jpg")
+    assert load_file(rid, "view_digital.jpg")
+    assert load_file(rid, "view_digital.jpg") != load_file(rid, "digital.jpg")
     assert load_file(rid, "evil.txt") is None
     assert load_meta("../x") is None
 

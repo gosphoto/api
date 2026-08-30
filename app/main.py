@@ -111,6 +111,8 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "print_sheet": print_meta,
         "preview_digital_url": f"/api/result/{result_id}/preview_digital.jpg",
         "preview_print_url": f"/api/result/{result_id}/preview_print.jpg",
+        "view_digital_url": f"/api/result/{result_id}/view_digital.jpg",
+        "view_path": f"/result/{result_id}/view",
         "paid": paid,
         "price_kopecks": config.PRICE_KOPECKS,
         "price_rub": payments_mod.price_rub(),
@@ -880,6 +882,14 @@ def get_result_preview_print(result_id: str):
 @app.get("/api/result/{result_id}/preview_resume.jpg")
 def get_result_preview_resume(result_id: str):
     data = load_file(result_id, "preview_resume.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/view_digital.jpg")
+def get_result_view_digital(result_id: str):
+    data = load_file(result_id, "view_digital.jpg")
     if not data:
         raise HTTPException(status_code=404, detail="Result not found")
     return Response(content=data, media_type="image/jpeg")

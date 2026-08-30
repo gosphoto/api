@@ -54,6 +54,8 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "price_resume_rub": payments_mod.resume_price_rub(),
         "preview_digital_url": f"/api/result/{result_id}/preview_digital.jpg",
         "preview_print_url": f"/api/result/{result_id}/preview_print.jpg",
+        "view_digital_url": f"/api/result/{result_id}/view_digital.jpg",
+        "view_path": f"/result/{result_id}/view",
         "preview_resume_url": (
             f"/api/result/{result_id}/preview_resume.jpg" if resume_offer else None
         ),
@@ -122,6 +124,13 @@ def _mini_pay_app():
     @app.get("/api/result/{result_id}/preview_digital.jpg")
     def get_preview(result_id: str):
         data = results.load_file(result_id, "preview_digital.jpg")
+        if not data:
+            raise HTTPException(status_code=404, detail="Result not found")
+        return Response(content=data, media_type="image/jpeg")
+
+    @app.get("/api/result/{result_id}/view_digital.jpg")
+    def get_view(result_id: str):
+        data = results.load_file(result_id, "view_digital.jpg")
         if not data:
             raise HTTPException(status_code=404, detail="Result not found")
         return Response(content=data, media_type="image/jpeg")
@@ -197,6 +206,11 @@ def test_jpeg_forbidden_until_paid(tmp_path, monkeypatch):
     assert client.get(f"/api/result/{rid}/digital.jpg").status_code == 403
     assert client.get(f"/api/result/{rid}/print.jpg").status_code == 403
     assert client.get(f"/api/result/{rid}/preview_digital.jpg").status_code == 200
+    view = client.get(f"/api/result/{rid}/view_digital.jpg")
+    assert view.status_code == 200
+    assert view.headers["content-type"].startswith("image/jpeg")
+    assert body["view_digital_url"].endswith("view_digital.jpg")
+    assert body["view_path"] == f"/result/{rid}/view"
 
     pay = client.post(f"/api/result/{rid}/pay")
     assert pay.status_code == 200
