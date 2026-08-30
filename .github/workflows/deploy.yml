@@ -194,6 +194,7 @@ jobs:
           data["RIVERFLOW_MODEL"] = "google/gemini-2.5-flash-image"
           data["POST_CROP_CLEANUP_ENABLED"] = "0"
           data["POST_CROP_CLEANUP_MODEL"] = data["RIVERFLOW_MODEL"]
+          data["PROCESS_CACHE_ENABLED"] = "0"
           data["PROCESS_CACHE_VERSION"] = "crop-width-corr-off"
           data["PASSPORT_CROP_WIDTH_CORR"] = "1"
           data["RIVERFLOW_PRO_MODEL"] = "sourceful/riverflow-v2.5-pro"

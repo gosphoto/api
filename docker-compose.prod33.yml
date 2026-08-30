@@ -50,6 +50,7 @@ services:
       POSE_MODEL_PATH: /app/models/pose_landmarker_lite.task
       FREE_DOWNLOAD_UNLOCK: ${FREE_DOWNLOAD_UNLOCK:-0}
       PAYMENT_SYNC_INTERVAL_SECONDS: ${PAYMENT_SYNC_INTERVAL_SECONDS:-30}
+      PROCESS_CACHE_ENABLED: ${PROCESS_CACHE_ENABLED:-0}
     volumes:
       - ./rejecteds:/app/rejecteds
       - ./pairs:/app/pairs
