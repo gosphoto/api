@@ -36,6 +36,10 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "child" in g
     assert "t-shirt" in g or "tank" in g
     assert "navy" in g or "charcoal" in g or "pale" in g
+    assert "pink" in g
+    assert "girl" in g
+    assert "boy" in g
+    assert "розовая майка" in GOSUSLUGI_EDIT_PROMPT
     assert "no age change" in g
     assert "#ffffff" in g
     assert "spot" in g or "blemish" in g
