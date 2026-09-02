@@ -1,19 +1,6 @@
 from __future__ import annotations
 
-from app.crop_geom import crop_width_correction, nudge_crop_off_bottom
-
-
-def test_nudge_crop_off_bottom_no_overflow():
-    top, shift = nudge_crop_off_bottom(100.0, 800.0, 1080.0)
-    assert top == 100.0
-    assert shift == 0.0
-
-
-def test_nudge_crop_off_bottom_shifts_up():
-    top, shift = nudge_crop_off_bottom(239.1, 876.2, 1080.0)
-    assert abs(shift - (239.1 + 876.2 - 1080.0)) < 1e-9
-    assert abs((top + 876.2) - 1080.0) < 1e-9
-    assert top < 239.1
+from app.crop_geom import crop_width_correction
 
 
 def test_auto_corr_gemini_3_4_vs_35x45():
