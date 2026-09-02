@@ -39,7 +39,6 @@ def main() -> int:
         bald = comp.get("baldness") or metrics.get("baldness") or {}
         print(
             f"{status}  {name:16}  top={tm:.3f}  face={comp.get('face_ratio')}  "
-            f"only={comp.get('face_only')}  "
             f"hh={comp.get('head_height_mm')}mm  pass={comp.get('pass')}  "
             f"bald={bald.get('is_bald')}  crown_f={metrics.get('crown_factor')}"
         )

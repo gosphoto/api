@@ -80,10 +80,8 @@ def measure_compliance(
     # Prefer real silhouette crown (bald-aware); fallback landmark heuristic.
     crown, bald = estimate_crown_y(bgr, lm)
     chin = lm[_CHIN].y * h
-    forehead = lm[_FOREHEAD].y * h
     face_h = max(chin - crown, 1.0)
     face_ratio = face_h / h
-    face_only = max(chin - forehead, 1.0) / h
     top_margin = max(crown, 0.0) / h
 
     left_x = lm[_LEFT_CHEEK].x * w
@@ -121,7 +119,6 @@ def measure_compliance(
         "height": h,
         "dpi_target": dpi,
         "face_ratio": round(face_ratio, 3),
-        "face_only": round(face_only, 3),
         "top_margin": round(top_margin, 3),
         "head_height_mm": round(head_h_mm, 1),
         "head_width_mm": round(head_w_mm, 1),

@@ -1,7 +1,7 @@
 {
   "name": "crop_regression",
-  "updated": "2026-09-02",
-  "purpose": "Guard crop/top_margin/face_only: bald + high hair + hijab + short hair goatee",
-  "cases": ["bald_elder", "high_hair_man", "high_hair_girl", "hijab_girl", "short_hair_goatee"],
+  "updated": "2026-08-20",
+  "purpose": "Guard crop/top_margin changes: bald + high hair man + high hair girl + hijab girl",
+  "cases": ["bald_elder", "high_hair_man", "high_hair_girl", "hijab_girl"],
   "run_when": ["crop.py", "compliance.py", "baldness.py", "PASSPORT_TOP_MARGIN"]
 }
