@@ -6,7 +6,7 @@ from app.baldness import (
     person_mask,
     silhouette_top_y,
 )
-from app.crop import _crop_attempts
+from app.crop import _crop_attempts, face_target_from_gap
 
 
 def test_classify_bald_gap():
@@ -34,11 +34,22 @@ def test_silhouette_top_finds_head():
     assert not bool(mask[10, 60])
 
 
+def test_face_target_from_gap_short_and_full():
+    assert face_target_from_gap(0.20) == 0.72
+    assert face_target_from_gap(0.30) == 0.72
+    assert face_target_from_gap(0.38) == 0.75
+    assert face_target_from_gap(0.50) == 0.75
+    assert face_target_from_gap(None) == 0.75
+    mid = face_target_from_gap(0.34)
+    assert 0.72 < mid < 0.75
+
+
 def test_crop_attempts_bald_prefers_small_crown():
     attempts = _crop_attempts(
         {"is_bald": True, "crown_factor": 0.20, "gap_ratio": 0.20}
     )
     assert attempts[0][0] == 0.20
+    assert attempts[0][1] == 0.72
     assert all(a[0] <= 0.35 for a in attempts[:4])
 
 
@@ -47,6 +58,7 @@ def test_crop_attempts_haired_prefers_silhouette_hint():
         {"is_bald": False, "crown_factor": 0.59, "gap_ratio": 0.59}
     )
     assert attempts[0][0] == 0.59
+    assert attempts[0][1] == 0.75
     assert attempts[0][2] == 0.10  # PASSPORT_TOP_MARGIN
 
 

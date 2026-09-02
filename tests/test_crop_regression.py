@@ -56,6 +56,12 @@ def test_crop_regression_case(case_dir: Path):
         f"{case['id']}: head_height_mm={hh}"
     )
 
+    if "face_only_max" in expect:
+        fo = float(comp.get("face_only") or 0)
+        assert fo <= float(expect["face_only_max"]), (
+            f"{case['id']}: face_only={fo} > {expect['face_only_max']}"
+        )
+
     bald = comp.get("baldness") or metrics.get("baldness")
     if bald is not None and "is_bald" in expect:
         assert bool(bald.get("is_bald")) is bool(expect["is_bald"]), (

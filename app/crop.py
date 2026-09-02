@@ -134,28 +134,58 @@ def _crop_once(
     return out, metrics
 
 
-def _score_compliance(comp: dict[str, Any]) -> float:
-    """Higher is better. Prefer full RF pass, else proximity to targets."""
-    if comp.get("pass"):
-        return 1000.0
-    checks = comp.get("checks") or {}
-    score = 0.0
-    for k in (
-        "size_ok",
-        "face_oval_ok",  # informational 70–80%; not a hard gate
-        "head_height_mm_ok",
-        "head_width_mm_ok",
-        "face_ratio_ok",
-        "top_margin_ok",
-        "bg_white_ok",
-        "single_face_ok",
-    ):
-        if checks.get(k):
-            score += 100.0
+# Crown gap → head target. Short hair / buzz: same 0.75 head looks like a
+# huge face oval (returned 2026-09-02: head 33.7 mm, face_only 0.58).
+SHORT_HAIR_GAP = 0.30
+FULL_HAIR_GAP = 0.38
+SHORT_HAIR_FACE_RATIO = 0.72
+FACE_ONLY_SOFT_MAX = 0.56
+
+
+def face_target_from_gap(gap_ratio: float | None) -> float:
+    """Head ratio aim: ≤0.30 gap → 0.72, ≥0.38 → PASSPORT_FACE_RATIO, else lerp."""
+    hi = float(config.PASSPORT_FACE_RATIO)
+    lo = float(SHORT_HAIR_FACE_RATIO)
+    if gap_ratio is None:
+        return hi
+    gap = float(gap_ratio)
+    if gap <= SHORT_HAIR_GAP:
+        return lo
+    if gap >= FULL_HAIR_GAP:
+        return hi
+    t = (gap - SHORT_HAIR_GAP) / (FULL_HAIR_GAP - SHORT_HAIR_GAP)
+    return round(lo + t * (hi - lo), 3)
+
+
+def _score_compliance(
+    comp: dict[str, Any],
+    *,
+    face_target: float | None = None,
+) -> float:
+    """Higher is better. Passing crops are not equal: prefer aim + compact face."""
+    aim = float(face_target if face_target is not None else config.PASSPORT_FACE_RATIO)
+    score = 1000.0 if comp.get("pass") else 0.0
+    if not comp.get("pass"):
+        checks = comp.get("checks") or {}
+        for k in (
+            "size_ok",
+            "face_oval_ok",  # informational 70–80%; not a hard gate
+            "head_height_mm_ok",
+            "head_width_mm_ok",
+            "face_ratio_ok",
+            "top_margin_ok",
+            "bg_white_ok",
+            "single_face_ok",
+        ):
+            if checks.get(k):
+                score += 100.0
     fr = float(comp.get("face_ratio") or 0)
     tm = float(comp.get("top_margin") or 0)
-    score -= abs(fr - config.PASSPORT_FACE_RATIO) * 200
+    fo = float(comp.get("face_only") or 0)
+    score -= abs(fr - aim) * 200
     score -= abs(tm - config.PASSPORT_TOP_MARGIN) * 300
+    if fo > FACE_ONLY_SOFT_MAX:
+        score -= (fo - FACE_ONLY_SOFT_MAX) * 800
     return score
 
 
@@ -170,8 +200,8 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
 
 
 def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
-    """Geometry grid; silhouette crown_factor hint first (bald or high hair)."""
-    face_r = config.PASSPORT_FACE_RATIO
+    """Geometry grid; head target from crown gap, not the is_bald flag."""
+    face_r = face_target_from_gap(bald.get("gap_ratio"))
     top_m = config.PASSPORT_TOP_MARGIN
     default: list[tuple[float, float, float]] = [
         (0.45, face_r, top_m),
@@ -184,26 +214,27 @@ def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     hinted = float(bald.get("crown_factor") or (0.22 if bald.get("is_bald") else 0.45))
     hinted = float(np.clip(hinted, 0.14, 0.65))
 
-    if bald.get("is_bald"):
-        priority: list[tuple[float, float, float]] = [
-            (hinted, face_r, top_m),
-            (max(0.14, hinted - 0.04), face_r, 0.10),
-            (min(0.34, hinted + 0.04), face_r, 0.10),
-            (0.22, face_r, 0.10),
-            (0.18, min(0.80, face_r + 0.02), 0.09),
-            (0.26, max(0.70, face_r - 0.02), 0.11),
-            (0.30, face_r, 0.10),
-            (0.35, max(0.70, face_r - 0.02), 0.10),
-        ]
-    else:
-        # High / average hair: try measured silhouette gap before blind grid.
-        priority = [
-            (hinted, face_r, top_m),
-            (hinted, face_r, 0.10),
-            (float(np.clip(hinted - 0.04, 0.14, 0.65)), face_r, 0.10),
-            (float(np.clip(hinted + 0.04, 0.14, 0.65)), max(0.70, face_r - 0.02), 0.11),
-            (hinted, max(0.70, face_r - 0.02), 0.11),
-        ]
+    priority: list[tuple[float, float, float]] = [
+        (hinted, face_r, top_m),
+        (hinted, face_r, 0.10),
+        (float(np.clip(hinted - 0.04, 0.14, 0.65)), face_r, 0.10),
+        (float(np.clip(hinted + 0.04, 0.14, 0.65)), max(0.70, face_r - 0.02), 0.11),
+        (hinted, max(0.70, face_r - 0.02), 0.11),
+    ]
+    gap = bald.get("gap_ratio")
+    short = bald.get("is_bald") or (
+        gap is not None and float(gap) <= SHORT_HAIR_GAP
+    )
+    if short:
+        priority.extend(
+            [
+                (0.22, face_r, 0.10),
+                (0.18, face_r, 0.09),
+                (0.26, max(0.70, face_r - 0.02), 0.11),
+                (0.30, face_r, 0.10),
+                (0.35, max(0.70, face_r - 0.02), 0.10),
+            ]
+        )
 
     seen: set[tuple[float, float, float]] = set()
     out: list[tuple[float, float, float]] = []
@@ -330,6 +361,7 @@ def run_crop_stage(
     out_h = int(height if height is not None else config.PASSPORT_HEIGHT)
     dpi_target = int(dpi if dpi is not None else config.PASSPORT_DPI)
     bald = analyze_baldness(bgr).as_dict()
+    face_aim = face_target_from_gap(bald.get("gap_ratio"))
     attempts = _crop_attempts(bald)
 
     best: tuple[np.ndarray, dict[str, Any], dict[str, Any], float] | None = None
@@ -352,7 +384,7 @@ def run_crop_stage(
                 expected_height=out_h,
                 dpi_target=dpi_target,
             )
-            score = _score_compliance(comp)
+            score = _score_compliance(comp, face_target=face_aim)
             metrics = {
                 **metrics,
                 "attempt_score": round(score, 2),
@@ -364,7 +396,8 @@ def run_crop_stage(
             # Soft compliance pass can undershoot top field (~3 mm). Keep
             # searching until top_margin is near MVD 5±1 mm (≈0.09–0.13).
             tm = float(comp.get("top_margin") or 0.0)
-            if comp.get("pass") and tm >= 0.09:
+            fo = float(comp.get("face_only") or 0.0)
+            if comp.get("pass") and tm >= 0.09 and fo <= FACE_ONLY_SOFT_MAX:
                 break
         except Exception as e:
             errors.append(f"{crown_f}/{face_r}: {e}")

@@ -1,0 +1,20 @@
+{
+  "id": "short_hair_goatee",
+  "role": "short_crown_face_only",
+  "title": "Ёжик / короткая седина, эспаньолка",
+  "notes": "Прод 2026-09-02 result fc9242479e10c9f7546586fda5baee04. Загран вернули: «лицо слишком близко». Голова была 74.8%/33.7мм (норма), овал лица без волос 58.2%, глаза на 44.7%. in/white_in = студийный белый вход. baseline_out = прод-out 360dpi до фикса. Кроп целится от gap_ratio, не от is_bald.",
+  "input": "white_in.png",
+  "source_pair": "20260902T132712Z_image-24-08-26-08-40",
+  "source_result": "fc9242479e10c9f7546586fda5baee04",
+  "baseline_face_only": 0.582,
+  "expect": {
+    "pass": true,
+    "top_margin_min": 0.09,
+    "top_margin_max": 0.13,
+    "face_ratio_min": 0.70,
+    "face_ratio_max": 0.738,
+    "head_height_mm_min": 32.0,
+    "head_height_mm_max": 33.2,
+    "face_only_max": 0.57
+  }
+}
