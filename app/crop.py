@@ -20,7 +20,7 @@ from . import config
 from .baldness import analyze_baldness
 from .compliance import measure_compliance
 from .compose_bg import composite_on_white
-from .crop_geom import crop_width_correction
+from .crop_geom import crop_width_correction, nudge_crop_off_bottom
 from .gate import _landmarker
 from .openrouter import POST_CROP_CLEANUP_PROMPT, edit_selfie_riverflow
 from .whitening import force_white_background
@@ -95,6 +95,7 @@ def _crop_once(
     width_corr = crop_width_correction(w, h, out_w, out_h)
     crop_w = out_w / scale * width_corr
     top = crown_y - top_margin * crop_h
+    top, bottom_shift = nudge_crop_off_bottom(top, crop_h, h)
     left = mid_x - crop_w / 2
 
     pad = int(max(crop_w, crop_h)) + 8
@@ -130,6 +131,7 @@ def _crop_once(
         "face_ratio_est": round(float(face_h * scale / out_h), 3),
         "width_corr": round(width_corr, 4),
         "src_aspect": round(w / max(h, 1), 4),
+        "bottom_shift_px": round(bottom_shift, 1),
     }
     return out, metrics
 

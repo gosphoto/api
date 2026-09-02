@@ -5,6 +5,17 @@ from __future__ import annotations
 from . import config
 
 
+def nudge_crop_off_bottom(top: float, crop_h: float, src_h: float) -> tuple[float, float]:
+    """If the crop window runs past the source, shift it up (no white pad below).
+
+    Returns (new_top, shift_px). shift_px is 0 when the window already fits.
+    """
+    overflow = float(top) + float(crop_h) - float(src_h)
+    if overflow <= 0:
+        return float(top), 0.0
+    return float(top) - overflow, overflow
+
+
 def crop_width_correction(
     src_w: int,
     src_h: int,

@@ -6,6 +6,7 @@ import json
 from pathlib import Path
 
 import cv2
+import numpy as np
 import pytest
 
 from app.crop import run_crop_stage
@@ -60,6 +61,15 @@ def test_crop_regression_case(case_dir: Path):
         fo = float(comp.get("face_only") or 0)
         assert fo <= float(expect["face_only_max"]), (
             f"{case['id']}: face_only={fo} > {expect['face_only_max']}"
+        )
+
+    if "bottom_white_max_px" in expect:
+        mask = (255 - cropped.astype(np.int16)).max(axis=2) > 40
+        rows = np.flatnonzero(mask.any(axis=1))
+        assert rows.size, f"{case['id']}: empty subject"
+        bottom = int(cropped.shape[0] - 1 - rows[-1])
+        assert bottom <= int(expect["bottom_white_max_px"]), (
+            f"{case['id']}: bottom_white_px={bottom} > {expect['bottom_white_max_px']}"
         )
 
     bald = comp.get("baldness") or metrics.get("baldness")
