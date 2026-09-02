@@ -154,7 +154,7 @@ def _score_compliance(comp: dict[str, Any]) -> float:
             score += 100.0
     fr = float(comp.get("face_ratio") or 0)
     tm = float(comp.get("top_margin") or 0)
-    score -= abs(fr - config.PASSPORT_FACE_RATIO) * 200
+    score -= abs(fr - config.crop_face_ratio_aim()) * 200
     score -= abs(tm - config.PASSPORT_TOP_MARGIN) * 300
     return score
 
@@ -164,14 +164,14 @@ def crop_passport(bgr: np.ndarray) -> tuple[np.ndarray, dict[str, Any]]:
     return _crop_once(
         bgr,
         crown_factor=0.45,
-        face_ratio=config.PASSPORT_FACE_RATIO,
+        face_ratio=config.crop_face_ratio_aim(),
         top_margin=config.PASSPORT_TOP_MARGIN,
     )
 
 
 def _crop_attempts(bald: dict[str, Any]) -> list[tuple[float, float, float]]:
     """Geometry grid; silhouette crown_factor hint first (bald or high hair)."""
-    face_r = config.PASSPORT_FACE_RATIO
+    face_r = config.crop_face_ratio_aim()
     top_m = config.PASSPORT_TOP_MARGIN
     default: list[tuple[float, float, float]] = [
         (0.45, face_r, top_m),
@@ -323,7 +323,7 @@ def run_crop_stage(
     White-bg portrait → 35×45 passport BGR + metrics + compliance.
 
     Tries several crown/face geometries and keeps the best compliance result.
-    Targets Gosuslugi 70–80% / FMS head 32–36 mm (crop aim 0.75).
+    Targets Gosuslugi 70–80% / FMS head 32–36 mm (crop aim 0.75 × FACE_SIZE_EXPERIMENT).
     Output pixel size follows width/height (default RF 600 dpi).
     """
     out_w = int(width if width is not None else config.PASSPORT_WIDTH)
@@ -425,6 +425,9 @@ def run_crop_stage(
     metrics["baldness"] = bald
     metrics["dpi"] = dpi_target
     metrics["post_crop_cleanup"] = cleanup_meta
+    # EXPERIMENT 2026-09-02 — see config.FACE_SIZE_EXPERIMENT
+    metrics["face_size_experiment"] = config.FACE_SIZE_EXPERIMENT
+    metrics["face_ratio_aim"] = config.crop_face_ratio_aim()
     return cropped, metrics, comp
 
 

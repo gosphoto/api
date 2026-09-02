@@ -142,8 +142,19 @@ PASSPORT_HEIGHT = int(
 # Crop aim ~75% (~33.8 mm). Gosuslugi 70–80% = FMS head 32–36 mm.
 # Do not hard-fail "oval ≥80%" from §34.3 — it contradicts the 32 mm floor.
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
+# ---------------------------------------------------------------------------
+# EXPERIMENT 2026-09-02: all heads 5% smaller (0.75 → 0.7125 ≈ 32.1 mm).
+# Still inside FMS 32–36 mm / 70–80%. One knob — do not scatter 0.95 elsewhere.
+# Rollback if mass rejections: set FACE_SIZE_EXPERIMENT = 1.0 (or env=1).
+# ---------------------------------------------------------------------------
+FACE_SIZE_EXPERIMENT = float(os.getenv("FACE_SIZE_EXPERIMENT", "0.95"))
 FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.70"))
 FACE_RATIO_MAX = float(os.getenv("FACE_RATIO_MAX", "0.80"))
+
+
+def crop_face_ratio_aim() -> float:
+    """Head ratio the crop actually aims at (PASSPORT_FACE_RATIO × experiment)."""
+    return float(PASSPORT_FACE_RATIO) * float(FACE_SIZE_EXPERIMENT)
 # Верхнее поле ~4.5 мм из 45 мм
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.10"))
 HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "32"))

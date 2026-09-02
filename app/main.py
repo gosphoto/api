@@ -1044,7 +1044,9 @@ def process_info():
             "size_mm": [35, 45],
             "dpi": config.PASSPORT_DPI,
             "pixels": [config.PASSPORT_WIDTH, config.PASSPORT_HEIGHT],
-            "face_ratio": config.PASSPORT_FACE_RATIO,
+            "face_ratio": config.crop_face_ratio_aim(),
+            "face_ratio_documented": config.PASSPORT_FACE_RATIO,
+            "face_size_experiment": config.FACE_SIZE_EXPERIMENT,
             "head_height_mm": [
                 config.HEAD_HEIGHT_MM_MIN,
                 config.HEAD_HEIGHT_MM_MAX,
