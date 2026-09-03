@@ -57,9 +57,10 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "halo" in g
     assert "zero stray" in g or "invisible" in g
     assert "leftover" in g or "original-wall" in g or "wall" in g
-    assert "do not restyle" in g
-    assert "do not tuck" in g
-    assert "behind the ears" in g
+    assert "face oval" in g
+    assert "tuck" in g and "behind the ears" in g
+    assert "clear" in g or "sweep" in g or "covering" in g
+    assert "do not cut" in g or "do not shorten" in g
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
