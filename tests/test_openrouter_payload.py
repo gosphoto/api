@@ -62,6 +62,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "clear" in g or "sweep" in g or "covering" in g
     assert "do not cut" in g or "do not shorten" in g
     assert "sunglasses" in g
+    assert "pupil" in g
+    assert "catchlight" in g
+    assert "ring-light" in g or "lamp" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
     assert "religious clothing" in g
