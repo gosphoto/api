@@ -87,10 +87,10 @@ OPENROUTER_TRANSPARENT_BG = os.getenv(
 ).strip().lower() in ("1", "true", "yes", "on")
 OPENROUTER_TIMEOUT_SEC = float(os.getenv("OPENROUTER_TIMEOUT_SEC", "300"))
 
-# Live /api/process edit (OpenRouter /images). Gemini after A/B vs FLUX.2 Pro
-# (cheaper, less invented cheek texture on SPUI8374 2026-08-17).
+# Live /api/process edit (OpenRouter /images). Nano Banana 2 Lite (same as 3by4).
+# Cheaper than gemini-2.5-flash-image; Riverflow Pro remains optional via route.
 RIVERFLOW_MODEL = os.getenv(
-    "RIVERFLOW_MODEL", "google/gemini-2.5-flash-image"
+    "RIVERFLOW_MODEL", "google/gemini-3.1-flash-lite-image"
 ).strip()
 # Native white-bg + scoring payload. Used when messy hair sits on a light wall.
 RIVERFLOW_PRO_MODEL = os.getenv(
@@ -115,7 +115,7 @@ POST_CROP_CLEANUP_ENABLED = os.getenv(
     "POST_CROP_CLEANUP_ENABLED", "0"
 ).strip().lower() in ("1", "true", "yes", "on")
 POST_CROP_CLEANUP_MODEL = os.getenv(
-    "POST_CROP_CLEANUP_MODEL", "google/gemini-2.5-flash-image"
+    "POST_CROP_CLEANUP_MODEL", "google/gemini-3.1-flash-lite-image"
 ).strip()
 
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
