@@ -3,7 +3,7 @@
 Бэкенд для https://gosphoto.ru
 
 - `POST /api/validate` — gate (MediaPipe Face Landmarker)
-- `POST /api/process` — gate → **Nano Banana 2 Lite** (`google/gemini-3.1-flash-lite-image`, как на 3by4) → 35×45 crop → **лист 10×15** → `result_id`. Второй Gemini после кропа (`POST_CROP_CLEANUP`) **выключен**: раздувает овал лица. `PASSPORT_CROP_WIDTH_CORR` по умолчанию `1` (off; `auto` сжимал лицо слишком узко). [Замер](docs/post-crop-cleanup-face-widen.md). Fallback — local cutout
+- `POST /api/process` — gate → **Nano Banana** (`google/gemini-2.5-flash-image`, как на 3by4) → 35×45 crop → **лист 10×15** → `result_id`. Второй Gemini после кропа (`POST_CROP_CLEANUP`) **выключен**: раздувает овал лица. `PASSPORT_CROP_WIDTH_CORR` по умолчанию `1` (off; `auto` сжимал лицо слишком узко). [Замер](docs/post-crop-cleanup-face-widen.md). Fallback — local cutout
 - `GET /api/result/{id}` — meta + preview URLs; `paid` / цена
 - `POST /api/result/{id}/pay` — Tochka checkout (350 ₽) → unlock download
 - `POST /api/payments/tochka/webhook` — webhook Точки
@@ -49,9 +49,9 @@ https://github.com/gosphoto/api/settings/secrets/actions
 | `DEPLOY_SSH_PRIVATE_KEY` | да | SSH на VPS |
 | `DEPLOY_USER` | да | SSH user (обычно `root`) |
 | `OPENROUTER_API_KEY` | да | Riverflow / OpenRouter image edit |
-| `RIVERFLOW_MODEL` | нет | default Nano Banana 2 Lite (`google/gemini-3.1-flash-lite-image`) |
+| `RIVERFLOW_MODEL` | нет | default Nano Banana (`google/gemini-2.5-flash-image`) |
 | `RIVERFLOW_PRO_MODEL` | нет | `sourceful/riverflow-v2.5-pro` (выключен: `EDIT_ROUTE_PRO_ON_MESSY_HAIR=0`) |
-| `EDIT_ROUTE_PRO_ON_MESSY_HAIR` | нет | `0` — всегда lite; `1` — Pro на messy hair + светлый фон |
+| `EDIT_ROUTE_PRO_ON_MESSY_HAIR` | нет | `0` — всегда Gemini Flash Image; `1` — Pro на messy hair + светлый фон |
 | `RIVERFLOW_BG_MODE` / `RIVERFLOW_BG_HEX` | нет | `solid` / `#FFFFFF` |
 | `OPENROUTER_IMAGE_MODEL` | нет | legacy model for non-Riverflow `/api/edit` |
 

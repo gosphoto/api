@@ -191,7 +191,7 @@ jobs:
           # Sensible defaults if never set on this host
           data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
           data["EDIT_BACKEND"] = "riverflow"
-          data["RIVERFLOW_MODEL"] = "google/gemini-3.1-flash-lite-image"
+          data["RIVERFLOW_MODEL"] = "google/gemini-2.5-flash-image"
           data["POST_CROP_CLEANUP_ENABLED"] = "0"
           data["POST_CROP_CLEANUP_MODEL"] = data["RIVERFLOW_MODEL"]
           data["PROCESS_CACHE_ENABLED"] = "0"
