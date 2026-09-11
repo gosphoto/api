@@ -48,6 +48,25 @@ def test_validate_full_name_rejects(monkeypatch):
         feedback.validate_full_name("Имя От " + ("Ф" * 30))
 
 
+def test_validate_gosuslugi_error_ok(monkeypatch):
+    monkeypatch.setattr(config, "FEEDBACK_MIN_GOSUSLUGI_ERROR_CHARS", 3)
+    monkeypatch.setattr(config, "FEEDBACK_MAX_GOSUSLUGI_ERROR_CHARS", 100)
+    assert (
+        feedback.validate_gosuslugi_error("  Лицо не найдено  ")
+        == "Лицо не найдено"
+    )
+
+
+def test_validate_gosuslugi_error_rejects(monkeypatch):
+    monkeypatch.setattr(config, "FEEDBACK_MIN_GOSUSLUGI_ERROR_CHARS", 3)
+    monkeypatch.setattr(config, "FEEDBACK_MAX_GOSUSLUGI_ERROR_CHARS", 10)
+    with pytest.raises(feedback.FeedbackValidationError) as e:
+        feedback.validate_gosuslugi_error("ab")
+    assert "Госуслуг" in e.value.detail
+    with pytest.raises(feedback.FeedbackValidationError):
+        feedback.validate_gosuslugi_error("x" * 11)
+
+
 def test_validate_photo_required():
     with pytest.raises(feedback.FeedbackValidationError) as e:
         feedback.validate_photo(None, None, None)
@@ -82,6 +101,7 @@ def test_build_feedback_email_with_photo():
     msg = feedback.build_feedback_email(
         email="user@example.com",
         full_name="Иван Сергеевич П.",
+        gosuslugi_error="Разрешение фото менее 300 точек на дюйм",
         message="Need help with my passport photo please",
         client_ip="203.0.113.9",
         user_agent="pytest",
@@ -94,6 +114,7 @@ def test_build_feedback_email_with_photo():
     body = msg.get_body(preferencelist=("plain",)).get_content()
     assert "user@example.com" in body
     assert "Иван Сергеевич П." in body
+    assert "Разрешение фото менее 300 точек на дюйм" in body
     assert "203.0.113.9" in body
     assert len(list(msg.iter_attachments())) == 1
 
@@ -145,6 +166,7 @@ def _mini_feedback_app():
         request: Request,
         email: str = Form(...),
         full_name: str = Form(...),
+        gosuslugi_error: str = Form(...),
         message: str = Form(...),
         photo: UploadFile = File(...),
     ):
@@ -157,6 +179,7 @@ def _mini_feedback_app():
             feedback.check_rate_limit(ip)
             email_n = feedback.validate_email(email)
             full_name_n = feedback.validate_full_name(full_name)
+            gosuslugi_error_n = feedback.validate_gosuslugi_error(gosuslugi_error)
             message_n = feedback.validate_message(message)
             raw = await photo.read()
             photo_n = feedback.validate_photo(
@@ -167,6 +190,7 @@ def _mini_feedback_app():
             msg = feedback.build_feedback_email(
                 email=email_n,
                 full_name=full_name_n,
+                gosuslugi_error=gosuslugi_error_n,
                 message=message_n,
                 client_ip=ip,
                 user_agent=ua,
@@ -188,7 +212,7 @@ def _mini_feedback_app():
         return {
             "endpoint": "/api/feedback",
             "method": "POST",
-            "fields": ["email", "full_name", "message", "photo"],
+            "fields": ["email", "full_name", "gosuslugi_error", "message", "photo"],
         }
 
     return app
@@ -210,6 +234,7 @@ def test_http_feedback_ok(monkeypatch):
         data={
             "email": "a@b.co",
             "full_name": "Иван Сергеевич П.",
+            "gosuslugi_error": "Лицо не найдено",
             "message": "Hello, need help please",
         },
         files={"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")},
@@ -230,6 +255,7 @@ def test_http_feedback_requires_photo(monkeypatch):
         data={
             "email": "a@b.co",
             "full_name": "Иван Сергеевич П.",
+            "gosuslugi_error": "Лицо не найдено",
             "message": "Hello, need help please",
         },
     )
@@ -245,7 +271,30 @@ def test_http_feedback_requires_full_name(monkeypatch):
     client = TestClient(_mini_feedback_app())
     res = client.post(
         "/api/feedback",
-        data={"email": "a@b.co", "message": "Hello, need help please"},
+        data={
+            "email": "a@b.co",
+            "gosuslugi_error": "Лицо не найдено",
+            "message": "Hello, need help please",
+        },
+        files={"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")},
+    )
+    assert res.status_code == 422
+
+
+def test_http_feedback_requires_gosuslugi_error(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    feedback._RATE.clear()
+    monkeypatch.setattr(config, "SMTP_PASSWORD", "secret")
+    monkeypatch.setattr(feedback, "send_feedback_email", lambda msg: None)
+    client = TestClient(_mini_feedback_app())
+    res = client.post(
+        "/api/feedback",
+        data={
+            "email": "a@b.co",
+            "full_name": "Иван Сергеевич П.",
+            "message": "Hello, need help please",
+        },
         files={"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")},
     )
     assert res.status_code == 422
@@ -263,6 +312,7 @@ def test_http_feedback_rate_limit(monkeypatch):
     data = {
         "email": "a@b.co",
         "full_name": "Иван Сергеевич П.",
+        "gosuslugi_error": "Лицо не найдено",
         "message": "Hello, need help please",
     }
     files = {"photo": ("shot.jpg", _tiny_jpeg_bytes(), "image/jpeg")}

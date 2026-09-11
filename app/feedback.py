@@ -69,6 +69,17 @@ def validate_full_name(value: str) -> str:
     return name
 
 
+def validate_gosuslugi_error(value: str) -> str:
+    """Текст ошибки с Госуслуг — обязателен для разбора отказа."""
+    err = re.sub(r"\s+", " ", (value or "").strip())
+    hint = "Укажите ошибку с Госуслуг"
+    if len(err) < config.FEEDBACK_MIN_GOSUSLUGI_ERROR_CHARS:
+        raise FeedbackValidationError(400, hint)
+    if len(err) > config.FEEDBACK_MAX_GOSUSLUGI_ERROR_CHARS:
+        raise FeedbackValidationError(400, "Текст ошибки слишком длинный")
+    return err
+
+
 def validate_photo(
     filename: str | None, content_type: str | None, data: bytes | None
 ) -> tuple[str, bytes]:
@@ -111,6 +122,7 @@ def build_feedback_email(
     *,
     email: str,
     full_name: str,
+    gosuslugi_error: str,
     message: str,
     client_ip: str,
     user_agent: str,
@@ -129,6 +141,7 @@ def build_feedback_email(
             [
                 f"From: {email}",
                 f"ФИО: {full_name}",
+                f"Ошибка Госуслуг: {gosuslugi_error}",
                 f"IP: {client_ip}",
                 f"User-Agent: {user_agent}",
                 "",

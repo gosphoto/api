@@ -968,6 +968,7 @@ async def post_feedback(
     request: Request,
     email: str = Form(...),
     full_name: str = Form(...),
+    gosuslugi_error: str = Form(...),
     message: str = Form(...),
     photo: UploadFile = File(...),
 ):
@@ -977,6 +978,7 @@ async def post_feedback(
         feedback_mod.check_rate_limit(ip)
         email_n = feedback_mod.validate_email(email)
         full_name_n = feedback_mod.validate_full_name(full_name)
+        gosuslugi_error_n = feedback_mod.validate_gosuslugi_error(gosuslugi_error)
         message_n = feedback_mod.validate_message(message)
         raw = await photo.read()
         photo_n = feedback_mod.validate_photo(
@@ -987,6 +989,7 @@ async def post_feedback(
         msg = feedback_mod.build_feedback_email(
             email=email_n,
             full_name=full_name_n,
+            gosuslugi_error=gosuslugi_error_n,
             message=message_n,
             client_ip=ip,
             user_agent=ua,
@@ -1012,6 +1015,7 @@ def feedback_info():
         "fields": {
             "email": "required, reply-to",
             "full_name": "required, Имя Отчество Ф. (e.g. Иван Сергеевич П.)",
+            "gosuslugi_error": "required, текст ошибки с Госуслуг",
             "message": "required, 10–4000 chars",
             "photo": "required, JPEG/PNG/WebP ≤5MB",
         },
