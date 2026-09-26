@@ -224,7 +224,13 @@ def set_paid(
 ) -> bool:
     meta = load_meta(result_id)
     if not meta:
+        log.warning(
+            "payment event=meta_paid_missing_result result_id=%s payment_id=%s",
+            result_id,
+            payment_id,
+        )
         return False
+    was_paid = bool(meta.get("paid"))
     ts = paid_at or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     meta["paid"] = True
     meta["paid_at"] = ts
@@ -232,6 +238,15 @@ def set_paid(
     meta["tochka_operation_id"] = tochka_operation_id
     try:
         _write_meta(result_id, meta)
+        log.info(
+            "payment event=meta_paid result_id=%s payment_id=%s operation_id=%s "
+            "paid_at=%s was_paid=%s",
+            result_id,
+            payment_id,
+            tochka_operation_id,
+            ts,
+            was_paid,
+        )
         return True
     except Exception as e:
         log.warning("Failed to set paid id=%s: %s", result_id, e)
@@ -250,6 +265,7 @@ def set_paid_resume(
         return False
     if not meta.get("resume_offer"):
         log.warning("set_paid_resume without resume_offer id=%s", result_id)
+    was_paid = bool(meta.get("paid_resume"))
     ts = paid_at or datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     meta["paid_resume"] = True
     meta["paid_resume_at"] = ts
@@ -257,6 +273,15 @@ def set_paid_resume(
     meta["resume_tochka_operation_id"] = tochka_operation_id
     try:
         _write_meta(result_id, meta)
+        log.info(
+            "payment event=meta_paid_resume result_id=%s payment_id=%s "
+            "operation_id=%s paid_at=%s was_paid=%s",
+            result_id,
+            payment_id,
+            tochka_operation_id,
+            ts,
+            was_paid,
+        )
         return True
     except Exception as e:
         log.warning("Failed to set paid_resume id=%s: %s", result_id, e)

@@ -14,6 +14,8 @@ env:
   # Prod API (nginx on 91 proxies gosphoto.ru /api/ here)
   DEPLOY_HOST: 80.87.196.33
   API_PATH: /opt/gosphoto-api
+  # Durable runtime data — outside API_PATH so rsync --delete cannot wipe it
+  DATA_PATH: /var/lib/gosphoto
   COMPOSE_FILE: docker-compose.prod33.yml
 
 jobs:
@@ -104,18 +106,44 @@ jobs:
           chmod 600 ~/.ssh/deploy_ed25519
           ssh-keyscan -H "$DEPLOY_HOST" >> ~/.ssh/known_hosts
 
-      - name: Prepare directory
+      - name: Prepare data dirs (outside deploy tree)
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
           ssh -i "$HOME/.ssh/deploy_ed25519" -o IdentitiesOnly=yes \
             "${DEPLOY_USER}@${DEPLOY_HOST}" \
-            "mkdir -p ${API_PATH}"
+            bash -s -- "${API_PATH}" "${DATA_PATH}" <<'EOF'
+          set -euo pipefail
+          API="$1"
+          DATA="$2"
+          mkdir -p "$API"
+          mkdir -p "$DATA"/{payments,results,pairs,rejecteds}
+          for d in payments results pairs rejecteds; do
+            src="$API/$d"
+            dst="$DATA/$d"
+            if [ -L "$src" ]; then
+              continue
+            fi
+            if [ -d "$src" ] && [ -n "$(ls -A "$src" 2>/dev/null || true)" ]; then
+              if [ -z "$(ls -A "$dst" 2>/dev/null || true)" ]; then
+                find "$src" -mindepth 1 -maxdepth 1 -exec mv {} "$dst"/ \;
+              else
+                rsync -a "$src"/ "$dst"/
+                find "$src" -mindepth 1 -delete
+              fi
+            fi
+            rm -rf "$src"
+            ln -sfn "$dst" "$src"
+          done
+          touch "$DATA/.migrated"
+          echo "DATA_PATH=$DATA ready"
+          EOF
 
       - name: Rsync API
         env:
           DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
         run: |
+          # Never sync or --delete runtime data dirs (payments wipe bug 2026-09-23).
           rsync -avz --delete \
             --exclude '.git' \
             --exclude '.github' \
@@ -126,6 +154,7 @@ jobs:
             --exclude 'rejecteds' \
             --exclude 'pairs' \
             --exclude 'results' \
+            --exclude 'payments' \
             --exclude 'tmp-smoke' \
             --exclude 'README.md' \
             --exclude '.gitignore' \

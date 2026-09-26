@@ -27,8 +27,10 @@
 
 ## Deploy
 
-VPS `91.207.75.72` → `/opt/gosphoto-api` (Docker `gosphoto-gate`, `127.0.0.1:8091`).  
-Nginx на лендинге проксирует `/api/` и `/health`.
+VPS `80.87.196.33` → код `/opt/gosphoto-api`, **данные** `/var/lib/gosphoto/{payments,results,pairs,rejecteds}`  
+(Docker `gosphoto-gate`, порт `8111`; nginx на `91` проксирует `gosphoto.ru /api/`).
+
+Данные вне дерева деплоя — `rsync --delete` их не трогает. Подробности: [docs/payments-tochka.md](docs/payments-tochka.md).
 
 Push / PR → GitHub Actions: **pytest** (crop regression: лысый / высокая укладка / объёмные волосы; upright regression: перевёрнутое селфи) → deploy на `main` только если тесты зелёные.
 

@@ -23,7 +23,38 @@
 | `RESUME_UPSELL_ENABLED` | `0` (on → `1`, suit-генерация + upsell 300 ₽) |
 | `FREE_DOWNLOAD_UNLOCK` | `false` |
 | `PAYMENT_SYNC_INTERVAL_SECONDS` | `30` |
-| `PAYMENTS_DIR` | `/app/payments` (volume) |
+| `PAYMENTS_DIR` | `/app/payments` → host **`/var/lib/gosphoto/payments`** (prod) |
+
+## Data dirs (prod)
+
+Runtime data lives **outside** the deploy tree so `rsync --delete` cannot wipe it:
+
+| Host | Container |
+|------|-----------|
+| `/var/lib/gosphoto/payments` | `/app/payments` |
+| `/var/lib/gosphoto/results` | `/app/results` |
+| `/var/lib/gosphoto/pairs` | `/app/pairs` |
+| `/var/lib/gosphoto/rejecteds` | `/app/rejecteds` |
+
+Symlinks `/opt/gosphoto-api/{payments,results,pairs,rejecteds}` → `/var/lib/gosphoto/…` keep old paths working for ops/skills.  
+CI deploy must `--exclude` those names (see `.github/workflows/deploy.yml`).
+
+## Observability
+
+Все шаги оплаты пишут строки с префиксом `payment event=…` (logger `gosphoto-gate`).
+
+```bash
+docker logs gosphoto-gate 2>&1 | grep 'payment event='
+```
+
+| event | Когда |
+|-------|--------|
+| `checkout_created` / `checkout_reused` / `checkout_already_paid` / `checkout_free_unlock` | `POST …/pay` |
+| `file_written` | json в `PAYMENTS_DIR` |
+| `webhook_received` → `webhook_parsed` → `webhook_activated` / `webhook_not_found` | webhook Точки |
+| `marked_paid` / `unlock_applied` / `meta_paid` | unlock |
+| `sync_poll_*` / `status_poll_flip` | poll / payment-status |
+| `download_denied` | digital/print без оплаты (403) |
 
 ## Webhook
 

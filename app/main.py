@@ -75,6 +75,7 @@ def _require_paid(result_id: str) -> None:
     if not is_valid_result_id(result_id) or not load_meta(result_id):
         raise HTTPException(status_code=404, detail="Result not found")
     if not is_paid(result_id):
+        log.info("payment event=download_denied result_id=%s product=passport", result_id)
         raise HTTPException(
             status_code=403,
             detail="Payment required. Pay via POST /api/result/{id}/pay",
@@ -85,6 +86,7 @@ def _require_paid_resume(result_id: str) -> None:
     if not is_valid_result_id(result_id) or not load_meta(result_id):
         raise HTTPException(status_code=404, detail="Result not found")
     if not is_paid_resume(result_id):
+        log.info("payment event=download_denied result_id=%s product=resume", result_id)
         raise HTTPException(
             status_code=403,
             detail="Payment required. Pay via POST /api/result/{id}/pay-resume",
@@ -190,12 +192,13 @@ async def lifespan(_app: FastAPI):
         log.warning("Cutout warmup failed (will retry on request): %s", e)
     log.info(
         "Gate ready; edit_backend=%s riverflow=%s cutout=%s openrouter=%s "
-        "payments=%s free_unlock=%s resume_upsell=%s resume_price=%s",
+        "payments=%s payments_dir=%s free_unlock=%s resume_upsell=%s resume_price=%s",
         config.EDIT_BACKEND,
         config.RIVERFLOW_MODEL,
         config.EDIT_CUTOUT,
         "set" if config.OPENROUTER_API_KEY else "MISSING",
         "tochka" if config.TOCHKA_ACCESS_TOKEN else "stub",
+        config.PAYMENTS_DIR,
         config.FREE_DOWNLOAD_UNLOCK,
         config.RESUME_UPSELL_ENABLED,
         payments_mod.resume_price_rub(),
@@ -820,8 +823,21 @@ def payment_status(result_id: str):
     meta = load_meta(result_id)
     if not meta:
         raise HTTPException(status_code=404, detail="Result not found")
+    paid_before = bool(meta.get("paid"))
+    paid_resume_before = bool(meta.get("paid_resume"))
     payments_mod.sync_pending_for_result(result_id)
     meta = load_meta(result_id) or meta
+    paid_after = bool(meta.get("paid"))
+    paid_resume_after = bool(meta.get("paid_resume"))
+    if paid_after != paid_before or paid_resume_after != paid_resume_before:
+        log.info(
+            "payment event=status_poll_flip result_id=%s paid=%s→%s paid_resume=%s→%s",
+            result_id,
+            paid_before,
+            paid_after,
+            paid_resume_before,
+            paid_resume_after,
+        )
     return _result_public_payload(result_id, meta)
 
 
@@ -833,19 +849,18 @@ async def tochka_webhook(request: Request):
     )
     content_type = request.headers.get("content-type", "")
     log.info(
-        "Tochka webhook received bytes=%s content_type=%s has_signature=%s body_prefix=%r",
+        "payment event=webhook_received bytes=%s content_type=%s has_signature=%s",
         len(raw),
         content_type,
         bool(signature),
-        raw[:96],
     )
     # Always ACK 200 so Tochka does not retry forever on our processing bugs.
     try:
         result = payments_mod.handle_webhook(raw, signature)
     except Exception as e:
-        log.exception("Tochka webhook handler error: %s", e)
+        log.exception("payment event=webhook_handler_error error=%s", e)
         result = {"ok": True, "error": "internal"}
-    log.info("Tochka webhook result=%s", result)
+    log.info("payment event=webhook_result %s", result)
     return result
 
 

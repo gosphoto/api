@@ -27,6 +27,16 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
 
+def _pay_log(event: str, level: int = logging.INFO, **fields: Any) -> None:
+    """Structured payment trail — grep: `payment event=`."""
+    parts = [f"payment event={event}"]
+    for key, value in fields.items():
+        if value is None:
+            continue
+        parts.append(f"{key}={value}")
+    log.log(level, " ".join(parts))
+
+
 def _payments_dir() -> Path:
     path = Path(config.PAYMENTS_DIR)
     path.mkdir(parents=True, exist_ok=True)
@@ -42,6 +52,15 @@ def _write_payment(record: dict[str, Any]) -> None:
     tmp = path.with_suffix(".tmp")
     tmp.write_text(json.dumps(record, ensure_ascii=False, indent=2), encoding="utf-8")
     tmp.replace(path)
+    _pay_log(
+        "file_written",
+        payment_id=record.get("payment_id"),
+        result_id=record.get("result_id"),
+        product=record.get("product") or PRODUCT_PASSPORT,
+        status=record.get("status"),
+        amount_kopecks=record.get("amount_kopecks"),
+        path=str(path),
+    )
 
 
 def load_payment(payment_id: str) -> dict[str, Any] | None:
@@ -53,7 +72,13 @@ def load_payment(payment_id: str) -> dict[str, Any] | None:
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except Exception as e:
-        log.warning("Failed to read payment %s: %s", payment_id, e)
+        _pay_log(
+            "file_read_failed",
+            logging.WARNING,
+            payment_id=payment_id,
+            path=str(path),
+            error=e,
+        )
         return None
     return data if isinstance(data, dict) else None
 
@@ -129,11 +154,12 @@ def _reuse_pending_checkout(
     }
     if is_resume:
         body["paid_resume"] = False
-    log.info(
-        "Reusing pending checkout payment_id=%s result_id=%s product=%s",
-        record["payment_id"],
-        result_id,
-        product,
+    _pay_log(
+        "checkout_reused",
+        payment_id=record["payment_id"],
+        result_id=result_id,
+        product=product,
+        amount_rub=price,
     )
     return body
 
@@ -155,19 +181,29 @@ def _apply_unlock(record: dict[str, Any], *, tochka_operation_id: str, paid_at: 
     result_id = record["result_id"]
     payment_id = record["payment_id"]
     if product == PRODUCT_RESUME:
-        results.set_paid_resume(
+        ok = results.set_paid_resume(
             result_id,
             payment_id=payment_id,
             tochka_operation_id=tochka_operation_id,
             paid_at=paid_at,
         )
     else:
-        results.set_paid(
+        ok = results.set_paid(
             result_id,
             payment_id=payment_id,
             tochka_operation_id=tochka_operation_id,
             paid_at=paid_at,
         )
+    _pay_log(
+        "unlock_applied" if ok else "unlock_failed",
+        logging.INFO if ok else logging.ERROR,
+        payment_id=payment_id,
+        result_id=result_id,
+        product=product,
+        operation_id=tochka_operation_id,
+        paid_at=paid_at,
+        meta_ok=ok,
+    )
 
 
 def mark_paid(
@@ -175,11 +211,27 @@ def mark_paid(
     *,
     tochka_operation_id: str,
     paid_at: str | None = None,
+    source: str = "unknown",
 ) -> dict[str, Any] | None:
     record = load_payment(payment_id)
     if not record:
+        _pay_log(
+            "mark_paid_missing_file",
+            logging.ERROR,
+            payment_id=payment_id,
+            operation_id=tochka_operation_id,
+            source=source,
+            payments_dir=_payments_dir(),
+        )
         return None
     if record.get("status") == "paid":
+        _pay_log(
+            "mark_paid_already",
+            payment_id=payment_id,
+            result_id=record.get("result_id"),
+            product=record.get("product") or PRODUCT_PASSPORT,
+            source=source,
+        )
         return record
     ts = paid_at or _now_iso()
     record["status"] = "paid"
@@ -187,12 +239,15 @@ def mark_paid(
     record["tochka_operation_id"] = tochka_operation_id
     _write_payment(record)
     _apply_unlock(record, tochka_operation_id=tochka_operation_id, paid_at=ts)
-    log.info(
-        "Payment marked paid payment_id=%s result_id=%s product=%s operation=%s",
-        payment_id,
-        record.get("result_id"),
-        record.get("product") or PRODUCT_PASSPORT,
-        tochka_operation_id,
+    _pay_log(
+        "marked_paid",
+        payment_id=payment_id,
+        result_id=record.get("result_id"),
+        product=record.get("product") or PRODUCT_PASSPORT,
+        amount_kopecks=record.get("amount_kopecks"),
+        operation_id=tochka_operation_id,
+        paid_at=ts,
+        source=source,
     )
     return record
 
@@ -235,6 +290,19 @@ def create_checkout(result_id: str) -> dict[str, Any]:
                 tochka_operation_id=record["tochka_operation_id"],
                 paid_at=ts,
             )
+            _pay_log(
+                "checkout_free_unlock",
+                payment_id=payment_id,
+                result_id=result_id,
+                product=PRODUCT_PASSPORT,
+                amount_rub=price_rub(),
+            )
+        else:
+            _pay_log(
+                "checkout_already_paid",
+                result_id=result_id,
+                product=PRODUCT_PASSPORT,
+            )
         return {
             "ok": True,
             "paid": True,
@@ -268,9 +336,25 @@ def create_checkout(result_id: str) -> dict[str, Any]:
             description=f"Госфото — скачивание фото ({price_rub()} ₽)",
             metadata=metadata,
         )
-    except TochkaError:
+    except TochkaError as e:
+        _pay_log(
+            "checkout_tochka_error",
+            logging.ERROR,
+            result_id=result_id,
+            product=PRODUCT_PASSPORT,
+            payment_id=payment_id,
+            error=e,
+        )
         raise
     except Exception as e:
+        _pay_log(
+            "checkout_tochka_error",
+            logging.ERROR,
+            result_id=result_id,
+            product=PRODUCT_PASSPORT,
+            payment_id=payment_id,
+            error=e,
+        )
         raise TochkaError(str(e)) from e
 
     ts = _now_iso()
@@ -286,6 +370,15 @@ def create_checkout(result_id: str) -> dict[str, Any]:
         "paid_at": None,
     }
     _write_payment(record)
+    _pay_log(
+        "checkout_created",
+        payment_id=payment_id,
+        result_id=result_id,
+        product=PRODUCT_PASSPORT,
+        amount_rub=price_rub(),
+        operation_id=tochka.operation_id,
+        status="pending",
+    )
     return {
         "ok": True,
         "paid": False,
@@ -331,6 +424,19 @@ def create_checkout_resume(result_id: str) -> dict[str, Any]:
                 tochka_operation_id=record["tochka_operation_id"],
                 paid_at=ts,
             )
+            _pay_log(
+                "checkout_free_unlock",
+                payment_id=payment_id,
+                result_id=result_id,
+                product=PRODUCT_RESUME,
+                amount_rub=resume_price_rub(),
+            )
+        else:
+            _pay_log(
+                "checkout_already_paid",
+                result_id=result_id,
+                product=PRODUCT_RESUME,
+            )
         return {
             "ok": True,
             "paid": True,
@@ -367,9 +473,25 @@ def create_checkout_resume(result_id: str) -> dict[str, Any]:
             ),
             metadata=metadata,
         )
-    except TochkaError:
+    except TochkaError as e:
+        _pay_log(
+            "checkout_tochka_error",
+            logging.ERROR,
+            result_id=result_id,
+            product=PRODUCT_RESUME,
+            payment_id=payment_id,
+            error=e,
+        )
         raise
     except Exception as e:
+        _pay_log(
+            "checkout_tochka_error",
+            logging.ERROR,
+            result_id=result_id,
+            product=PRODUCT_RESUME,
+            payment_id=payment_id,
+            error=e,
+        )
         raise TochkaError(str(e)) from e
 
     ts = _now_iso()
@@ -385,6 +507,15 @@ def create_checkout_resume(result_id: str) -> dict[str, Any]:
         "paid_at": None,
     }
     _write_payment(record)
+    _pay_log(
+        "checkout_created",
+        payment_id=payment_id,
+        result_id=result_id,
+        product=PRODUCT_RESUME,
+        amount_rub=resume_price_rub(),
+        operation_id=tochka.operation_id,
+        status="pending",
+    )
     return {
         "ok": True,
         "paid": False,
@@ -404,30 +535,34 @@ def handle_webhook(raw_body: str, signature: str | None = None) -> dict[str, Any
     # Stub accepts plain JSON; HttpTochkaClient verifies JWT only.
     event = client.parse_webhook(raw_body, signature)
     if event is None:
-        log.warning(
-            "Tochka webhook parse failed (invalid JWT/JSON) bytes=%s",
-            len(raw_body or ""),
+        _pay_log(
+            "webhook_parse_failed",
+            logging.WARNING,
+            bytes=len(raw_body or ""),
+            has_signature=bool(signature),
         )
         return {"ok": True, "ignored": True, "reason": "invalid_webhook"}
 
-    log.info(
-        "Tochka webhook parsed type=%s status=%s operationId=%s paymentLinkId=%s",
-        event.webhook_type,
-        event.status,
-        event.operation_id,
-        event.payment_link_id,
+    _pay_log(
+        "webhook_parsed",
+        webhook_type=event.webhook_type,
+        status=event.status,
+        operation_id=event.operation_id,
+        payment_link_id=event.payment_link_id,
     )
 
     if event.webhook_type and event.webhook_type != "acquiringInternetPayment":
-        log.info("Tochka webhook ignored type=%s", event.webhook_type)
+        _pay_log("webhook_ignored", reason="webhook_type", webhook_type=event.webhook_type)
         return {"ok": True, "ignored": True, "reason": "webhook_type"}
 
     status = (event.status or "").upper()
     if status not in PAID_STATUSES:
-        log.info(
-            "Tochka webhook ignored status=%s operationId=%s",
-            status,
-            event.operation_id,
+        _pay_log(
+            "webhook_ignored",
+            reason="status",
+            status=status,
+            operation_id=event.operation_id,
+            payment_link_id=event.payment_link_id,
         )
         return {"ok": True, "ignored": True, "reason": "status"}
 
@@ -437,36 +572,45 @@ def handle_webhook(raw_body: str, signature: str | None = None) -> dict[str, Any
     if record is None and event.operation_id:
         record = find_by_tochka_id(event.operation_id)
     if record is None:
-        log.warning(
-            "Tochka webhook payment not found paymentLinkId=%s operationId=%s",
-            event.payment_link_id,
-            event.operation_id,
+        _pay_log(
+            "webhook_not_found",
+            logging.ERROR,
+            payment_link_id=event.payment_link_id,
+            operation_id=event.operation_id,
+            payments_dir=_payments_dir(),
         )
         return {"ok": True, "ignored": True, "reason": "not_found"}
 
     if record.get("status") == "paid":
-        log.info(
-            "Tochka webhook already paid payment_id=%s result_id=%s",
-            record.get("payment_id"),
-            record.get("result_id"),
+        _pay_log(
+            "webhook_already_paid",
+            payment_id=record.get("payment_id"),
+            result_id=record.get("result_id"),
+            product=record.get("product") or PRODUCT_PASSPORT,
         )
         return {"ok": True, "paid": True, "already": True}
 
     tochka_id = event.operation_id or record.get("tochka_operation_id")
     if not tochka_id:
-        log.warning(
-            "Tochka webhook missing operationId payment_id=%s",
-            record.get("payment_id"),
+        _pay_log(
+            "webhook_no_operation_id",
+            logging.WARNING,
+            payment_id=record.get("payment_id"),
         )
         return {"ok": True, "ignored": True, "reason": "no_operation_id"}
 
-    mark_paid(record["payment_id"], tochka_operation_id=tochka_id)
-    log.info(
-        "Tochka webhook activated payment_id=%s result_id=%s product=%s operationId=%s",
+    mark_paid(
         record["payment_id"],
-        record["result_id"],
-        record.get("product") or PRODUCT_PASSPORT,
-        tochka_id,
+        tochka_operation_id=tochka_id,
+        source="webhook",
+    )
+    _pay_log(
+        "webhook_activated",
+        payment_id=record["payment_id"],
+        result_id=record["result_id"],
+        product=record.get("product") or PRODUCT_PASSPORT,
+        operation_id=tochka_id,
+        amount_kopecks=record.get("amount_kopecks"),
     )
     return {
         "ok": True,
@@ -485,6 +629,13 @@ def activate_if_tochka_paid(record: dict[str, Any]) -> bool:
         return False
     remote = get_tochka_client().get_payment_status(operation_id)
     if not remote:
+        _pay_log(
+            "sync_poll_no_remote",
+            logging.WARNING,
+            payment_id=record.get("payment_id"),
+            result_id=record.get("result_id"),
+            operation_id=operation_id,
+        )
         return False
     if remote.status.upper() not in PAID_STATUSES:
         return False
@@ -492,24 +643,49 @@ def activate_if_tochka_paid(record: dict[str, Any]) -> bool:
         record["payment_id"],
         tochka_operation_id=remote.operation_id or operation_id,
         paid_at=remote.paid_at,
+        source="sync_poll",
+    )
+    _pay_log(
+        "sync_poll_activated",
+        payment_id=record.get("payment_id"),
+        result_id=record.get("result_id"),
+        product=record.get("product") or PRODUCT_PASSPORT,
+        operation_id=remote.operation_id or operation_id,
+        amount_kopecks=record.get("amount_kopecks"),
     )
     return True
 
 
 def sync_pending_for_result(result_id: str) -> bool:
     """Poll Tochka for pending payments of this result. Returns True if any activated."""
+    pending = find_pending_by_result(result_id)
+    if pending:
+        _pay_log(
+            "sync_result_start",
+            result_id=result_id,
+            pending_count=len(pending),
+        )
     activated = False
-    for record in find_pending_by_result(result_id):
+    for record in pending:
         if activate_if_tochka_paid(record):
             activated = True
-    return activated or results.is_paid(result_id) or results.is_paid_resume(result_id)
+    paid_now = results.is_paid(result_id) or results.is_paid_resume(result_id)
+    if activated:
+        _pay_log("sync_result_done", result_id=result_id, activated=True, paid=paid_now)
+    return activated or paid_now
 
 
 def sync_all_pending() -> int:
+    pending = find_all_pending()
     activated = 0
-    for record in find_all_pending():
+    for record in pending:
         if activate_if_tochka_paid(record):
             activated += 1
-    if activated:
-        log.info("Tochka syncAll activated %s payment(s)", activated)
+    if pending:
+        _pay_log(
+            "sync_all_done",
+            pending_count=len(pending),
+            activated=activated,
+            payments_dir=_payments_dir(),
+        )
     return activated

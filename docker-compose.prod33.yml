@@ -51,11 +51,13 @@ services:
       FREE_DOWNLOAD_UNLOCK: ${FREE_DOWNLOAD_UNLOCK:-0}
       PAYMENT_SYNC_INTERVAL_SECONDS: ${PAYMENT_SYNC_INTERVAL_SECONDS:-30}
       PROCESS_CACHE_ENABLED: ${PROCESS_CACHE_ENABLED:-0}
+    # Durable data outside /opt/gosphoto-api so `rsync --delete` cannot wipe payments/results.
+    # Host path: /var/lib/gosphoto/{payments,results,pairs,rejecteds}
     volumes:
-      - ./rejecteds:/app/rejecteds
-      - ./pairs:/app/pairs
-      - ./results:/app/results
-      - ./payments:/app/payments
+      - /var/lib/gosphoto/rejecteds:/app/rejecteds
+      - /var/lib/gosphoto/pairs:/app/pairs
+      - /var/lib/gosphoto/results:/app/results
+      - /var/lib/gosphoto/payments:/app/payments
     # isnet@1024 needs more headroom than u2net@320
     mem_limit: 3072m
     healthcheck:
