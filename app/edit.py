@@ -41,8 +41,11 @@ def _uniform_max_side(bgr: np.ndarray, max_side: int) -> np.ndarray:
 def run_edit_riverflow(
     data: bytes,
     mime: str = "image/jpeg",
+    *,
+    model: str | None = None,
+    reasoning: str | None = None,
 ) -> tuple[np.ndarray, dict[str, Any]]:
-    """White-bg edit via RIVERFLOW_MODEL (Riverflow or e.g. Gemini Flash Image)."""
+    """White-bg edit. `model` overrides the router so one request cannot switch another."""
     src = _decode_image(data)
     if src is None:
         raise RuntimeError("decode_error")
@@ -54,14 +57,26 @@ def run_edit_riverflow(
         raise RuntimeError("encode_for_riverflow_failed")
     orig_jpg = buf.tobytes()
 
-    route = choose_edit_model(src_p)
-    log.info(
-        "Edit route model=%s reason=%s scores=%s",
-        route.model,
-        route.reason,
-        route.scores,
+    if model:
+        use_model = model
+        route_meta = {"model": model, "reason": "explicit"}
+        log.info("Edit route model=%s reason=explicit", use_model)
+    else:
+        route = choose_edit_model(src_p)
+        use_model = route.model
+        route_meta = route.as_dict()
+        log.info(
+            "Edit route model=%s reason=%s scores=%s",
+            route.model,
+            route.reason,
+            route.scores,
+        )
+    raw = edit_selfie_riverflow(
+        orig_jpg,
+        mime="image/jpeg",
+        model=use_model,
+        reasoning=reasoning,
     )
-    raw = edit_selfie_riverflow(orig_jpg, mime="image/jpeg", model=route.model)
     decoded = _decode_any(raw)
     if decoded is None:
         raise RuntimeError("Riverflow decode failed")
@@ -70,23 +85,56 @@ def run_edit_riverflow(
     out = force_white_background(out, tol=48)
 
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
-    model = route.model
-    cutout = "riverflow" if "riverflow" in model.lower() else "openrouter_edit"
+    cutout = "riverflow" if "riverflow" in use_model.lower() else "openrouter_edit"
+    used_reasoning = (
+        reasoning
+        if reasoning is not None
+        else (config.RIVERFLOW_REASONING if cutout == "riverflow" else None)
+    )
     return out, {
-        "model": model,
+        "model": use_model,
         "cutout": cutout,
-        "edit_route": route.as_dict(),
+        "edit_route": route_meta,
         "background_mode": bg_mode,
         "background_hex_color": (
             config.RIVERFLOW_BG_HEX if bg_mode == "solid" else None
         ),
         "image_size": config.RIVERFLOW_IMAGE_SIZE,
-        "reasoning": config.RIVERFLOW_REASONING if cutout == "riverflow" else None,
+        "reasoning": used_reasoning,
         "face_protected": False,
         "passes": 1,
         "prompt": "gosuslugi_riverflow",
         "src_size": [int(src_p.shape[1]), int(src_p.shape[0])],
         "kept_model_aspect": True,
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
+    }
+
+
+def run_preview_edit(compressed_jpeg: bytes) -> tuple[np.ndarray, dict[str, Any]]:
+    """Cheap screen preview. Caller already compressed the selfie. No full JPEG."""
+    model = config.RIVERFLOW_FAST_MODEL
+    reasoning = config.RIVERFLOW_PREVIEW_REASONING or "low"
+    raw = edit_selfie_riverflow(
+        compressed_jpeg,
+        mime="image/jpeg",
+        model=model,
+        reasoning=reasoning,
+    )
+    decoded = _decode_any(raw)
+    if decoded is None:
+        raise RuntimeError("preview decode failed")
+    out = composite_on_white(decoded)
+    out = force_white_background(out, tol=48)
+    cutout = "riverflow" if "riverflow" in model.lower() else "openrouter_edit"
+    return out, {
+        "model": model,
+        "cutout": cutout,
+        "reasoning": reasoning,
+        "image_size": config.RIVERFLOW_IMAGE_SIZE,
+        "preview": True,
+        "face_protected": False,
+        "passes": 1,
         "width": int(out.shape[1]),
         "height": int(out.shape[0]),
     }
@@ -250,13 +298,22 @@ def prepare_skip_edit(data: bytes) -> tuple[np.ndarray, dict[str, Any]]:
 def run_edit_stage(
     data: bytes,
     mime: str = "image/jpeg",
+    *,
+    model: str | None = None,
+    allow_fallback: bool = True,
 ) -> tuple[np.ndarray, dict[str, Any]]:
     """
     Stage 1 entry: bytes → edited BGR (white bg, not cropped).
 
-    Default: Riverflow v2.5 Pro (solid #FFFFFF). On failure → local cutout.
-    EDIT_BACKEND=local forces silueta/ONNX path only.
+    An explicit model never falls back to a local cutout: a second, different
+    photo must not be saved as the paid frame.
     """
+    if model:
+        edited, rf_meta = run_edit_riverflow(data, mime=mime, model=model)
+        meta: dict[str, Any] = {"stage": "edit"}
+        meta.update(rf_meta)
+        return edited, meta
+
     backend = (config.EDIT_BACKEND or "riverflow").strip().lower()
     has_or_key = bool(config.OPENROUTER_API_KEY)
     use_riverflow = backend in ("riverflow", "openrouter", "auto") and has_or_key
@@ -277,10 +334,10 @@ def run_edit_stage(
         except Exception as e:
             river_err = e
             log.warning("Riverflow edit failed, falling back to local: %s", e)
-            if backend == "riverflow" and not allow_local:
+            if not allow_fallback or (backend == "riverflow" and not allow_local):
                 raise
 
-    if allow_local:
+    if allow_fallback and allow_local:
         try:
             edited, local_meta = edit_selfie_local(src)
             meta.update(local_meta)

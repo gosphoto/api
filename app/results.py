@@ -114,6 +114,120 @@ def save_result(
         return None
 
 
+def save_preview_result(
+    preview_digital: bytes,
+    preview_print: bytes,
+    *,
+    meta: dict[str, Any] | None = None,
+    result_id: str | None = None,
+    resume_jpeg: bytes | None = None,
+) -> str | None:
+    """Write only screen previews. Full digital.jpg / print.jpg come after payment."""
+    if not config.RESULTS_ENABLED or not preview_digital or not preview_print:
+        return None
+    rid = result_id or new_result_id()
+    if not is_valid_result_id(rid):
+        log.warning("Refusing to save preview result with invalid id")
+        return None
+    try:
+        folder = result_dir(rid)
+        folder.mkdir(parents=True, exist_ok=False)
+        (folder / "preview_digital.jpg").write_bytes(preview_digital)
+        (folder / "preview_print.jpg").write_bytes(preview_print)
+
+        resume_offer = bool(resume_jpeg)
+        if resume_jpeg:
+            (folder / "resume.jpg").write_bytes(resume_jpeg)
+            (folder / "preview_resume.jpg").write_bytes(make_preview_jpeg(resume_jpeg))
+
+        ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+        payload = {
+            "result_id": rid,
+            "saved_at": ts,
+            "preview_digital": "preview_digital.jpg",
+            "preview_print": "preview_print.jpg",
+            "preview_only": True,
+            **(meta or {}),
+            "paid": False,
+            "resume_offer": resume_offer,
+            "paid_resume": False,
+            "torso_ok": bool((meta or {}).get("torso_ok", resume_offer)),
+        }
+        if resume_offer:
+            payload["resume"] = "resume.jpg"
+            payload["preview_resume"] = "preview_resume.jpg"
+            payload["resume_bytes"] = len(resume_jpeg or b"")
+        (folder / "meta.json").write_text(
+            json.dumps(payload, ensure_ascii=False, indent=2),
+            encoding="utf-8",
+        )
+        log.info("Saved preview result id=%s dir=%s", rid, folder)
+        return rid
+    except Exception as e:
+        log.warning("Failed to save preview result: %s", e)
+        return None
+
+
+def set_full_status(result_id: str, status: str) -> bool:
+    meta = load_meta(result_id)
+    if not meta:
+        return False
+    full = meta.get("full") if isinstance(meta.get("full"), dict) else {}
+    meta["full"] = {**full, "status": status}
+    try:
+        _write_meta(result_id, meta)
+        return True
+    except Exception as e:
+        log.warning("Failed to set full status id=%s: %s", result_id, e)
+        return False
+
+
+def attach_full_jpegs(
+    result_id: str,
+    digital_jpeg: bytes,
+    print_jpeg: bytes,
+    *,
+    crop: dict[str, Any] | None = None,
+    compliance: dict[str, Any] | None = None,
+    print_sheet: dict[str, Any] | None = None,
+    edit: dict[str, Any] | None = None,
+) -> bool:
+    """Write the paid full frame and refresh the card previews from it."""
+    if not digital_jpeg or not print_jpeg:
+        return False
+    if not load_meta(result_id):
+        return False
+    try:
+        folder = result_dir(result_id)
+        (folder / "digital.jpg").write_bytes(digital_jpeg)
+        (folder / "print.jpg").write_bytes(print_jpeg)
+        (folder / "preview_digital.jpg").write_bytes(make_preview_jpeg(digital_jpeg))
+        (folder / "preview_print.jpg").write_bytes(make_preview_jpeg(print_jpeg))
+        meta = load_meta(result_id)
+        if not meta:
+            return False
+        meta["digital"] = "digital.jpg"
+        meta["print"] = "print.jpg"
+        meta["digital_bytes"] = len(digital_jpeg)
+        meta["print_bytes"] = len(print_jpeg)
+        meta["preview_only"] = False
+        if crop is not None:
+            meta["crop"] = crop
+        if compliance is not None:
+            meta["compliance"] = compliance
+        if print_sheet is not None:
+            meta["print_sheet"] = print_sheet
+        if edit is not None:
+            meta["edit_full"] = edit
+        meta["full"] = {"status": "ready"}
+        _write_meta(result_id, meta)
+        log.info("Attached full jpegs id=%s", result_id)
+        return True
+    except Exception as e:
+        log.warning("Failed to attach full jpegs id=%s: %s", result_id, e)
+        return False
+
+
 _PAYMENT_META_KEYS = frozenset(
     {
         "paid",

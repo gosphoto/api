@@ -4,6 +4,9 @@ import asyncio
 import base64
 import logging
 from contextlib import asynccontextmanager
+from pathlib import Path
+
+import cv2
 
 from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -21,8 +24,9 @@ from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import run_edit_stage, run_resume_suit_edit
-from .gate import _decode_image, prepare_upload, warmup, validate_image
+from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
+from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, validate_image
+from .preview import PREVIEW_MAX_SIDE, compress_jpeg_max_side, make_preview_jpeg
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
 from .pairs import save_pair
@@ -36,7 +40,7 @@ from .results import (
     is_valid_result_id,
     load_file,
     load_meta,
-    save_result,
+    save_preview_result,
 )
 from .tochka import TochkaError, get_tochka_client
 
@@ -127,7 +131,11 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "saved_at": meta.get("saved_at"),
         "torso_ok": bool(meta.get("torso_ok")),
     }
-    if paid:
+    from . import full_render
+
+    full = full_render.public_status(result_id, meta) if paid else None
+    body["full"] = full
+    if paid and full == "ready":
         body["digital_url"] = f"/api/result/{result_id}/digital.jpg"
         body["print_url"] = f"/api/result/{result_id}/print.jpg"
     else:
@@ -427,6 +435,7 @@ def _run_passport_stages(
     *,
     mime: str,
     preset: dict | None = None,
+    edit_model: str | None = None,
 ) -> dict:
     """Gate-passed input → readiness/edit → crop → JPEGs. Raises or returns error dict."""
     preset = preset or config.resolve_doc_preset(None)
@@ -448,7 +457,12 @@ def _run_passport_stages(
         )
 
     try:
-        edited, edit_meta = run_edit_stage(data, mime=mime)
+        if edit_model:
+            edited, edit_meta = run_edit_stage(
+                data, mime=mime, model=edit_model, allow_fallback=False
+            )
+        else:
+            edited, edit_meta = run_edit_stage(data, mime=mime)
     except OpenRouterError as e:
         log.exception("Edit stage OpenRouter error")
         return {
@@ -505,6 +519,25 @@ def _run_passport_stages(
     }
 
 
+def _scrub_provider_name(value):
+    """Drop provider names from the JSON the browser receives."""
+    if isinstance(value, str):
+        if "riverflow" in value.lower():
+            return None
+        return value
+    if isinstance(value, list):
+        return [_scrub_provider_name(item) for item in value]
+    if isinstance(value, dict):
+        cleaned = {}
+        for key, item in value.items():
+            scrubbed = _scrub_provider_name(item)
+            if scrubbed is None and isinstance(item, str):
+                continue
+            cleaned[key] = scrubbed
+        return cleaned
+    return value
+
+
 def _build_process_done_payload(
     result_id: str | None,
     meta: dict,
@@ -520,9 +553,9 @@ def _build_process_done_payload(
     resume_offer = bool(meta.get("resume_offer"))
     edit_stage = pipeline[1] if len(pipeline) > 1 else ""
     if edit_stage == "skip_edit":
-        done_msg = "Фото 35×45 (crop-only, без Riverflow) + лист 10×15 (4 фото)"
+        done_msg = "Фото 35×45 + лист 10×15 (4 фото)"
     else:
-        done_msg = "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)"
+        done_msg = "Фото 35×45 + лист 10×15 (4 фото)"
     if resume_offer:
         done_msg += " + превью для резюме"
     if from_cache:
@@ -554,10 +587,88 @@ def _build_process_done_payload(
         "price_rub": payments_mod.price_rub(),
         "from_cache": from_cache,
     }
+    payload = _scrub_provider_name(payload)
     if result_id:
         payload["result_id"] = result_id
         payload["result_path"] = f"/result/{result_id}"
     return payload
+
+
+def _preview_jpeg_from_bgr(bgr) -> bytes:
+    small = _resize_max_side(bgr, PREVIEW_MAX_SIDE)
+    ok, buf = cv2.imencode(
+        ".jpg",
+        small,
+        [int(cv2.IMWRITE_JPEG_QUALITY), 72],
+    )
+    if not ok:
+        raise RuntimeError("preview_encode_failed")
+    return buf.tobytes()
+
+
+def _run_preview_stages(
+    data: bytes,
+    *,
+    mime: str,
+    preset: dict | None = None,
+) -> dict:
+    """Cheap preview only. Does not build the paid 600 dpi JPEG."""
+    preset = preset or config.resolve_doc_preset(None)
+    out_w = int(preset["width"])
+    out_h = int(preset["height"])
+    dpi = int(preset["dpi"])
+    readiness_meta: dict | None = None
+    decoded = _decode_image(data)
+    if decoded is not None:
+        readiness = assess_readiness(decoded)
+        readiness_meta = readiness.as_dict()
+
+    try:
+        compressed = compress_jpeg_max_side(data)
+        edited, edit_meta = run_preview_edit(compressed)
+    except OpenRouterError as e:
+        log.exception("Preview edit provider error")
+        return {
+            "ok": False,
+            "stage": "edit",
+            "message": str(e),
+            "provider_status": e.status,
+            "body": e.body,
+        }
+    except Exception as e:
+        log.exception("Preview edit failed")
+        return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
+
+    try:
+        cropped, crop_metrics, compliance = run_crop_stage(
+            edited, width=out_w, height=out_h, dpi=dpi
+        )
+    except Exception as e:
+        log.exception("Preview crop failed")
+        return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
+
+    preview_digital = _preview_jpeg_from_bgr(cropped)
+    print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
+    preview_print = make_preview_jpeg(print_jpeg)
+    print_meta = {
+        k: print_sheet[k]
+        for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
+        if k in print_sheet
+    }
+    return {
+        "ok": True,
+        "preview_digital": preview_digital,
+        "preview_print": preview_print,
+        "print_meta": print_meta,
+        "edit_meta": edit_meta,
+        "crop_metrics": crop_metrics,
+        "compliance": compliance,
+        "readiness_meta": readiness_meta,
+        "skipped_edit": False,
+        "edit_stage_name": "preview",
+        "preset": preset,
+        "mime": mime,
+    }
 
 
 def _run_process_pipeline(
@@ -613,7 +724,7 @@ def _run_process_pipeline(
     if run_suit:
         with ThreadPoolExecutor(max_workers=2) as pool:
             fut_pass = pool.submit(
-                _run_passport_stages, data, mime=mime, preset=preset
+                _run_preview_stages, data, mime=mime, preset=preset
             )
             fut_suit = pool.submit(run_resume_suit_edit, data, mime)
             passport = fut_pass.result()
@@ -625,19 +736,18 @@ def _run_process_pipeline(
                 resume_jpeg = None
                 resume_meta = None
     else:
-        passport = _run_passport_stages(data, mime=mime, preset=preset)
+        passport = _run_preview_stages(data, mime=mime, preset=preset)
 
     if not passport.get("ok"):
         return passport
 
-    jpeg = passport["jpeg"]
-    print_jpeg = passport["print_jpeg"]
+    preview_digital = passport["preview_digital"]
+    preview_print = passport["preview_print"]
     print_meta = passport["print_meta"]
     edit_meta = passport["edit_meta"]
     crop_metrics = passport["crop_metrics"]
     compliance = passport["compliance"]
     readiness_meta = passport["readiness_meta"]
-    skipped_edit = passport["skipped_edit"]
     edit_stage_name = passport["edit_stage_name"]
 
     pipeline = ["gate", edit_stage_name, "crop", "print_10x15"]
@@ -663,15 +773,20 @@ def _run_process_pipeline(
         "dpi": preset["dpi"],
         "mime": "image/jpeg",
     }
-    save_pair(
+    pair_dir = save_pair(
         data,
-        jpeg,
+        preview_digital,
         filename=filename,
         meta=pair_meta,
     )
-    result_id = save_result(
-        jpeg,
-        print_jpeg,
+    if pair_dir is not None:
+        try:
+            pair_meta["source_pair"] = str(pair_dir.relative_to(Path(config.PAIRS_DIR)))
+        except ValueError:
+            pair_meta["source_pair"] = pair_dir.name
+    result_id = save_preview_result(
+        preview_digital,
+        preview_print,
         meta=pair_meta,
         resume_jpeg=resume_jpeg,
     )
@@ -683,10 +798,7 @@ def _run_process_pipeline(
         dpi=preset["dpi"],
         source="process",
     )
-    if skipped_edit:
-        done_msg = "Фото 35×45 (crop-only, без Riverflow) + лист 10×15 (4 фото)"
-    else:
-        done_msg = "Фото 35×45 (Riverflow) + лист 10×15 (4 фото)"
+    done_msg = "Фото 35×45 + лист 10×15 (4 фото)"
     if resume_jpeg:
         done_msg += " + превью для резюме"
     payload = _build_process_done_payload(result_id, pair_meta)
@@ -782,6 +894,11 @@ def get_result(result_id: str):
     meta = load_meta(result_id)
     if not meta:
         raise HTTPException(status_code=404, detail="Result not found")
+    if meta.get("paid"):
+        from . import full_render
+
+        full_render.ensure_started(result_id, retry_error=True)
+        meta = load_meta(result_id) or meta
     return _result_public_payload(result_id, meta)
 
 
@@ -838,6 +955,11 @@ def payment_status(result_id: str):
             paid_resume_before,
             paid_resume_after,
         )
+    if paid_after:
+        from . import full_render
+
+        full_render.ensure_started(result_id, retry_error=False)
+        meta = load_meta(result_id) or meta
     return _result_public_payload(result_id, meta)
 
 
@@ -951,8 +1073,17 @@ def _client_ip(request: Request) -> str:
 
 @app.post("/api/result/{result_id}/email")
 async def email_result(result_id: str, body: ResultEmailBody, request: Request):
-    """Send digital + print JPEGs to the given email (paid results only)."""
+    """Send the two full JPEGs once the paid frame is ready."""
     _require_paid(result_id)
+    from . import full_render
+
+    status = await asyncio.to_thread(full_render.wait_until_ready, result_id)
+    if status != "ready":
+        if status == "error":
+            detail = "Не удалось собрать фото. Обновите страницу и попробуйте ещё раз."
+        else:
+            detail = "Фото ещё готовится. Попробуйте отправить через минуту."
+        raise HTTPException(status_code=502, detail=detail)
     digital = load_file(result_id, "digital.jpg")
     print_jpeg = load_file(result_id, "print.jpg")
     if not digital or not print_jpeg:

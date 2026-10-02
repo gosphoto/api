@@ -194,6 +194,10 @@ def _apply_unlock(record: dict[str, Any], *, tochka_operation_id: str, paid_at: 
             tochka_operation_id=tochka_operation_id,
             paid_at=paid_at,
         )
+        if ok:
+            from . import full_render
+
+            full_render.ensure_started(result_id)
     _pay_log(
         "unlock_applied" if ok else "unlock_failed",
         logging.INFO if ok else logging.ERROR,
@@ -290,6 +294,9 @@ def create_checkout(result_id: str) -> dict[str, Any]:
                 tochka_operation_id=record["tochka_operation_id"],
                 paid_at=ts,
             )
+            from . import full_render
+
+            full_render.ensure_started(result_id)
             _pay_log(
                 "checkout_free_unlock",
                 payment_id=payment_id,

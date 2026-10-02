@@ -88,6 +88,26 @@ def apply_watermark(img: Image.Image) -> Image.Image:
     return Image.alpha_composite(base, overlay).convert("RGB")
 
 
+def compress_jpeg_max_side(
+    data: bytes,
+    *,
+    max_side: int = PREVIEW_MAX_SIDE,
+    quality: int = 72,
+) -> bytes:
+    """JPEG for the cheap preview call: long side at most the card size."""
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    w, h = img.size
+    scale = min(1.0, max_side / float(max(w, h)))
+    if scale < 1.0:
+        img = img.resize(
+            (max(1, int(w * scale)), max(1, int(h * scale))),
+            Image.Resampling.LANCZOS,
+        )
+    out = io.BytesIO()
+    img.save(out, format="JPEG", quality=quality, optimize=True)
+    return out.getvalue()
+
+
 def make_preview_jpeg(source_jpeg: bytes, *, max_side: int = PREVIEW_MAX_SIDE) -> bytes:
     """Downscale for screen preview. Falls back to original on error."""
     if not source_jpeg:

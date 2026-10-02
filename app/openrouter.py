@@ -403,6 +403,7 @@ def build_riverflow_images_payload(
     *,
     model: str | None = None,
     prompt: str | None = None,
+    reasoning: str | None = None,
 ) -> dict[str, Any]:
     """POST /images payload for Riverflow (fallback path)."""
     model = model or config.RIVERFLOW_MODEL
@@ -424,7 +425,9 @@ def build_riverflow_images_payload(
         ],
         "image_config": _riverflow_image_config(),
     }
-    effort = (config.RIVERFLOW_REASONING or "medium").strip().lower()
+    effort = (
+        reasoning if reasoning is not None else (config.RIVERFLOW_REASONING or "medium")
+    ).strip().lower()
     if effort and effort != "none":
         payload["reasoning"] = {"effort": effort}
     return payload
@@ -459,6 +462,7 @@ def edit_selfie_riverflow(
     *,
     model: str | None = None,
     prompt: str | None = None,
+    reasoning: str | None = None,
 ) -> bytes:
     """Gosuslugi white-bg via OpenRouter /images.
 
@@ -469,7 +473,11 @@ def edit_selfie_riverflow(
     use_prompt = prompt or GOSUSLUGI_EDIT_PROMPT
     if _is_riverflow_model(use_model) and use_prompt == GOSUSLUGI_EDIT_PROMPT:
         payload = build_riverflow_images_payload(
-            image_bytes, mime, model=use_model, prompt=use_prompt
+            image_bytes,
+            mime,
+            model=use_model,
+            prompt=use_prompt,
+            reasoning=reasoning,
         )
     else:
         payload = build_generic_edit_images_payload(

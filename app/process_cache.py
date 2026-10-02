@@ -50,7 +50,11 @@ def lookup(data: bytes, doc_type: str) -> str | None:
     if not is_valid_result_id(source_id):
         return None
     src = result_dir(source_id)
-    if not (src / "digital.jpg").is_file() or not (src / "print.jpg").is_file():
+    has_full = (src / "digital.jpg").is_file() and (src / "print.jpg").is_file()
+    has_preview = (src / "preview_digital.jpg").is_file() and (
+        src / "preview_print.jpg"
+    ).is_file()
+    if not has_full and not has_preview:
         log.info("Process cache stale (missing files) source=%s", source_id)
         return None
     cloned = clone_result(source_id)
