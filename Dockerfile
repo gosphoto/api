@@ -1,10 +1,8 @@
-FROM python:3.11-slim-bookworm
+# Pin the base already built on the VPS. The floating tag now pulls a bookworm
+# whose apt InRelease fails the signature check on that host.
+FROM python:3.11-slim-bookworm@sha256:a36c24f9cbdf4fd0f52d67f0823eeac19c2028c637cecc392d97f980d4fec56b
 
-# BrokenProxy: some VPS paths rewrite Debian InRelease and apt reports
-# "At least one invalid signature" on a clean image rebuild.
-RUN printf 'Acquire::http::Pipeline-Depth "0";\nAcquire::http::No-Cache "true";\nAcquire::BrokenProxy "true";\nAcquire::Retries "3";\n' \
-    > /etc/apt/apt.conf.d/99broken-proxy \
-    && apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libgl1 \
     libglib2.0-0 \
