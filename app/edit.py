@@ -112,9 +112,9 @@ def run_edit_riverflow(
 
 
 def run_preview_edit(compressed_jpeg: bytes) -> tuple[np.ndarray, dict[str, Any]]:
-    """Cheap screen preview. Caller already compressed the selfie. No full JPEG."""
-    model = config.RIVERFLOW_FAST_MODEL
-    reasoning = config.RIVERFLOW_PREVIEW_REASONING or "low"
+    """Screen preview on the same model as the paid frame. Input is already compressed."""
+    model = config.RIVERFLOW_PRO_MODEL
+    reasoning = config.RIVERFLOW_REASONING or "medium"
     raw = edit_selfie_riverflow(
         compressed_jpeg,
         mime="image/jpeg",

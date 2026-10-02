@@ -95,13 +95,6 @@ RIVERFLOW_MODEL = os.getenv(
 RIVERFLOW_PRO_MODEL = os.getenv(
     "RIVERFLOW_PRO_MODEL", "sourceful/riverflow-v2.5-pro"
 ).strip()
-# Cheap screen preview before payment. Paid full frame uses RIVERFLOW_PRO_MODEL.
-RIVERFLOW_FAST_MODEL = os.getenv(
-    "RIVERFLOW_FAST_MODEL", "sourceful/riverflow-v2.5-fast"
-).strip()
-RIVERFLOW_PREVIEW_REASONING = os.getenv(
-    "RIVERFLOW_PREVIEW_REASONING", "low"
-).strip().lower()
 EDIT_ROUTE_PRO_ON_MESSY_HAIR = os.getenv(
     "EDIT_ROUTE_PRO_ON_MESSY_HAIR", "0"
 ).strip().lower() in ("1", "true", "yes", "on")
