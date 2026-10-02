@@ -1,6 +1,10 @@
 FROM python:3.11-slim-bookworm
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+# BrokenProxy: some VPS paths rewrite Debian InRelease and apt reports
+# "At least one invalid signature" on a clean image rebuild.
+RUN printf 'Acquire::http::Pipeline-Depth "0";\nAcquire::http::No-Cache "true";\nAcquire::BrokenProxy "true";\nAcquire::Retries "3";\n' \
+    > /etc/apt/apt.conf.d/99broken-proxy \
+    && apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     libgl1 \
     libglib2.0-0 \
