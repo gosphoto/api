@@ -1,4 +1,4 @@
-"""Local card preview before pay; full Pro frame only after passport payment."""
+"""Cheap Fast preview before pay; full Pro frame only after passport payment."""
 
 from __future__ import annotations
 
@@ -35,21 +35,28 @@ def test_compress_long_side_is_preview_card():
     assert max(img.size) == 480
 
 
-def test_preview_edit_does_not_call_model(monkeypatch):
+def test_preview_edit_uses_fast_not_pro(monkeypatch):
     import pytest
 
     pytest.importorskip("mediapipe")
     from app import edit as edit_mod
 
-    def boom(*_args, **_kwargs):
-        raise AssertionError("preview must not call the image model")
+    seen = {}
 
-    monkeypatch.setattr(edit_mod, "edit_selfie_riverflow", boom)
-    bgr, meta = edit_mod.run_preview_edit(compress_jpeg_max_side(_jpeg()))
+    def fake(image_bytes, mime="image/jpeg", *, model=None, prompt=None, reasoning=None):
+        seen["model"] = model
+        seen["reasoning"] = reasoning
+        seen["bytes"] = image_bytes
+        return _jpeg(size=(64, 80))
+
+    monkeypatch.setattr(edit_mod, "edit_selfie_riverflow", fake)
+    monkeypatch.setattr(edit_mod, "force_white_background", lambda bgr, tol=48: bgr)
+    _bgr, meta = edit_mod.run_preview_edit(compress_jpeg_max_side(_jpeg()))
+    assert seen["model"] == config.RIVERFLOW_FAST_MODEL
+    assert seen["model"] == "sourceful/riverflow-v2.5-fast"
+    assert seen["reasoning"] == "low"
     assert meta["preview"] is True
-    assert meta["skipped_model"] is True
-    assert meta["model"] is None
-    assert max(bgr.shape[0], bgr.shape[1]) <= PREVIEW_MAX_SIDE
+    assert "pro" not in seen["model"]
 
 
 def test_preview_payload_reasoning_low():

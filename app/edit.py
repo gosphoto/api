@@ -112,23 +112,31 @@ def run_edit_riverflow(
 
 
 def run_preview_edit(compressed_jpeg: bytes) -> tuple[np.ndarray, dict[str, Any]]:
-    """Screen card from the compressed selfie. No image model: its smallest frame is 1K."""
-    decoded = _decode_any(compressed_jpeg)
+    """Screen preview. Cheap model: Pro's minimum output is 1K and bills like a full frame."""
+    model = config.RIVERFLOW_FAST_MODEL
+    reasoning = config.RIVERFLOW_PREVIEW_REASONING or "low"
+    raw = edit_selfie_riverflow(
+        compressed_jpeg,
+        mime="image/jpeg",
+        model=model,
+        reasoning=reasoning,
+    )
+    decoded = _decode_any(raw)
     if decoded is None:
         raise RuntimeError("preview decode failed")
-    if decoded.ndim == 2:
-        decoded = cv2.cvtColor(decoded, cv2.COLOR_GRAY2BGR)
-    elif decoded.shape[2] == 4:
-        decoded = cv2.cvtColor(decoded, cv2.COLOR_BGRA2BGR)
-    return decoded, {
-        "model": None,
-        "cutout": "none",
+    out = composite_on_white(decoded)
+    out = force_white_background(out, tol=48)
+    cutout = "riverflow" if "riverflow" in model.lower() else "openrouter_edit"
+    return out, {
+        "model": model,
+        "cutout": cutout,
+        "reasoning": reasoning,
+        "image_size": config.RIVERFLOW_IMAGE_SIZE,
         "preview": True,
-        "skipped_model": True,
-        "face_protected": True,
-        "passes": 0,
-        "width": int(decoded.shape[1]),
-        "height": int(decoded.shape[0]),
+        "face_protected": False,
+        "passes": 1,
+        "width": int(out.shape[1]),
+        "height": int(out.shape[0]),
     }
 
 
