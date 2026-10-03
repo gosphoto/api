@@ -250,7 +250,10 @@ def _hair_soften_band(
         )
         > 0
     )
-    ring_px = int(os.getenv("HAIR_EDGE_SOFTEN_RING_PX", "3"))
+    ring_px = max(
+        1,
+        int(round(float(os.getenv("HAIR_EDGE_SOFTEN_RING_PX", "3")) * _HAIR_SOFTEN_THIN)),
+    )
     ring = _ring_band(person, px=ring_px)
     near_white = cv2.dilate(white.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
     return ring & near_white & region
@@ -324,6 +327,10 @@ def _hair_core_mask(gray: np.ndarray, region: np.ndarray) -> np.ndarray:
     return u8 > 0
 
 
+# 30% thinner than the first production edge (ring 3px, blur σ 1.5 / 0.8).
+_HAIR_SOFTEN_THIN = 0.7
+
+
 def soften_hair_edge_and_bg(
     bgr: np.ndarray,
     *,
@@ -374,25 +381,26 @@ def soften_hair_edge_and_bg(
     out = bgr.astype(np.float32)
 
     # Color smooth in band (visible on cutout, no full-frame white smear).
-    color_sigma = float(os.getenv("HAIR_EDGE_SOFTEN_COLOR_SIGMA", "1.5"))
+    color_sigma = float(os.getenv("HAIR_EDGE_SOFTEN_COLOR_SIGMA", "1.5")) * _HAIR_SOFTEN_THIN
+    band_sigma = 1.5 * _HAIR_SOFTEN_THIN
     src = np.clip(out, 0, 255).astype(np.uint8)
     smoothed = cv2.GaussianBlur(src, (0, 0), color_sigma)
     smoothed = cv2.GaussianBlur(smoothed, (0, 0), color_sigma * 0.65)
-    mix_color = cv2.GaussianBlur(band.astype(np.float32), (0, 0), 1.5)
+    mix_color = cv2.GaussianBlur(band.astype(np.float32), (0, 0), band_sigma)
     mix_color = np.clip(mix_color * 0.85, 0.0, 1.0)
     out = out * (1.0 - mix_color[:, :, None]) + smoothed.astype(np.float32) * mix_color[
         :, :, None
     ]
 
     # Alpha feather on core — narrow anti-alias (~5px), low white pull.
-    sigma = float(os.getenv("HAIR_EDGE_SOFTEN_SIGMA", "0.8"))
+    sigma = float(os.getenv("HAIR_EDGE_SOFTEN_SIGMA", "0.8")) * _HAIR_SOFTEN_THIN
     alpha = cv2.GaussianBlur(core_u8.astype(np.float32) / 255.0, (0, 0), sigma)
     alpha = np.clip(alpha, 0.0, 1.0)
     lighten = float(os.getenv("HAIR_EDGE_SOFTEN_LIGHTEN", "0.05"))
     bg_layer = out * (1.0 - lighten) + 255.0 * lighten
     feathered = out * alpha[:, :, None] + bg_layer * (1.0 - alpha[:, :, None])
 
-    mix = cv2.GaussianBlur(band.astype(np.float32), (0, 0), 1.5)
+    mix = cv2.GaussianBlur(band.astype(np.float32), (0, 0), band_sigma)
     mix = np.clip(
         mix * float(os.getenv("HAIR_EDGE_SOFTEN_STRENGTH", "0.35")), 0.0, 1.0
     )
