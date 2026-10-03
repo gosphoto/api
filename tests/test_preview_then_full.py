@@ -35,7 +35,7 @@ def test_compress_long_side_is_preview_card():
     assert max(img.size) == 480
 
 
-def test_preview_edit_uses_same_pro_as_paid_frame(monkeypatch):
+def test_preview_edit_uses_fast_not_pro(monkeypatch):
     import pytest
 
     pytest.importorskip("mediapipe")
@@ -52,24 +52,24 @@ def test_preview_edit_uses_same_pro_as_paid_frame(monkeypatch):
     monkeypatch.setattr(edit_mod, "edit_selfie_riverflow", fake)
     monkeypatch.setattr(edit_mod, "force_white_background", lambda bgr, tol=48: bgr)
     _bgr, meta = edit_mod.run_preview_edit(compress_jpeg_max_side(_jpeg()))
-    assert seen["model"] == config.RIVERFLOW_PRO_MODEL
-    assert seen["model"] == "sourceful/riverflow-v2.5-pro"
-    assert seen["reasoning"] == (config.RIVERFLOW_REASONING or "medium")
+    assert seen["model"] == config.RIVERFLOW_FAST_MODEL
+    assert seen["model"] == "sourceful/riverflow-v2.5-fast"
+    assert seen["reasoning"] == "low"
     assert meta["preview"] is True
-    assert "fast" not in seen["model"]
+    assert "pro" not in seen["model"]
 
 
-def test_preview_payload_uses_pro():
+def test_preview_payload_reasoning_low():
     from app.openrouter import build_riverflow_images_payload
 
     payload = build_riverflow_images_payload(
         b"fake",
         "image/jpeg",
-        model="sourceful/riverflow-v2.5-pro",
-        reasoning="medium",
+        model="sourceful/riverflow-v2.5-fast",
+        reasoning="low",
     )
-    assert payload["reasoning"] == {"effort": "medium"}
-    assert payload["model"] == "sourceful/riverflow-v2.5-pro"
+    assert payload["reasoning"] == {"effort": "low"}
+    assert payload["model"] == "sourceful/riverflow-v2.5-fast"
 
 
 def test_save_preview_does_not_write_full_jpeg(tmp_path, monkeypatch):
