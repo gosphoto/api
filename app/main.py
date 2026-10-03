@@ -26,7 +26,7 @@ from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
 from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, validate_image
-from .preview import PREVIEW_MAX_SIDE, compress_jpeg_max_side, make_preview_jpeg
+from .preview import PREVIEW_MAX_SIDE, make_preview_jpeg
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
 from .pairs import save_pair
@@ -624,8 +624,7 @@ def _run_preview_stages(
         readiness_meta = readiness.as_dict()
 
     try:
-        compressed = compress_jpeg_max_side(data)
-        edited, edit_meta = run_preview_edit(compressed)
+        edited, edit_meta = run_preview_edit(data)
     except OpenRouterError as e:
         log.exception("Preview edit provider error")
         return {

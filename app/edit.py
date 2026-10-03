@@ -111,33 +111,16 @@ def run_edit_riverflow(
     }
 
 
-def run_preview_edit(compressed_jpeg: bytes) -> tuple[np.ndarray, dict[str, Any]]:
-    """Screen preview on the same Pro model as the paid frame."""
-    model = config.RIVERFLOW_PRO_MODEL
-    reasoning = config.RIVERFLOW_REASONING or "medium"
-    raw = edit_selfie_riverflow(
-        compressed_jpeg,
+def run_preview_edit(image_bytes: bytes) -> tuple[np.ndarray, dict[str, Any]]:
+    """Screen preview on Pro. Same input as the paid frame, not a 480px squeeze."""
+    out, meta = run_edit_riverflow(
+        image_bytes,
         mime="image/jpeg",
-        model=model,
-        reasoning=reasoning,
+        model=config.RIVERFLOW_PRO_MODEL,
+        reasoning=config.RIVERFLOW_REASONING or "medium",
     )
-    decoded = _decode_any(raw)
-    if decoded is None:
-        raise RuntimeError("preview decode failed")
-    out = composite_on_white(decoded)
-    out = force_white_background(out, tol=48)
-    cutout = "riverflow" if "riverflow" in model.lower() else "openrouter_edit"
-    return out, {
-        "model": model,
-        "cutout": cutout,
-        "reasoning": reasoning,
-        "image_size": config.RIVERFLOW_IMAGE_SIZE,
-        "preview": True,
-        "face_protected": False,
-        "passes": 1,
-        "width": int(out.shape[1]),
-        "height": int(out.shape[0]),
-    }
+    meta["preview"] = True
+    return out, meta
 
 
 def _gentle_light_outside_face(bgr: np.ndarray) -> np.ndarray:

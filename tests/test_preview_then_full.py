@@ -11,7 +11,6 @@ from app import config
 from app import full_render
 from app import payments as payments_mod
 from app import results
-from app.preview import PREVIEW_MAX_SIDE, compress_jpeg_max_side
 
 
 def _jpeg(size=(1000, 800), color=(180, 160, 140)) -> bytes:
@@ -26,13 +25,6 @@ def _dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PAIRS_DIR", tmp_path / "pairs")
     monkeypatch.setattr(config, "PAYMENTS_DIR", tmp_path / "payments")
     monkeypatch.setattr(config, "PAYMENTS_ENABLED", True)
-
-
-def test_compress_long_side_is_preview_card():
-    out = compress_jpeg_max_side(_jpeg(size=(1200, 900)))
-    img = Image.open(io.BytesIO(out))
-    assert max(img.size) == PREVIEW_MAX_SIDE
-    assert max(img.size) == 480
 
 
 def test_preview_edit_uses_pro(monkeypatch):
@@ -51,7 +43,9 @@ def test_preview_edit_uses_pro(monkeypatch):
 
     monkeypatch.setattr(edit_mod, "edit_selfie_riverflow", fake)
     monkeypatch.setattr(edit_mod, "force_white_background", lambda bgr, tol=48: bgr)
-    _bgr, meta = edit_mod.run_preview_edit(compress_jpeg_max_side(_jpeg()))
+    _bgr, meta = edit_mod.run_preview_edit(_jpeg(size=(1000, 800)))
+    sent = Image.open(io.BytesIO(seen["bytes"]))
+    assert max(sent.size) == 1000
     assert seen["model"] == config.RIVERFLOW_PRO_MODEL
     assert seen["model"] == "sourceful/riverflow-v2.5-pro"
     assert seen["reasoning"] == (config.RIVERFLOW_REASONING or "medium")
