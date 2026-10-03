@@ -664,7 +664,7 @@ def _run_preview_stages(
         "crop_metrics": crop_metrics,
         "compliance": compliance,
         "readiness_meta": readiness_meta,
-        "skipped_edit": False,
+        "skipped_edit": True,
         "edit_stage_name": "preview",
         "preset": preset,
         "mime": mime,
