@@ -112,12 +112,12 @@ def run_edit_riverflow(
 
 
 def run_preview_edit(image_bytes: bytes) -> tuple[np.ndarray, dict[str, Any]]:
-    """Screen preview on Pro. Same input as the paid frame, not a 480px squeeze."""
+    """Screen preview on Gemini 2.5 Flash Image. The paid frame stays on Pro."""
     out, meta = run_edit_riverflow(
         image_bytes,
         mime="image/jpeg",
-        model=config.RIVERFLOW_PRO_MODEL,
-        reasoning=config.RIVERFLOW_REASONING or "medium",
+        model=config.RIVERFLOW_MODEL,
+        reasoning=None,
     )
     meta["preview"] = True
     return out, meta

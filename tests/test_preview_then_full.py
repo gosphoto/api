@@ -1,4 +1,4 @@
-"""Pro preview before pay; full Pro frame again after passport payment."""
+"""Gemini preview before pay; full Pro frame after passport payment."""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _dirs(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PAYMENTS_ENABLED", True)
 
 
-def test_preview_edit_uses_pro(monkeypatch):
+def test_preview_edit_uses_gemini(monkeypatch):
     import pytest
 
     pytest.importorskip("mediapipe")
@@ -46,24 +46,24 @@ def test_preview_edit_uses_pro(monkeypatch):
     _bgr, meta = edit_mod.run_preview_edit(_jpeg(size=(1000, 800)))
     sent = Image.open(io.BytesIO(seen["bytes"]))
     assert max(sent.size) == 1000
-    assert seen["model"] == config.RIVERFLOW_PRO_MODEL
-    assert seen["model"] == "sourceful/riverflow-v2.5-pro"
-    assert seen["reasoning"] == (config.RIVERFLOW_REASONING or "medium")
+    assert seen["model"] == config.RIVERFLOW_MODEL
+    assert seen["model"] == "google/gemini-2.5-flash-image"
+    assert seen["reasoning"] is None
     assert meta["preview"] is True
-    assert "fast" not in seen["model"]
+    assert "riverflow" not in seen["model"]
 
 
-def test_preview_payload_uses_pro():
-    from app.openrouter import build_riverflow_images_payload
+def test_preview_payload_is_plain_gemini():
+    from app.openrouter import build_generic_edit_images_payload
 
-    payload = build_riverflow_images_payload(
+    payload = build_generic_edit_images_payload(
         b"fake",
         "image/jpeg",
-        model="sourceful/riverflow-v2.5-pro",
-        reasoning="medium",
+        model="google/gemini-2.5-flash-image",
     )
-    assert payload["reasoning"] == {"effort": "medium"}
-    assert payload["model"] == "sourceful/riverflow-v2.5-pro"
+    assert payload["model"] == "google/gemini-2.5-flash-image"
+    assert "reasoning" not in payload
+    assert "image_config" not in payload
 
 
 def test_save_preview_does_not_write_full_jpeg(tmp_path, monkeypatch):
