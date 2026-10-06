@@ -61,6 +61,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "tuck" in g and "behind the ears" in g
     assert "clear" in g or "sweep" in g or "covering" in g
     assert "do not cut" in g or "do not shorten" in g
+    assert "bangs" in g or "чёлка" in g
+    assert "conditional" in g
+    assert "if bangs" in g and "else" in g
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
