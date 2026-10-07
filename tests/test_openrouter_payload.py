@@ -63,8 +63,11 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "zero stray" in g or "invisible" in g
     assert "leftover" in g or "original-wall" in g or "wall" in g
     assert "face oval" in g
-    assert "tuck" in g and "behind the ears" in g
-    assert "clear" in g or "sweep" in g or "covering" in g
+    assert "sweep" in g or "part" in g
+    assert "do not tuck" in g
+    assert "behind the ears" in g  # mentioned only as forbidden
+    assert "invent" in g and "ear" in g
+    assert "clear" in g or "covering" in g
     assert "do not cut" in g or "do not shorten" in g
     assert "bangs" in g or "чёлка" in g
     assert "conditional" in g
