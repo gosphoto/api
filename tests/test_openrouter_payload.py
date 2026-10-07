@@ -50,6 +50,11 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "overexpose" in g or "bleach" in g
     assert "soft studio lighting" not in g
     assert "even skin tone" not in g
+    assert "even" in g and "uniform" in g
+    assert "lighting" in g
+    assert "lighting (hard)" in g
+    assert "passport" in g
+    assert "harsh" in g or "one-sided" in g or "side light" in g or "rembrandt" in g
     assert "neutral" in g and "smile" in g
     assert "flyaway" in g or "wisp" in g
     assert "erase" in g or "remove" in g
