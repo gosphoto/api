@@ -26,7 +26,7 @@ def test_prompt_forbids_invented_jewelry():
     assert "nose ring" in lower or "piercing" in lower
 
 
-def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
+def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     from app.openrouter import GOSUSLUGI_EDIT_PROMPT, RESUME_SUIT_PROMPT
 
     assert GOSUSLUGI_EDIT_PROMPT != RESUME_SUIT_PROMPT
@@ -43,7 +43,10 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_and_spot_cleanup():
     assert "розовая приличная майка" in GOSUSLUGI_EDIT_PROMPT
     assert "no age change" in g
     assert "#ffffff" in g
-    assert "spot" in g or "blemish" in g
+    assert "no blemish" in g
+    assert "retouch" in g
+    assert "retouch only local temporary blemishes" not in g
+    assert "spot cleanup" not in g
     assert "level shoulders" in g or "upright" in g
     assert "glare" in g or "reflection" in g
     assert "gray" in g or "grey" in g  # forbidden gray backdrop called out

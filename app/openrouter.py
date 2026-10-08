@@ -50,7 +50,7 @@ RESUME_SUIT_PROMPT = (
     "No watermarks, text, logos, or frames. Photorealistic, high quality."
 )
 
-# Main process edit = resume look, but pure white document background + clean face spots.
+# Main process edit = resume look, but pure white document background (no skin retouch).
 GOSUSLUGI_EDIT_PROMPT = (
     "Professional resume / LinkedIn headshot from this selfie. "
     "CLOTHING: if the person wears religious clothing or a religious head covering "
@@ -89,9 +89,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "specular hotspots. "
     "Keep natural skin tone and midtone brightness — do not bleach, overexpose, "
     "flash-relight, or wash out the skin; no high-key chalky white cheeks/forehead. "
-    "Retouch only local temporary blemishes and redness patches without lifting "
-    "overall exposure — keep pores and real texture — no plastic skin, no heavy "
-    "beauty filter, no age change. "
+    "Keep pores and real texture — no plastic skin, no heavy beauty filter, "
+    "no age change, no blemish/acne/redness retouch or skin smoothing. "
     "FORBIDDEN skin marks: do not invent, add, densify, or scatter moles, freckles, "
     "birthmarks, age spots, or any new skin dots/patches that are not clearly "
     "visible on the source face; if the input has few or no freckles/moles, the "
@@ -188,8 +187,8 @@ GOSUSLUGI_SCORING_PROMPT = (
     "shoulders and no head tilt; if glasses present — zero lens glare, eyes fully "
     "visible under frames; no hats/uniforms (keep religious cover + clothing "
     "if face oval open); "
-    "alone in frame, no toys/objects; light local spot cleanup only — "
-    "without plastic skin or heavy beauty filter."
+    "alone in frame, no toys/objects; keep pores/texture — no blemish "
+    "retouch, plastic skin, or heavy beauty filter."
 )
 
 GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
