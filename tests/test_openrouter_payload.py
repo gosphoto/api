@@ -86,12 +86,13 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "white hijab" in g
     assert "gray" in g or "grey" in g
     assert "collar" in g
-    assert "blazer" in g or "lapel" in g
-    assert "light-blue" in g or "light blue" in g or "голубая" in g
+    assert "blazer" in g
+    assert "#1a1a1a" in g
+    assert "черная" in g
+    assert "light-blue" not in g
+    assert "голубая" not in g
     assert "either (1)" not in g
-    assert "do both" in g
-    assert "and (2)" in g
-    assert "never one without the other" in g
+    assert "do both" not in g
     r = RESUME_SUIT_PROMPT.lower()
     assert "religious clothing" in r
     assert "keep that clothing" in r
