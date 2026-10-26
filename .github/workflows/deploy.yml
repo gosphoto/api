@@ -11,7 +11,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  # Prod API (nginx on 91 proxies gosphoto.ru /api/ here)
+  # Prod API (nginx on 206.223.250.251 proxies gosphoto.ru /api/ here)
   DEPLOY_HOST: 80.87.196.33
   API_PATH: /opt/gosphoto-api
   # Durable runtime data — outside API_PATH so rsync --delete cannot wipe it
@@ -218,7 +218,7 @@ jobs:
               if v != "":
                   data[k] = v
           # Sensible defaults if never set on this host
-          data.setdefault("OPENROUTER_BASE_URL", "http://91.207.75.72:8787/api/v1")
+          data.setdefault("OPENROUTER_BASE_URL", "https://mcp.antonbutov.com/api/v1")
           data["EDIT_BACKEND"] = "riverflow"
           data["RIVERFLOW_MODEL"] = "google/gemini-2.5-flash-image"
           data["POST_CROP_CLEANUP_ENABLED"] = "0"
