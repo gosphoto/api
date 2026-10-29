@@ -97,23 +97,15 @@ GOSUSLUGI_EDIT_PROMPT = (
     "birthmarks, age spots, or any new skin dots/patches that are not clearly "
     "visible on the source face; if the input has few or no freckles/moles, the "
     "output must match — zero invented spots. "
-    "CRITICAL: preserve exact face identity, age, eye color, facial proportions "
-    "from the input. "
-    "HARD — hair on brows (NON-NEGOTIABLE, beats 'preserve hairstyle'): "
-    "if ANY strand touches, overlaps, or rests on either eyebrow (including the "
-    "outer brow tail / tip), that hair MUST be removed from the brow — sweep it "
-    "up into the hair mass, sideways, or over the shoulders until BOTH eyebrows "
-    "are 100% bare with a clear skin gap between hair and brow. "
-    "A strand lying on a brow = failed photo. Do not leave hair on brows. "
+    "CRITICAL: preserve exact face identity, age, hair style/color, "
+    "eye color, facial proportions from the input. "
     "Gosuslugi / RF passport rules: face must match the person's age; face fully "
     "open — hair must NOT cover or touch eyes, brows, forehead, cheekbones, or "
     "the face oval. "
-    "If hair lies on a cheekbone or against the cheek of the face oval: MUST "
-    "sweep that hair off the skin, back into the hair mass or over the shoulders, "
-    "until both cheekbones (скулы) are bare. "
+    "If hair lies on an eyebrow or on a cheekbone, or against the cheek of the "
+    "face oval: MUST sweep that hair off the skin, back into the hair mass or over "
+    "the shoulders, until both eyebrows and both cheekbones (скулы) are bare. "
     "Do not leave a face-framing curtain of hair on the cheeks. "
-    "Preserve hair style/color/volume ONLY where it does not violate the HARD "
-    "brow/cheek clearance above. "
     "Do NOT tuck hair behind the ears. Do NOT invent, redraw, or uncover ears that "
     "are covered or unclear on the input — keep ear visibility exactly as on the "
     "source (hair over ears is fine if the face oval stays open). "
@@ -143,8 +135,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "mass (temples, crown, sides, neck). Those wisps leave leftover original-wall "
     "/ gray halo on #FFFFFF — remove them completely or fade them until invisible. "
     "Zero stray strands, zero halo, zero leftover wall pixels around hair. "
-    "BANGS / чёлка (CONDITIONAL, same HARD brow rule): "
-    "Hair that touches a brow is the same failure as a long fringe — always clear it. "
+    "BANGS / чёлка (CONDITIONAL): "
+    "Hair that touches a brow is the same failure as a long fringe. "
     "IF bangs/fringe/forelocks, or any side, temple, or face-framing strand, "
     "cover or touch either eyebrow, eyelid, eye, or cheekbone — including the "
     "outer tail of the brow and the hair lying on the cheek: sweep that hair off "
@@ -157,15 +149,14 @@ GOSUSLUGI_EDIT_PROMPT = (
     "ELSE (no hair touches either eyebrow or either cheekbone, brows and eyes "
     "fully visible): "
     "do NOT change the bangs at all — no trim, no lift, no restyle. "
-    "Override 'preserve hair style' whenever hair touches a brow or cheekbone — "
-    "clearance wins. "
+    "Override 'preserve hair style' ONLY in the IF branch. "
     "Do not restyle the hair mass beyond clearing the face oval and this "
     "conditional bangs fix. "
     "Do not cut or shorten the main hair outside the bangs IF-branch; do not "
     "change hair color or overall volume elsewhere; do not invent an "
     "unrelated new hairstyle. "
-    "Final check, every face: BOTH eyebrows fully bare (no strand on brow or "
-    "brow tip), both cheekbones bare, no hair lying on the brows or on the cheeks. "
+    "Final check, every face: both eyebrows and both cheekbones are bare, no hair "
+    "lying on the brows or on the cheeks. "
     "Final check, every adult suit: the dress shirt and both collar wings are the "
     "same solid black #1A1A1A, visible outside the blazer, not covered by the "
     "lapels, not white and not pale. "
@@ -199,10 +190,9 @@ GOSUSLUGI_SCORING_PROMPT = (
     "with natural skin exposure "
     "(no bleach/overexpose); no invented moles/freckles; "
     "open face with no hair on the oval (sweep/part away if needed — never tuck "
-    "behind ears or invent ears); HARD: any strand on either eyebrow (incl. brow "
-    "tail) must be cleared — bare brows beat preserve-hairstyle; bangs/чёлка: "
+    "behind ears or invent ears); bangs/чёлка: "
     "if any hair covers or touches either brow or either cheekbone, including a "
-    "side strand on the brow tip or a face-framing curtain on the cheek, sweep "
+    "side strand on the brow tail or a face-framing curtain on the cheek, sweep "
     "it off the skin until both eyebrows and both cheekbones are bare — otherwise "
     "leave bangs unchanged; MUST erase "
     "isolated flyaway wisps and leftover wall halo; "
@@ -232,26 +222,20 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "identity",
         "label": "Identity fidelity",
-        "description": "Same face, age, skin tone/exposure and texture; hair style preserved except mandatory brow/cheek clearance; no bleach, no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
-        "weight": 0.25,
-    },
-    {
-        "key": "brows_clear",
-        "label": "Brows free of hair",
-        "description": "No strand touches or overlaps either eyebrow (including outer brow tip); clear skin gap between hair and both brows.",
-        "weight": 0.2,
+        "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
+        "weight": 0.3,
     },
     {
         "key": "hair_integrity",
         "label": "Hair without white holes",
         "description": "No swiss-cheese / salt-pepper white gaps inside the hair mass.",
-        "weight": 0.2,
+        "weight": 0.25,
     },
     {
         "key": "ear_edges",
         "label": "Clean ear edges",
         "description": "No wall crumbs behind ears; cartilage preserved.",
-        "weight": 0.05,
+        "weight": 0.15,
     },
 ]
 

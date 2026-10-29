@@ -75,12 +75,6 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "bangs" in g or "чёлка" in g
     assert "conditional" in g
     assert "if bangs" in g and "else" in g
-    assert "hard" in g and "brow" in g
-    assert "non-negotiable" in g or "beats" in g
-    assert "bare" in g
-    from app.openrouter import GOSUSLUGI_SCORING_RUBRIC
-
-    assert any(r.get("key") == "brows_clear" for r in GOSUSLUGI_SCORING_RUBRIC)
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
