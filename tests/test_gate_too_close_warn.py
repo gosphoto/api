@@ -11,7 +11,7 @@ def test_close_face_emits_camera_too_close_warning():
     assert warnings == ["camera_too_close"]
     assert message and "Госуслуги" in message
     assert "искажен" in message
-    assert "метра" in message
+    assert "вытянутой руки" in message
 
 
 def test_distant_face_has_no_warning():
