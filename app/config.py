@@ -22,6 +22,13 @@ MAX_ROLL_DEG = float(os.getenv("GATE_MAX_ROLL_DEG", "28"))
 # Soft studio / baby phone JPEGs often land ~10–25; keep only trash (<~10) out.
 MIN_BLUR_VARIANCE = float(os.getenv("GATE_MIN_BLUR_VARIANCE", "10"))
 
+# Soft warning (does not fail gate): forehead→chin height as a fraction of
+# frame height. Calibrated on prod pairs (2026-11): Roman close selfie
+# 20261101T073543Z ≈ 0.381; arms-length / distant uploads often ≤0.34;
+# already-tight passport crops sit ≥0.42. Default 0.37 catches close phones
+# without nailing every mid-frame selfie.
+WARN_FACE_HEIGHT_FRAC = float(os.getenv("GATE_WARN_FACE_HEIGHT_FRAC", "0.37"))
+
 CORS_ORIGINS = [
     o.strip()
     for o in os.getenv(

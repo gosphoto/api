@@ -290,15 +290,17 @@ async def validate(file: UploadFile = File(...)):
             metrics=result.metrics,
             filename=file.filename,
         )
-    return JSONResponse(
-        {
-            "ok": result.ok,
-            "reason": result.reason,
-            "message": result.message,
-            "face_count": result.face_count,
-            "metrics": result.metrics,
-        }
-    )
+    body: dict = {
+        "ok": result.ok,
+        "reason": result.reason,
+        "message": result.message,
+        "face_count": result.face_count,
+        "metrics": result.metrics,
+        "warnings": list(result.warnings or []),
+    }
+    if result.warning_message:
+        body["warning_message"] = result.warning_message
+    return JSONResponse(body)
 
 
 @app.get("/api/validate")
@@ -306,7 +308,15 @@ def validate_info():
     return {
         "method": "POST multipart field 'file'",
         "max_bytes": config.MAX_UPLOAD_BYTES,
-        "checks": ["face_count", "yaw", "pitch", "roll", "blur"],
+        "checks": [
+            "face_count",
+            "yaw",
+            "pitch",
+            "roll",
+            "blur",
+            "face_height_frac_warn",
+        ],
+        "warn_face_height_frac": config.WARN_FACE_HEIGHT_FRAC,
     }
 
 

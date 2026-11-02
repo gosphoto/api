@@ -14,6 +14,7 @@ from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
 from . import config
+from .gate_warnings import soft_warnings_for_face_height
 
 # MediaPipe Face Mesh indices
 _LEFT_EYE_OUTER = 33
@@ -30,6 +31,8 @@ class GateResult:
     message: str
     face_count: int
     metrics: dict[str, Any]
+    warnings: list[str] | None = None
+    warning_message: str | None = None
 
 
 _MESSAGES = {
@@ -42,6 +45,13 @@ _MESSAGES = {
     "blur": "Фото размыто — переснимите при хорошем свете",
     "decode_error": "Не удалось прочитать изображение",
 }
+
+
+def face_height_frac_from_landmarks(landmarks) -> float:
+    """Normalized forehead→chin height (0–1 of frame)."""
+    chin = landmarks[_CHIN]
+    forehead = landmarks[_FOREHEAD]
+    return float(abs(chin.y - forehead.y))
 
 
 @lru_cache(maxsize=1)
@@ -172,15 +182,15 @@ def _encode_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes | None:
 
 def _analyze_bgr(
     bgr: np.ndarray,
-) -> tuple[int, float, float, float, float, bool, float]:
-    """face_count, yaw, pitch, roll, blur, chin_below_forehead, face_center_y."""
+) -> tuple[int, float, float, float, float, bool, float, float]:
+    """face_count, yaw, pitch, roll, blur, chin_below_forehead, face_center_y, face_height_frac."""
     blur = _blur_score(bgr)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     result = _landmarker().detect(mp_image)
     face_count = len(result.face_landmarks) if result.face_landmarks else 0
     if face_count != 1:
-        return face_count, 0.0, 0.0, 0.0, blur, False, 0.5
+        return face_count, 0.0, 0.0, 0.0, blur, False, 0.5, 0.0
 
     landmarks = result.face_landmarks[0]
     if (
@@ -196,7 +206,8 @@ def _analyze_bgr(
     forehead = landmarks[_FOREHEAD]
     upright = chin.y > forehead.y
     face_center_y = float((chin.y + forehead.y) / 2.0)
-    return face_count, yaw, pitch, roll, blur, upright, face_center_y
+    face_h_frac = face_height_frac_from_landmarks(landmarks)
+    return face_count, yaw, pitch, roll, blur, upright, face_center_y, face_h_frac
 
 
 def _pose_score(
@@ -233,11 +244,15 @@ def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
     best_k = 0
     best_score = float("inf")
     best_bgr = src
-    best_stats: tuple[int, float, float, float, float, bool, float] | None = None
+    best_stats: (
+        tuple[int, float, float, float, float, bool, float, float] | None
+    ) = None
 
     for k in (0, 1, 2, 3):
         cand = src if k == 0 else np.ascontiguousarray(np.rot90(src, k))
-        face_count, yaw, pitch, roll, blur, upright, face_cy = _analyze_bgr(cand)
+        face_count, yaw, pitch, roll, blur, upright, face_cy, face_h = (
+            _analyze_bgr(cand)
+        )
         if face_count != 1:
             continue
         score = _pose_score(yaw, pitch, roll, upright, face_cy)
@@ -245,11 +260,20 @@ def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
             best_score = score
             best_k = k
             best_bgr = cand
-            best_stats = (face_count, yaw, pitch, roll, blur, upright, face_cy)
+            best_stats = (
+                face_count,
+                yaw,
+                pitch,
+                roll,
+                blur,
+                upright,
+                face_cy,
+                face_h,
+            )
 
     meta: dict[str, Any] = {"rotation_deg": int(best_k * 90)}
     if best_stats is not None:
-        _, yaw, pitch, roll, blur, upright, face_cy = best_stats
+        _, yaw, pitch, roll, blur, upright, face_cy, face_h = best_stats
         meta.update(
             {
                 "upright_yaw": round(yaw, 2),
@@ -258,6 +282,7 @@ def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
                 "upright_blur": round(blur, 2),
                 "chin_below_forehead": upright,
                 "face_center_y": round(face_cy, 3),
+                "face_height_frac": round(face_h, 3),
             }
         )
 
@@ -281,7 +306,9 @@ def validate_image(data: bytes) -> GateResult:
         )
 
     bgr = _resize_max_side(bgr, config.MAX_IMAGE_SIDE)
-    face_count, yaw, pitch, roll, blur, _upright, _face_cy = _analyze_bgr(bgr)
+    face_count, yaw, pitch, roll, blur, _upright, _face_cy, face_h = _analyze_bgr(
+        bgr
+    )
     metrics: dict[str, Any] = {
         "blur": round(blur, 2),
         "width": int(bgr.shape[1]),
@@ -301,6 +328,7 @@ def validate_image(data: bytes) -> GateResult:
             "yaw": round(yaw, 2),
             "pitch": round(pitch, 2),
             "roll": round(roll, 2),
+            "face_height_frac": round(face_h, 3),
         }
     )
 
@@ -313,7 +341,16 @@ def validate_image(data: bytes) -> GateResult:
     if blur < config.MIN_BLUR_VARIANCE:
         return GateResult(False, "blur", _MESSAGES["blur"], 1, metrics)
 
-    return GateResult(True, None, _MESSAGES["ok"], 1, metrics)
+    warnings, warning_message = soft_warnings_for_face_height(face_h)
+    return GateResult(
+        True,
+        None,
+        _MESSAGES["ok"],
+        1,
+        metrics,
+        warnings=warnings or None,
+        warning_message=warning_message,
+    )
 
 
 def prepare_upload(data: bytes) -> tuple[bytes, GateResult]:
