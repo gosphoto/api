@@ -107,16 +107,22 @@ def _generate(result_id: str) -> None:
         )
         _set_status(result_id, "error")
         return
+    # Best-effort archive only — never fail the paid frame on disk I/O.
     edited_jpeg = out.get("edited_jpeg") or b""
     if edited_jpeg:
-        pair_dir = resolve_pair_dir(meta.get("source_pair"))
-        edit_meta = out.get("edit_meta") if isinstance(out.get("edit_meta"), dict) else {}
-        save_pre_crop_edit(
-            pair_dir,
-            edited_jpeg,
-            model=edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
-            name=EDIT_RIVERFLOW,
-        )
+        try:
+            pair_dir = resolve_pair_dir(meta.get("source_pair"))
+            edit_meta = (
+                out.get("edit_meta") if isinstance(out.get("edit_meta"), dict) else {}
+            )
+            save_pre_crop_edit(
+                pair_dir,
+                edited_jpeg,
+                model=edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
+                name=EDIT_RIVERFLOW,
+            )
+        except Exception as e:
+            log.warning("Paid pre-crop riverflow save failed id=%s: %s", result_id, e)
     ok = results.attach_full_jpegs(
         result_id,
         out["jpeg"],

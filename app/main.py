@@ -3,7 +3,6 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
-import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -25,23 +24,12 @@ from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import (
-    run_edit_riverflow,
-    run_edit_stage,
-    run_preview_edit,
-    run_resume_suit_edit,
-)
+from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
 from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, validate_image
 from .preview import PREVIEW_MAX_SIDE, make_preview_jpeg
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
-from .pairs import (
-    EDIT_GEMINI,
-    EDIT_RIVERFLOW,
-    encode_pre_crop_jpeg,
-    save_pair,
-    save_pre_crop_edit,
-)
+from .pairs import EDIT_GEMINI, encode_pre_crop_jpeg, save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .process_cache import lookup as process_cache_lookup
 from .process_cache import put as process_cache_put
@@ -635,33 +623,6 @@ def _preview_jpeg_from_bgr(bgr) -> bytes:
     return buf.tobytes()
 
 
-def _save_riverflow_pre_crop_async(pair_dir: Path, data: bytes, mime: str) -> None:
-    """Best-effort second model frame (Riverflow Pro) into the pair folder."""
-
-    def _run() -> None:
-        try:
-            edited, meta = run_edit_riverflow(
-                data,
-                mime=mime,
-                model=config.RIVERFLOW_PRO_MODEL,
-            )
-            jpeg = encode_pre_crop_jpeg(edited)
-            save_pre_crop_edit(
-                pair_dir,
-                jpeg,
-                model=meta.get("model") or config.RIVERFLOW_PRO_MODEL,
-                name=EDIT_RIVERFLOW,
-            )
-        except Exception as e:
-            log.warning("Async riverflow pre-crop save failed: %s", e)
-
-    threading.Thread(
-        target=_run,
-        name="pre-crop-riverflow",
-        daemon=True,
-    ).start()
-
-
 def _run_preview_stages(
     data: bytes,
     *,
@@ -851,8 +812,6 @@ def _run_process_pipeline(
             pair_meta["source_pair"] = str(pair_dir.relative_to(Path(config.PAIRS_DIR)))
         except ValueError:
             pair_meta["source_pair"] = pair_dir.name
-        # Second model frame (Riverflow) — does not block the response.
-        _save_riverflow_pre_crop_async(pair_dir, data, mime)
     result_id = save_preview_result(
         preview_digital,
         preview_print,
