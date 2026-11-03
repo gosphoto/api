@@ -12,6 +12,7 @@ from pathlib import Path
 
 from . import config
 from . import results
+from .pairs import EDIT_RIVERFLOW, resolve_pair_dir, save_pre_crop_edit
 
 log = logging.getLogger("gosphoto-gate")
 
@@ -106,6 +107,16 @@ def _generate(result_id: str) -> None:
         )
         _set_status(result_id, "error")
         return
+    edited_jpeg = out.get("edited_jpeg") or b""
+    if edited_jpeg:
+        pair_dir = resolve_pair_dir(meta.get("source_pair"))
+        edit_meta = out.get("edit_meta") if isinstance(out.get("edit_meta"), dict) else {}
+        save_pre_crop_edit(
+            pair_dir,
+            edited_jpeg,
+            model=edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
+            name=EDIT_RIVERFLOW,
+        )
     ok = results.attach_full_jpegs(
         result_id,
         out["jpeg"],

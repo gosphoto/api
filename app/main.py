@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import base64
 import logging
+import threading
 from contextlib import asynccontextmanager
 from pathlib import Path
 
@@ -24,12 +25,23 @@ from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
-from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
+from .edit import (
+    run_edit_riverflow,
+    run_edit_stage,
+    run_preview_edit,
+    run_resume_suit_edit,
+)
 from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, validate_image
 from .preview import PREVIEW_MAX_SIDE, make_preview_jpeg
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
-from .pairs import save_pair
+from .pairs import (
+    EDIT_GEMINI,
+    EDIT_RIVERFLOW,
+    encode_pre_crop_jpeg,
+    save_pair,
+    save_pre_crop_edit,
+)
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .process_cache import lookup as process_cache_lookup
 from .process_cache import put as process_cache_put
@@ -487,6 +499,12 @@ def _run_passport_stages(
         return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
 
     try:
+        edited_jpeg = encode_pre_crop_jpeg(edited)
+    except Exception as e:
+        log.warning("Pre-crop encode failed: %s", e)
+        edited_jpeg = b""
+
+    try:
         cropped, crop_metrics, compliance = run_crop_stage(
             edited, width=out_w, height=out_h, dpi=dpi
         )
@@ -520,6 +538,7 @@ def _run_passport_stages(
         "print_jpeg": print_jpeg,
         "print_meta": print_meta,
         "edit_meta": edit_meta,
+        "edited_jpeg": edited_jpeg,
         "crop_metrics": crop_metrics,
         "compliance": compliance,
         "readiness_meta": readiness_meta,
@@ -616,6 +635,33 @@ def _preview_jpeg_from_bgr(bgr) -> bytes:
     return buf.tobytes()
 
 
+def _save_riverflow_pre_crop_async(pair_dir: Path, data: bytes, mime: str) -> None:
+    """Best-effort second model frame (Riverflow Pro) into the pair folder."""
+
+    def _run() -> None:
+        try:
+            edited, meta = run_edit_riverflow(
+                data,
+                mime=mime,
+                model=config.RIVERFLOW_PRO_MODEL,
+            )
+            jpeg = encode_pre_crop_jpeg(edited)
+            save_pre_crop_edit(
+                pair_dir,
+                jpeg,
+                model=meta.get("model") or config.RIVERFLOW_PRO_MODEL,
+                name=EDIT_RIVERFLOW,
+            )
+        except Exception as e:
+            log.warning("Async riverflow pre-crop save failed: %s", e)
+
+    threading.Thread(
+        target=_run,
+        name="pre-crop-riverflow",
+        daemon=True,
+    ).start()
+
+
 def _run_preview_stages(
     data: bytes,
     *,
@@ -649,6 +695,12 @@ def _run_preview_stages(
         return {"ok": False, "stage": "edit", "message": f"Edit failed: {e}"}
 
     try:
+        edited_jpeg = encode_pre_crop_jpeg(edited)
+    except Exception as e:
+        log.warning("Preview pre-crop encode failed: %s", e)
+        edited_jpeg = b""
+
+    try:
         cropped, crop_metrics, compliance = run_crop_stage(
             edited, width=out_w, height=out_h, dpi=dpi
         )
@@ -670,6 +722,7 @@ def _run_preview_stages(
         "preview_print": preview_print,
         "print_meta": print_meta,
         "edit_meta": edit_meta,
+        "edited_jpeg": edited_jpeg,
         "crop_metrics": crop_metrics,
         "compliance": compliance,
         "readiness_meta": readiness_meta,
@@ -782,17 +835,24 @@ def _run_process_pipeline(
         "dpi": preset["dpi"],
         "mime": "image/jpeg",
     }
+    pre_crop: dict[str, bytes] = {}
+    edited_jpeg = passport.get("edited_jpeg") or b""
+    if edited_jpeg:
+        pre_crop[EDIT_GEMINI] = edited_jpeg
     pair_dir = save_pair(
         data,
         preview_digital,
         filename=filename,
         meta=pair_meta,
+        pre_crop_edits=pre_crop or None,
     )
     if pair_dir is not None:
         try:
             pair_meta["source_pair"] = str(pair_dir.relative_to(Path(config.PAIRS_DIR)))
         except ValueError:
             pair_meta["source_pair"] = pair_dir.name
+        # Second model frame (Riverflow) — does not block the response.
+        _save_riverflow_pre_crop_async(pair_dir, data, mime)
     result_id = save_preview_result(
         preview_digital,
         preview_print,
