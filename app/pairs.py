@@ -84,15 +84,25 @@ def save_pre_crop_edit(
 
     Returns the image path, or None if disabled / empty / IO error.
     """
-    if not config.PAIRS_ENABLED or not jpeg or folder is None:
+    fname = name or pre_crop_edit_name(model)
+    if fname not in (EDIT_GEMINI, EDIT_RIVERFLOW):
+        fname = pre_crop_edit_name(model)
+    if not config.PAIRS_ENABLED:
+        log.info("Skip pre-crop save file=%s reason=pairs_disabled", fname)
+        return None
+    if not jpeg:
+        log.info("Skip pre-crop save file=%s reason=empty_jpeg", fname)
+        return None
+    if folder is None:
+        log.info("Skip pre-crop save file=%s reason=no_pair_dir", fname)
         return None
     try:
         path = Path(folder)
         if not path.is_dir():
+            log.warning(
+                "Skip pre-crop save file=%s reason=not_a_dir path=%s", fname, path
+            )
             return None
-        fname = name or pre_crop_edit_name(model)
-        if fname not in (EDIT_GEMINI, EDIT_RIVERFLOW):
-            fname = pre_crop_edit_name(model)
         out = path / fname
         out.write_bytes(jpeg)
 
@@ -119,10 +129,18 @@ def save_pre_crop_edit(
             encoding="utf-8",
         )
         tmp.replace(meta_path)
-        log.info("Saved pre-crop edit model=%s path=%s", model, out)
+        log.info(
+            "Saved pre-crop edit file=%s model=%s bytes=%s path=%s",
+            fname,
+            model,
+            len(jpeg),
+            out,
+        )
         return out
     except Exception as e:
-        log.warning("Failed to save pre-crop edit: %s", e)
+        log.warning(
+            "Failed to save pre-crop edit file=%s model=%s: %s", fname, model, e
+        )
         return None
 
 
@@ -142,7 +160,15 @@ def save_pair(
 
     Returns the pair folder path, or None if disabled / empty / IO error.
     """
-    if not config.PAIRS_ENABLED or not input_bytes or not output_jpeg:
+    if not config.PAIRS_ENABLED:
+        log.info("Skip process pair save reason=pairs_disabled")
+        return None
+    if not input_bytes or not output_jpeg:
+        log.info(
+            "Skip process pair save reason=empty_bytes in=%s out=%s",
+            len(input_bytes or b""),
+            len(output_jpeg or b""),
+        )
         return None
     try:
         root = Path(config.PAIRS_DIR)
@@ -167,6 +193,12 @@ def save_pair(
                 "bytes": len(jpeg),
                 "saved_at": ts,
             }
+            log.info(
+                "Wrote pre-crop into pair file=%s bytes=%s dir=%s",
+                fname,
+                len(jpeg),
+                folder.name,
+            )
 
         payload = {
             "saved_at": ts,
@@ -185,7 +217,13 @@ def save_pair(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
-        log.info("Saved process pair dir=%s pre_crop=%s", folder, list(edit_meta))
+        log.info(
+            "Saved process pair dir=%s in_bytes=%s out_bytes=%s pre_crop=%s",
+            folder,
+            len(input_bytes),
+            len(output_jpeg),
+            {k: v.get("bytes") for k, v in edit_meta.items()},
+        )
         return folder
     except Exception as e:
         log.warning("Failed to save process pair: %s", e)

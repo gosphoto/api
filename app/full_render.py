@@ -109,18 +109,46 @@ def _generate(result_id: str) -> None:
         return
     # Best-effort archive only — never fail the paid frame on disk I/O.
     edited_jpeg = out.get("edited_jpeg") or b""
-    if edited_jpeg:
+    edit_meta = out.get("edit_meta") if isinstance(out.get("edit_meta"), dict) else {}
+    source_pair = meta.get("source_pair")
+    log.info(
+        "Paid pre-crop riverflow start id=%s source_pair=%s bytes=%s model=%s",
+        result_id,
+        source_pair,
+        len(edited_jpeg),
+        edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
+    )
+    if not edited_jpeg:
+        log.warning("Paid pre-crop riverflow skip id=%s reason=empty_jpeg", result_id)
+    else:
         try:
-            pair_dir = resolve_pair_dir(meta.get("source_pair"))
-            edit_meta = (
-                out.get("edit_meta") if isinstance(out.get("edit_meta"), dict) else {}
-            )
-            save_pre_crop_edit(
-                pair_dir,
-                edited_jpeg,
-                model=edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
-                name=EDIT_RIVERFLOW,
-            )
+            pair_dir = resolve_pair_dir(source_pair)
+            if pair_dir is None:
+                log.warning(
+                    "Paid pre-crop riverflow skip id=%s reason=pair_dir_missing source_pair=%s",
+                    result_id,
+                    source_pair,
+                )
+            else:
+                saved = save_pre_crop_edit(
+                    pair_dir,
+                    edited_jpeg,
+                    model=edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
+                    name=EDIT_RIVERFLOW,
+                )
+                if saved is None:
+                    log.warning(
+                        "Paid pre-crop riverflow not written id=%s dir=%s",
+                        result_id,
+                        pair_dir,
+                    )
+                else:
+                    log.info(
+                        "Paid pre-crop riverflow saved id=%s path=%s bytes=%s",
+                        result_id,
+                        saved,
+                        len(edited_jpeg),
+                    )
         except Exception as e:
             log.warning("Paid pre-crop riverflow save failed id=%s: %s", result_id, e)
     ok = results.attach_full_jpegs(
@@ -133,7 +161,10 @@ def _generate(result_id: str) -> None:
         edit=out.get("edit_meta"),
     )
     if not ok:
+        log.warning("Paid attach_full_jpegs failed id=%s", result_id)
         _set_status(result_id, "error")
+    else:
+        log.info("Paid full frame ready id=%s", result_id)
 
 
 def _run(result_id: str) -> None:

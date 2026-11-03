@@ -488,8 +488,19 @@ def _run_passport_stages(
 
     try:
         edited_jpeg = encode_pre_crop_jpeg(edited)
+        log.info(
+            "Pre-crop encoded stage=passport model=%s bytes=%s size=%sx%s",
+            edit_meta.get("model"),
+            len(edited_jpeg),
+            edit_meta.get("width"),
+            edit_meta.get("height"),
+        )
     except Exception as e:
-        log.warning("Pre-crop encode failed: %s", e)
+        log.warning(
+            "Pre-crop encode failed stage=passport model=%s: %s",
+            edit_meta.get("model"),
+            e,
+        )
         edited_jpeg = b""
 
     try:
@@ -657,8 +668,19 @@ def _run_preview_stages(
 
     try:
         edited_jpeg = encode_pre_crop_jpeg(edited)
+        log.info(
+            "Pre-crop encoded stage=preview model=%s bytes=%s size=%sx%s",
+            edit_meta.get("model"),
+            len(edited_jpeg),
+            edit_meta.get("width"),
+            edit_meta.get("height"),
+        )
     except Exception as e:
-        log.warning("Preview pre-crop encode failed: %s", e)
+        log.warning(
+            "Pre-crop encode failed stage=preview model=%s: %s",
+            edit_meta.get("model"),
+            e,
+        )
         edited_jpeg = b""
 
     try:
@@ -800,6 +822,14 @@ def _run_process_pipeline(
     edited_jpeg = passport.get("edited_jpeg") or b""
     if edited_jpeg:
         pre_crop[EDIT_GEMINI] = edited_jpeg
+        log.info(
+            "Process will archive pre-crop file=%s bytes=%s model=%s",
+            EDIT_GEMINI,
+            len(edited_jpeg),
+            (edit_meta or {}).get("model"),
+        )
+    else:
+        log.warning("Process missing Gemini pre-crop jpeg; pair will have no edit_gemini")
     pair_dir = save_pair(
         data,
         preview_digital,
@@ -812,6 +842,13 @@ def _run_process_pipeline(
             pair_meta["source_pair"] = str(pair_dir.relative_to(Path(config.PAIRS_DIR)))
         except ValueError:
             pair_meta["source_pair"] = pair_dir.name
+        log.info(
+            "Process pair archived source_pair=%s has_edit_gemini=%s",
+            pair_meta.get("source_pair"),
+            bool(edited_jpeg),
+        )
+    else:
+        log.warning("Process pair archive skipped or failed filename=%s", filename)
     result_id = save_preview_result(
         preview_digital,
         preview_print,
