@@ -88,6 +88,7 @@ def test_save_preview_does_not_write_full_jpeg(tmp_path, monkeypatch):
 
 def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
     _dirs(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "PAIRS_ENABLED", True)
     pair = tmp_path / "pairs" / "20261002T120000Z_selfie"
     pair.mkdir(parents=True)
     (pair / "in.jpg").write_bytes(_jpeg(size=(40, 50)))
@@ -97,6 +98,7 @@ def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
         meta={"source_pair": "20261002T120000Z_selfie", "doc_type": "passport_rf"},
     )
     calls = []
+    edited = _jpeg(size=(80, 100), color=(210, 210, 210))
 
     def fake(data, *, mime, preset, edit_model):
         calls.append(edit_model)
@@ -104,6 +106,7 @@ def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
             "ok": True,
             "jpeg": _jpeg(size=(30, 40)),
             "print_jpeg": _jpeg(size=(50, 40)),
+            "edited_jpeg": edited,
             "crop_metrics": {"width": 30},
             "compliance": {"pass": True},
             "print_meta": {"copies": 4},
@@ -115,6 +118,7 @@ def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
     time.sleep(0.15)
     assert calls == []
     assert not (results.result_dir(rid) / "digital.jpg").exists()
+    assert not (pair / "edit_riverflow.jpg").exists()
 
     assert results.set_paid(
         rid, payment_id="pay-1", tochka_operation_id="op-1"
@@ -128,6 +132,7 @@ def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
         time.sleep(0.05)
     assert calls == [config.RIVERFLOW_PRO_MODEL]
     assert results.load_meta(rid)["full"]["status"] == "ready"
+    assert (pair / "edit_riverflow.jpg").read_bytes() == edited
     full_render.ensure_started(rid)
     time.sleep(0.15)
     assert calls == [config.RIVERFLOW_PRO_MODEL]
