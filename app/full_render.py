@@ -12,7 +12,12 @@ from pathlib import Path
 
 from . import config
 from . import results
-from .pairs import EDIT_RIVERFLOW, resolve_pair_dir, save_pre_crop_edit
+from .pairs import (
+    EDIT_RIVERFLOW,
+    OUT_RIVERFLOW,
+    resolve_pair_dir,
+    save_pair_file,
+)
 
 log = logging.getLogger("gosphoto-gate")
 
@@ -109,48 +114,63 @@ def _generate(result_id: str) -> None:
         return
     # Best-effort archive only — never fail the paid frame on disk I/O.
     edited_jpeg = out.get("edited_jpeg") or b""
+    digital_jpeg = out.get("jpeg") or b""
     edit_meta = out.get("edit_meta") if isinstance(out.get("edit_meta"), dict) else {}
     source_pair = meta.get("source_pair")
+    model_name = edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL
     log.info(
-        "Paid pre-crop riverflow start id=%s source_pair=%s bytes=%s model=%s",
+        "Paid riverflow archive start id=%s source_pair=%s edit_bytes=%s out_bytes=%s model=%s",
         result_id,
         source_pair,
         len(edited_jpeg),
-        edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
+        len(digital_jpeg),
+        model_name,
     )
-    if not edited_jpeg:
-        log.warning("Paid pre-crop riverflow skip id=%s reason=empty_jpeg", result_id)
-    else:
-        try:
-            pair_dir = resolve_pair_dir(source_pair)
-            if pair_dir is None:
-                log.warning(
-                    "Paid pre-crop riverflow skip id=%s reason=pair_dir_missing source_pair=%s",
-                    result_id,
-                    source_pair,
-                )
-            else:
-                saved = save_pre_crop_edit(
+    try:
+        pair_dir = resolve_pair_dir(source_pair)
+        if pair_dir is None:
+            log.warning(
+                "Paid riverflow archive skip id=%s reason=pair_dir_missing source_pair=%s",
+                result_id,
+                source_pair,
+            )
+        else:
+            if edited_jpeg:
+                saved_edit = save_pair_file(
                     pair_dir,
                     edited_jpeg,
-                    model=edit_meta.get("model") or config.RIVERFLOW_PRO_MODEL,
                     name=EDIT_RIVERFLOW,
+                    model=model_name,
                 )
-                if saved is None:
-                    log.warning(
-                        "Paid pre-crop riverflow not written id=%s dir=%s",
-                        result_id,
-                        pair_dir,
-                    )
-                else:
-                    log.info(
-                        "Paid pre-crop riverflow saved id=%s path=%s bytes=%s",
-                        result_id,
-                        saved,
-                        len(edited_jpeg),
-                    )
-        except Exception as e:
-            log.warning("Paid pre-crop riverflow save failed id=%s: %s", result_id, e)
+                log.info(
+                    "Paid edit_riverflow id=%s ok=%s bytes=%s",
+                    result_id,
+                    saved_edit is not None,
+                    len(edited_jpeg),
+                )
+            else:
+                log.warning(
+                    "Paid edit_riverflow skip id=%s reason=empty_jpeg", result_id
+                )
+            if digital_jpeg:
+                saved_out = save_pair_file(
+                    pair_dir,
+                    digital_jpeg,
+                    name=OUT_RIVERFLOW,
+                    model=model_name,
+                )
+                log.info(
+                    "Paid out_riverflow id=%s ok=%s bytes=%s",
+                    result_id,
+                    saved_out is not None,
+                    len(digital_jpeg),
+                )
+            else:
+                log.warning(
+                    "Paid out_riverflow skip id=%s reason=empty_jpeg", result_id
+                )
+    except Exception as e:
+        log.warning("Paid riverflow archive failed id=%s: %s", result_id, e)
     ok = results.attach_full_jpegs(
         result_id,
         out["jpeg"],

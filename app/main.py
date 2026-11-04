@@ -29,7 +29,7 @@ from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, valid
 from .preview import PREVIEW_MAX_SIDE, make_preview_jpeg
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
-from .pairs import EDIT_GEMINI, encode_pre_crop_jpeg, save_pair
+from .pairs import EDIT_GEMINI, OUT_GEMINI, encode_pre_crop_jpeg, save_pair
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .process_cache import lookup as process_cache_lookup
 from .process_cache import put as process_cache_put
@@ -818,10 +818,10 @@ def _run_process_pipeline(
         "dpi": preset["dpi"],
         "mime": "image/jpeg",
     }
-    pre_crop: dict[str, bytes] = {}
+    archive: dict[str, bytes] = {}
     edited_jpeg = passport.get("edited_jpeg") or b""
     if edited_jpeg:
-        pre_crop[EDIT_GEMINI] = edited_jpeg
+        archive[EDIT_GEMINI] = edited_jpeg
         log.info(
             "Process will archive pre-crop file=%s bytes=%s model=%s",
             EDIT_GEMINI,
@@ -830,12 +830,20 @@ def _run_process_pipeline(
         )
     else:
         log.warning("Process missing Gemini pre-crop jpeg; pair will have no edit_gemini")
+    # Cropped Gemini frame (card preview) — also kept as out.jpg for compat.
+    if preview_digital:
+        archive[OUT_GEMINI] = preview_digital
+        log.info(
+            "Process will archive crop file=%s bytes=%s",
+            OUT_GEMINI,
+            len(preview_digital),
+        )
     pair_dir = save_pair(
         data,
         preview_digital,
         filename=filename,
         meta=pair_meta,
-        pre_crop_edits=pre_crop or None,
+        pre_crop_edits=archive or None,
     )
     if pair_dir is not None:
         try:
@@ -843,9 +851,10 @@ def _run_process_pipeline(
         except ValueError:
             pair_meta["source_pair"] = pair_dir.name
         log.info(
-            "Process pair archived source_pair=%s has_edit_gemini=%s",
+            "Process pair archived source_pair=%s has_edit_gemini=%s has_out_gemini=%s",
             pair_meta.get("source_pair"),
             bool(edited_jpeg),
+            bool(preview_digital),
         )
     else:
         log.warning("Process pair archive skipped or failed filename=%s", filename)

@@ -20,6 +20,13 @@ _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 EDIT_GEMINI = "edit_gemini.jpg"
 EDIT_RIVERFLOW = "edit_riverflow.jpg"
+OUT_GEMINI = "out_gemini.jpg"
+OUT_RIVERFLOW = "out_riverflow.jpg"
+
+# Side files archived next to in.*/out.jpg
+ARCHIVE_FILES = frozenset(
+    {EDIT_GEMINI, EDIT_RIVERFLOW, OUT_GEMINI, OUT_RIVERFLOW}
+)
 
 
 def _safe_stem(name: str | None) -> str:
@@ -50,6 +57,14 @@ def pre_crop_edit_name(model: str | None) -> str:
     return EDIT_GEMINI
 
 
+def out_crop_name(model: str | None) -> str:
+    """Filename for the post-crop frame from a model."""
+    m = (model or "").lower()
+    if "riverflow" in m:
+        return OUT_RIVERFLOW
+    return OUT_GEMINI
+
+
 def encode_pre_crop_jpeg(bgr: np.ndarray, *, quality: int = 92) -> bytes:
     ok, buf = cv2.imencode(
         ".jpg", bgr, [int(cv2.IMWRITE_JPEG_QUALITY), int(quality)]
@@ -72,35 +87,36 @@ def resolve_pair_dir(rel: str | None) -> Path | None:
     return folder
 
 
-def save_pre_crop_edit(
+def save_pair_file(
     folder: Path | str | None,
     jpeg: bytes,
     *,
+    name: str,
     model: str | None = None,
-    name: str | None = None,
 ) -> Path | None:
     """
-    Write edit_gemini.jpg or edit_riverflow.jpg into an existing pair folder.
+    Write an allowed archive JPEG (edit_* / out_*) into an existing pair folder.
 
     Returns the image path, or None if disabled / empty / IO error.
     """
-    fname = name or pre_crop_edit_name(model)
-    if fname not in (EDIT_GEMINI, EDIT_RIVERFLOW):
-        fname = pre_crop_edit_name(model)
+    fname = name if name in ARCHIVE_FILES else ""
+    if not fname:
+        log.warning("Skip pair file save reason=bad_name name=%s", name)
+        return None
     if not config.PAIRS_ENABLED:
-        log.info("Skip pre-crop save file=%s reason=pairs_disabled", fname)
+        log.info("Skip pair file save file=%s reason=pairs_disabled", fname)
         return None
     if not jpeg:
-        log.info("Skip pre-crop save file=%s reason=empty_jpeg", fname)
+        log.info("Skip pair file save file=%s reason=empty_jpeg", fname)
         return None
     if folder is None:
-        log.info("Skip pre-crop save file=%s reason=no_pair_dir", fname)
+        log.info("Skip pair file save file=%s reason=no_pair_dir", fname)
         return None
     try:
         path = Path(folder)
         if not path.is_dir():
             log.warning(
-                "Skip pre-crop save file=%s reason=not_a_dir path=%s", fname, path
+                "Skip pair file save file=%s reason=not_a_dir path=%s", fname, path
             )
             return None
         out = path / fname
@@ -113,15 +129,23 @@ def save_pre_crop_edit(
                 payload = json.loads(meta_path.read_text(encoding="utf-8"))
             except Exception:
                 payload = {}
+        archive = payload.get("archive_files")
+        if not isinstance(archive, dict):
+            archive = {}
+        # Keep legacy pre_crop_edits in sync for edit_* files.
         edits = payload.get("pre_crop_edits")
         if not isinstance(edits, dict):
             edits = {}
-        edits[fname] = {
+        entry = {
             "bytes": len(jpeg),
             "model": model,
             "saved_at": datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ"),
         }
-        payload["pre_crop_edits"] = edits
+        archive[fname] = entry
+        payload["archive_files"] = archive
+        if fname in (EDIT_GEMINI, EDIT_RIVERFLOW):
+            edits[fname] = entry
+            payload["pre_crop_edits"] = edits
         payload[fname.replace(".jpg", "")] = fname
         tmp = meta_path.with_suffix(".tmp")
         tmp.write_text(
@@ -130,7 +154,7 @@ def save_pre_crop_edit(
         )
         tmp.replace(meta_path)
         log.info(
-            "Saved pre-crop edit file=%s model=%s bytes=%s path=%s",
+            "Saved pair file=%s model=%s bytes=%s path=%s",
             fname,
             model,
             len(jpeg),
@@ -138,10 +162,22 @@ def save_pre_crop_edit(
         )
         return out
     except Exception as e:
-        log.warning(
-            "Failed to save pre-crop edit file=%s model=%s: %s", fname, model, e
-        )
+        log.warning("Failed to save pair file=%s model=%s: %s", fname, model, e)
         return None
+
+
+def save_pre_crop_edit(
+    folder: Path | str | None,
+    jpeg: bytes,
+    *,
+    model: str | None = None,
+    name: str | None = None,
+) -> Path | None:
+    """Write edit_gemini.jpg / edit_riverflow.jpg (or out_*) into a pair folder."""
+    fname = name or pre_crop_edit_name(model)
+    if fname not in ARCHIVE_FILES:
+        fname = pre_crop_edit_name(model)
+    return save_pair_file(folder, jpeg, name=fname, model=model)
 
 
 def save_pair(
@@ -155,8 +191,7 @@ def save_pair(
     """
     Create pairs/<timestamp>_<stem>/ with in.* and out.jpg (+ meta.json).
 
-    Optional pre_crop_edits maps edit_gemini.jpg / edit_riverflow.jpg → JPEG bytes
-    (model output before passport crop).
+    Optional pre_crop_edits maps archive filenames (edit_* / out_*) → JPEG bytes.
 
     Returns the pair folder path, or None if disabled / empty / IO error.
     """
@@ -184,17 +219,18 @@ def save_pair(
         in_path.write_bytes(input_bytes)
         out_path.write_bytes(output_jpeg)
 
+        archive_meta: dict[str, Any] = {}
         edit_meta: dict[str, Any] = {}
         for fname, jpeg in (pre_crop_edits or {}).items():
-            if fname not in (EDIT_GEMINI, EDIT_RIVERFLOW) or not jpeg:
+            if fname not in ARCHIVE_FILES or not jpeg:
                 continue
             (folder / fname).write_bytes(jpeg)
-            edit_meta[fname] = {
-                "bytes": len(jpeg),
-                "saved_at": ts,
-            }
+            entry = {"bytes": len(jpeg), "saved_at": ts}
+            archive_meta[fname] = entry
+            if fname in (EDIT_GEMINI, EDIT_RIVERFLOW):
+                edit_meta[fname] = entry
             log.info(
-                "Wrote pre-crop into pair file=%s bytes=%s dir=%s",
+                "Wrote archive into pair file=%s bytes=%s dir=%s",
                 fname,
                 len(jpeg),
                 folder.name,
@@ -209,20 +245,22 @@ def save_pair(
             "out_bytes": len(output_jpeg),
             **(meta or {}),
         }
+        if archive_meta:
+            payload["archive_files"] = archive_meta
+            for fname in archive_meta:
+                payload[fname.replace(".jpg", "")] = fname
         if edit_meta:
             payload["pre_crop_edits"] = edit_meta
-            for fname in edit_meta:
-                payload[fname.replace(".jpg", "")] = fname
         (folder / "meta.json").write_text(
             json.dumps(payload, ensure_ascii=False, indent=2),
             encoding="utf-8",
         )
         log.info(
-            "Saved process pair dir=%s in_bytes=%s out_bytes=%s pre_crop=%s",
+            "Saved process pair dir=%s in_bytes=%s out_bytes=%s archive=%s",
             folder,
             len(input_bytes),
             len(output_jpeg),
-            {k: v.get("bytes") for k, v in edit_meta.items()},
+            {k: v.get("bytes") for k, v in archive_meta.items()},
         )
         return folder
     except Exception as e:

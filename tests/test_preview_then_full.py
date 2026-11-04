@@ -133,6 +133,7 @@ def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
     assert calls == [config.RIVERFLOW_PRO_MODEL]
     assert results.load_meta(rid)["full"]["status"] == "ready"
     assert (pair / "edit_riverflow.jpg").read_bytes() == edited
+    assert (pair / "out_riverflow.jpg").is_file()
     full_render.ensure_started(rid)
     time.sleep(0.15)
     assert calls == [config.RIVERFLOW_PRO_MODEL]
