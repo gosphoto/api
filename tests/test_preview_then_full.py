@@ -134,9 +134,74 @@ def test_full_render_starts_only_after_passport_payment(tmp_path, monkeypatch):
     assert results.load_meta(rid)["full"]["status"] == "ready"
     assert (pair / "edit_riverflow.jpg").read_bytes() == edited
     assert (pair / "out_riverflow.jpg").is_file()
+    assert (folder / "digital_riverflow.jpg").is_file()
+    assert (folder / "print_riverflow.jpg").is_file()
+    # No edit_gemini → gemini variant skipped
+    variants = results.load_meta(rid).get("variants") or []
+    assert any(v.get("id") == "riverflow" for v in variants)
+    assert not (folder / "digital_gemini.jpg").exists()
     full_render.ensure_started(rid)
     time.sleep(0.15)
     assert calls == [config.RIVERFLOW_PRO_MODEL]
+
+
+def test_full_render_builds_gemini_variant_from_edit(tmp_path, monkeypatch):
+    _dirs(tmp_path, monkeypatch)
+    monkeypatch.setattr(config, "PAIRS_ENABLED", True)
+    pair = tmp_path / "pairs" / "20261002T130000Z_selfie"
+    pair.mkdir(parents=True)
+    (pair / "in.jpg").write_bytes(_jpeg(size=(40, 50)))
+    # Pre-crop gemini frame (white-ish portrait) for CPU crop path
+    (pair / "edit_gemini.jpg").write_bytes(
+        _jpeg(size=(200, 260), color=(240, 240, 240))
+    )
+    rid = results.save_preview_result(
+        _jpeg(size=(40, 50)),
+        _jpeg(size=(60, 40)),
+        meta={"source_pair": "20261002T130000Z_selfie", "doc_type": "passport_rf"},
+    )
+    results.set_paid(rid, payment_id="pay-g", tochka_operation_id="op-g")
+
+    def fake(data, *, mime, preset, edit_model):
+        return {
+            "ok": True,
+            "jpeg": _jpeg(size=(30, 40), color=(200, 200, 200)),
+            "print_jpeg": _jpeg(size=(50, 40), color=(190, 190, 190)),
+            "edited_jpeg": _jpeg(size=(80, 100), color=(210, 210, 210)),
+            "crop_metrics": {"width": 30},
+            "compliance": {"pass": True},
+            "print_meta": {"copies": 4},
+            "edit_meta": {"model": edit_model},
+        }
+
+    monkeypatch.setattr(full_render, "_passport_stages", fake)
+
+    def fake_gemini(result_id, meta):
+        return results.attach_variant_jpegs(
+            result_id,
+            results.VARIANT_GEMINI,
+            _jpeg(size=(30, 40), color=(100, 100, 100)),
+            _jpeg(size=(50, 40), color=(90, 90, 90)),
+            mark_ready=False,
+        )
+
+    monkeypatch.setattr(full_render, "_build_gemini_variant", fake_gemini)
+    full_render.ensure_started(rid)
+    folder = results.result_dir(rid)
+    deadline = time.time() + 3
+    while time.time() < deadline and not (
+        (folder / "digital.jpg").is_file()
+        and (folder / "digital_gemini.jpg").is_file()
+        and (results.load_meta(rid) or {}).get("full", {}).get("status") == "ready"
+    ):
+        time.sleep(0.05)
+    meta = results.load_meta(rid)
+    assert meta["full"]["status"] == "ready"
+    ids = [v["id"] for v in meta.get("variants") or []]
+    assert ids == ["riverflow", "gemini"]
+    assert (folder / "digital_riverflow.jpg").is_file()
+    assert (folder / "digital_gemini.jpg").is_file()
+    assert (folder / "preview_digital_gemini.jpg").is_file()
 
 
 def test_resume_and_repeat_mark_paid_do_not_start_full(tmp_path, monkeypatch):

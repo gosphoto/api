@@ -1,6 +1,7 @@
 """After passport payment, render the full frame from the original pair.
 
 The webhook does not wait. Resume payments and a repeated mark_paid do not start this.
+After Riverflow Pro, also crop+print a Gemini variant from archived edit_gemini.jpg.
 """
 
 from __future__ import annotations
@@ -10,9 +11,13 @@ import threading
 import time
 from pathlib import Path
 
+import cv2
+import numpy as np
+
 from . import config
 from . import results
 from .pairs import (
+    EDIT_GEMINI,
     EDIT_RIVERFLOW,
     OUT_RIVERFLOW,
     resolve_pair_dir,
@@ -84,6 +89,82 @@ def _passport_stages(data: bytes, *, mime: str, preset: dict, edit_model: str):
         preset=preset,
         edit_model=edit_model,
     )
+
+
+def _decode_jpeg_bgr(data: bytes) -> np.ndarray | None:
+    if not data:
+        return None
+    arr = np.frombuffer(data, dtype=np.uint8)
+    bgr = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    return bgr
+
+
+def _build_gemini_variant(result_id: str, meta: dict) -> bool:
+    """Crop+print from archived edit_gemini.jpg (no OpenRouter call)."""
+    from .crop import encode_jpeg, run_crop_stage
+    from .main import _print_payload
+
+    pair_dir = resolve_pair_dir(meta.get("source_pair"))
+    if pair_dir is None:
+        log.info("Paid gemini variant skip id=%s reason=pair_dir_missing", result_id)
+        return False
+    edit_path = pair_dir / EDIT_GEMINI
+    if not edit_path.is_file():
+        log.info("Paid gemini variant skip id=%s reason=edit_gemini_missing", result_id)
+        return False
+    try:
+        edit_bytes = edit_path.read_bytes()
+    except OSError as e:
+        log.warning("Paid gemini variant read failed id=%s: %s", result_id, e)
+        return False
+    bgr = _decode_jpeg_bgr(edit_bytes)
+    if bgr is None:
+        log.warning("Paid gemini variant decode failed id=%s", result_id)
+        return False
+    preset = config.resolve_doc_preset(meta.get("doc_type"))
+    out_w = int(preset["width"])
+    out_h = int(preset["height"])
+    dpi = int(preset["dpi"])
+    jpeg_max = int(preset["jpeg_max_bytes"])
+    try:
+        cropped, crop_metrics, compliance = run_crop_stage(
+            bgr, width=out_w, height=out_h, dpi=dpi
+        )
+        jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
+        print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
+    except Exception as e:
+        log.warning("Paid gemini variant crop failed id=%s: %s", result_id, e)
+        return False
+    compliance = {
+        **compliance,
+        "jpeg_bytes": len(jpeg),
+        "jpeg_max_bytes": jpeg_max,
+        "jpeg_size_ok": len(jpeg) <= jpeg_max,
+    }
+    print_meta = {
+        k: print_sheet[k]
+        for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
+        if k in print_sheet
+    }
+    ok = results.attach_variant_jpegs(
+        result_id,
+        results.VARIANT_GEMINI,
+        jpeg,
+        print_jpeg,
+        crop=crop_metrics,
+        compliance=compliance,
+        print_sheet=print_meta,
+        primary_alias=False,
+        mark_ready=False,
+    )
+    if ok:
+        log.info(
+            "Paid gemini variant ready id=%s digital_bytes=%s print_bytes=%s",
+            result_id,
+            len(jpeg),
+            len(print_jpeg),
+        )
+    return ok
 
 
 def _generate(result_id: str) -> None:
@@ -179,12 +260,20 @@ def _generate(result_id: str) -> None:
         compliance=out.get("compliance"),
         print_sheet=out.get("print_meta"),
         edit=out.get("edit_meta"),
+        mark_ready=False,
     )
     if not ok:
         log.warning("Paid attach_full_jpegs failed id=%s", result_id)
         _set_status(result_id, "error")
-    else:
-        log.info("Paid full frame ready id=%s", result_id)
+        return
+    # Second variant from preview edit archive (CPU crop only).
+    meta_after = results.load_meta(result_id) or meta
+    try:
+        _build_gemini_variant(result_id, meta_after)
+    except Exception as e:
+        log.warning("Paid gemini variant unexpected id=%s: %s", result_id, e)
+    _set_status(result_id, "ready")
+    log.info("Paid full frame ready id=%s", result_id)
 
 
 def _run(result_id: str) -> None:

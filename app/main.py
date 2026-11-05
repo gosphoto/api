@@ -34,6 +34,7 @@ from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .process_cache import lookup as process_cache_lookup
 from .process_cache import put as process_cache_put
 from .rejecteds import save_rejected
+from . import results as results_mod
 from .results import (
     is_paid,
     is_paid_resume,
@@ -135,12 +136,66 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
 
     full = full_render.public_status(result_id, meta) if paid else None
     body["full"] = full
+    variants_out: list[dict] = []
     if paid and full == "ready":
         body["digital_url"] = f"/api/result/{result_id}/digital.jpg"
         body["print_url"] = f"/api/result/{result_id}/print.jpg"
+        raw_variants = meta.get("variants")
+        if isinstance(raw_variants, list):
+            for v in raw_variants:
+                if not isinstance(v, dict):
+                    continue
+                vid = v.get("id")
+                digital_name = v.get("digital")
+                print_name = v.get("print")
+                if not isinstance(vid, str) or not isinstance(digital_name, str):
+                    continue
+                if digital_name not in results_mod.ALLOWED_FILES:
+                    continue
+                if not load_file(result_id, digital_name):
+                    continue
+                entry = {
+                    "id": vid,
+                    "label": v.get("label")
+                    or results_mod.VARIANT_LABELS.get(vid)
+                    or vid,
+                    "digital_url": f"/api/result/{result_id}/{digital_name}",
+                    "print_url": (
+                        f"/api/result/{result_id}/{print_name}"
+                        if isinstance(print_name, str)
+                        and print_name in results_mod.ALLOWED_FILES
+                        else None
+                    ),
+                }
+                prev_d = v.get("preview_digital")
+                prev_p = v.get("preview_print")
+                if isinstance(prev_d, str) and prev_d in results_mod.ALLOWED_FILES:
+                    entry["preview_digital_url"] = (
+                        f"/api/result/{result_id}/{prev_d}"
+                    )
+                if isinstance(prev_p, str) and prev_p in results_mod.ALLOWED_FILES:
+                    entry["preview_print_url"] = (
+                        f"/api/result/{result_id}/{prev_p}"
+                    )
+                variants_out.append(entry)
+        if not variants_out:
+            # Legacy paid results without variants meta.
+            variants_out.append(
+                {
+                    "id": results_mod.VARIANT_RIVERFLOW,
+                    "label": results_mod.VARIANT_LABELS[
+                        results_mod.VARIANT_RIVERFLOW
+                    ],
+                    "digital_url": body["digital_url"],
+                    "print_url": body["print_url"],
+                    "preview_digital_url": body["preview_digital_url"],
+                    "preview_print_url": body["preview_print_url"],
+                }
+            )
     else:
         body["digital_url"] = None
         body["print_url"] = None
+    body["variants"] = variants_out
     if resume_offer:
         body["preview_resume_url"] = f"/api/result/{result_id}/preview_resume.jpg"
         body["resume_url"] = (
@@ -1124,6 +1179,74 @@ def get_result_print(result_id: str):
     return Response(content=data, media_type="image/jpeg")
 
 
+@app.get("/api/result/{result_id}/digital_riverflow.jpg")
+def get_result_digital_riverflow(result_id: str):
+    _require_paid(result_id)
+    data = load_file(result_id, "digital_riverflow.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/print_riverflow.jpg")
+def get_result_print_riverflow(result_id: str):
+    _require_paid(result_id)
+    data = load_file(result_id, "print_riverflow.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/digital_gemini.jpg")
+def get_result_digital_gemini(result_id: str):
+    _require_paid(result_id)
+    data = load_file(result_id, "digital_gemini.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/print_gemini.jpg")
+def get_result_print_gemini(result_id: str):
+    _require_paid(result_id)
+    data = load_file(result_id, "print_gemini.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/preview_digital_riverflow.jpg")
+def get_result_preview_digital_riverflow(result_id: str):
+    data = load_file(result_id, "preview_digital_riverflow.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/preview_print_riverflow.jpg")
+def get_result_preview_print_riverflow(result_id: str):
+    data = load_file(result_id, "preview_print_riverflow.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/preview_digital_gemini.jpg")
+def get_result_preview_digital_gemini(result_id: str):
+    data = load_file(result_id, "preview_digital_gemini.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
+@app.get("/api/result/{result_id}/preview_print_gemini.jpg")
+def get_result_preview_print_gemini(result_id: str):
+    data = load_file(result_id, "preview_print_gemini.jpg")
+    if not data:
+        raise HTTPException(status_code=404, detail="Result not found")
+    return Response(content=data, media_type="image/jpeg")
+
+
 @app.get("/api/result/{result_id}/resume.jpg")
 def get_result_resume(result_id: str):
     _require_paid_resume(result_id)
@@ -1158,10 +1281,16 @@ async def email_result(result_id: str, body: ResultEmailBody, request: Request):
         else:
             detail = "Фото ещё готовится. Попробуйте отправить через минуту."
         raise HTTPException(status_code=502, detail=detail)
-    digital = load_file(result_id, "digital.jpg")
-    print_jpeg = load_file(result_id, "print.jpg")
+    digital = load_file(result_id, "digital.jpg") or load_file(
+        result_id, "digital_riverflow.jpg"
+    )
+    print_jpeg = load_file(result_id, "print.jpg") or load_file(
+        result_id, "print_riverflow.jpg"
+    )
     if not digital or not print_jpeg:
         raise HTTPException(status_code=404, detail="Result not found")
+    digital_gemini = load_file(result_id, "digital_gemini.jpg")
+    print_gemini = load_file(result_id, "print_gemini.jpg")
     try:
         result_email_mod.check_rate_limit(_client_ip(request))
         email_n = result_email_mod.validate_email(body.email)
@@ -1170,6 +1299,8 @@ async def email_result(result_id: str, body: ResultEmailBody, request: Request):
             result_id=result_id,
             digital_jpeg=digital,
             print_jpeg=print_jpeg,
+            digital_gemini=digital_gemini,
+            print_gemini=print_gemini,
         )
         await asyncio.to_thread(result_email_mod.send_result_email, msg)
     except result_email_mod.FeedbackRateLimitError as e:

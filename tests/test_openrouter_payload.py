@@ -58,7 +58,12 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "lighting (hard)" in g
     assert "passport" in g
     assert "harsh" in g or "one-sided" in g or "side light" in g or "rembrandt" in g
-    assert "neutral" in g and "smile" in g
+    assert "smile" in g
+    assert "closed" in g and "lips" in g
+    assert "corners" in g
+    assert "teeth" in g
+    assert "soft" in g or "polite" in g or "resting" in g
+    assert "gosuslugi rejects" in g or "zero visible smile" in g
     assert "flyaway" in g or "wisp" in g
     assert "erase" in g or "remove" in g
     assert "must" in g

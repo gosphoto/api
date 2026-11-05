@@ -98,6 +98,27 @@ def test_build_result_email_has_two_attachments():
     assert "/result/" + ("a" * 32) in body
 
 
+def test_build_result_email_has_four_attachments_when_two_variants():
+    msg = result_email_mod.build_result_email(
+        email="user@example.com",
+        result_id="a" * 32,
+        digital_jpeg=b"\xff\xd8\xffd1",
+        print_jpeg=b"\xff\xd8\xffp1",
+        digital_gemini=b"\xff\xd8\xffd2",
+        print_gemini=b"\xff\xd8\xffp2",
+    )
+    names = [a.get_filename() for a in msg.iter_attachments()]
+    assert names == [
+        "gosphoto-v1-passport.jpg",
+        "gosphoto-v1-10x15.jpg",
+        "gosphoto-v2-passport.jpg",
+        "gosphoto-v2-10x15.jpg",
+    ]
+    body = msg.get_body(preferencelist=("plain",)).get_content()
+    assert "Вариант 1" in body
+    assert "Вариант 2" in body
+
+
 def test_email_forbidden_until_paid(tmp_path, monkeypatch):
     _setup(tmp_path, monkeypatch)
     # Bypass preview/cv2: write result folder manually

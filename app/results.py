@@ -17,6 +17,28 @@ from .preview import make_preview_jpeg, make_view_jpeg
 log = logging.getLogger("gosphoto-gate")
 
 RESULT_ID_RE = re.compile(r"^[a-f0-9]{32}$")
+
+VARIANT_RIVERFLOW = "riverflow"
+VARIANT_GEMINI = "gemini"
+VARIANT_LABELS = {
+    VARIANT_RIVERFLOW: "Вариант 1",
+    VARIANT_GEMINI: "Вариант 2",
+}
+VARIANT_FILES = {
+    VARIANT_RIVERFLOW: {
+        "digital": "digital_riverflow.jpg",
+        "print": "print_riverflow.jpg",
+        "preview_digital": "preview_digital_riverflow.jpg",
+        "preview_print": "preview_print_riverflow.jpg",
+    },
+    VARIANT_GEMINI: {
+        "digital": "digital_gemini.jpg",
+        "print": "print_gemini.jpg",
+        "preview_digital": "preview_digital_gemini.jpg",
+        "preview_print": "preview_print_gemini.jpg",
+    },
+}
+
 ALLOWED_FILES = frozenset(
     {
         "digital.jpg",
@@ -26,8 +48,37 @@ ALLOWED_FILES = frozenset(
         "view_digital.jpg",
         "resume.jpg",
         "preview_resume.jpg",
+        *(f for spec in VARIANT_FILES.values() for f in spec.values()),
     }
 )
+
+
+def _variant_entry(variant_id: str) -> dict[str, str]:
+    files = VARIANT_FILES[variant_id]
+    return {
+        "id": variant_id,
+        "label": VARIANT_LABELS[variant_id],
+        "digital": files["digital"],
+        "print": files["print"],
+        "preview_digital": files["preview_digital"],
+        "preview_print": files["preview_print"],
+    }
+
+
+def _upsert_variant(meta: dict[str, Any], entry: dict[str, str]) -> None:
+    variants = meta.get("variants")
+    if not isinstance(variants, list):
+        variants = []
+    out = [v for v in variants if isinstance(v, dict) and v.get("id") != entry["id"]]
+    # riverflow first, then gemini
+    if entry["id"] == VARIANT_RIVERFLOW:
+        out.insert(0, entry)
+    else:
+        out.append(entry)
+    # stable order: riverflow then gemini then others
+    order = {VARIANT_RIVERFLOW: 0, VARIANT_GEMINI: 1}
+    out.sort(key=lambda v: order.get(str(v.get("id")), 99))
+    meta["variants"] = out
 
 
 def new_result_id() -> str:
@@ -182,6 +233,79 @@ def set_full_status(result_id: str, status: str) -> bool:
         return False
 
 
+def attach_variant_jpegs(
+    result_id: str,
+    variant_id: str,
+    digital_jpeg: bytes,
+    print_jpeg: bytes,
+    *,
+    crop: dict[str, Any] | None = None,
+    compliance: dict[str, Any] | None = None,
+    print_sheet: dict[str, Any] | None = None,
+    edit: dict[str, Any] | None = None,
+    primary_alias: bool = False,
+    mark_ready: bool = False,
+) -> bool:
+    """Write one paid variant (digital + 10×15 + previews) and update meta.variants."""
+    if variant_id not in VARIANT_FILES:
+        return False
+    if not digital_jpeg or not print_jpeg:
+        return False
+    if not load_meta(result_id):
+        return False
+    files = VARIANT_FILES[variant_id]
+    try:
+        folder = result_dir(result_id)
+        preview_digital = make_preview_jpeg(digital_jpeg)
+        preview_print = make_preview_jpeg(print_jpeg)
+        (folder / files["digital"]).write_bytes(digital_jpeg)
+        (folder / files["print"]).write_bytes(print_jpeg)
+        (folder / files["preview_digital"]).write_bytes(preview_digital)
+        (folder / files["preview_print"]).write_bytes(preview_print)
+        if primary_alias:
+            (folder / "digital.jpg").write_bytes(digital_jpeg)
+            (folder / "print.jpg").write_bytes(print_jpeg)
+            (folder / "preview_digital.jpg").write_bytes(preview_digital)
+            (folder / "preview_print.jpg").write_bytes(preview_print)
+        meta = load_meta(result_id)
+        if not meta:
+            return False
+        _upsert_variant(meta, _variant_entry(variant_id))
+        if primary_alias:
+            meta["digital"] = "digital.jpg"
+            meta["print"] = "print.jpg"
+            meta["digital_bytes"] = len(digital_jpeg)
+            meta["print_bytes"] = len(print_jpeg)
+            meta["preview_only"] = False
+            if crop is not None:
+                meta["crop"] = crop
+            if compliance is not None:
+                meta["compliance"] = compliance
+            if print_sheet is not None:
+                meta["print_sheet"] = print_sheet
+            if edit is not None:
+                meta["edit_full"] = edit
+        if mark_ready:
+            meta["full"] = {"status": "ready"}
+        _write_meta(result_id, meta)
+        log.info(
+            "Attached variant jpegs id=%s variant=%s primary=%s ready=%s",
+            result_id,
+            variant_id,
+            primary_alias,
+            mark_ready,
+        )
+        return True
+    except Exception as e:
+        log.warning(
+            "Failed to attach variant jpegs id=%s variant=%s: %s",
+            result_id,
+            variant_id,
+            e,
+        )
+        return False
+
+
 def attach_full_jpegs(
     result_id: str,
     digital_jpeg: bytes,
@@ -191,41 +315,21 @@ def attach_full_jpegs(
     compliance: dict[str, Any] | None = None,
     print_sheet: dict[str, Any] | None = None,
     edit: dict[str, Any] | None = None,
+    mark_ready: bool = True,
 ) -> bool:
-    """Write the paid full frame and refresh the card previews from it."""
-    if not digital_jpeg or not print_jpeg:
-        return False
-    if not load_meta(result_id):
-        return False
-    try:
-        folder = result_dir(result_id)
-        (folder / "digital.jpg").write_bytes(digital_jpeg)
-        (folder / "print.jpg").write_bytes(print_jpeg)
-        (folder / "preview_digital.jpg").write_bytes(make_preview_jpeg(digital_jpeg))
-        (folder / "preview_print.jpg").write_bytes(make_preview_jpeg(print_jpeg))
-        meta = load_meta(result_id)
-        if not meta:
-            return False
-        meta["digital"] = "digital.jpg"
-        meta["print"] = "print.jpg"
-        meta["digital_bytes"] = len(digital_jpeg)
-        meta["print_bytes"] = len(print_jpeg)
-        meta["preview_only"] = False
-        if crop is not None:
-            meta["crop"] = crop
-        if compliance is not None:
-            meta["compliance"] = compliance
-        if print_sheet is not None:
-            meta["print_sheet"] = print_sheet
-        if edit is not None:
-            meta["edit_full"] = edit
-        meta["full"] = {"status": "ready"}
-        _write_meta(result_id, meta)
-        log.info("Attached full jpegs id=%s", result_id)
-        return True
-    except Exception as e:
-        log.warning("Failed to attach full jpegs id=%s: %s", result_id, e)
-        return False
+    """Write the paid Riverflow full frame (primary alias) + variant files."""
+    return attach_variant_jpegs(
+        result_id,
+        VARIANT_RIVERFLOW,
+        digital_jpeg,
+        print_jpeg,
+        crop=crop,
+        compliance=compliance,
+        print_sheet=print_sheet,
+        edit=edit,
+        primary_alias=True,
+        mark_ready=mark_ready,
+    )
 
 
 _PAYMENT_META_KEYS = frozenset(
