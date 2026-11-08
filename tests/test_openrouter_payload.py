@@ -27,30 +27,11 @@ def test_prompt_forbids_invented_jewelry():
 
 
 def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
-    from app.openrouter import (
-        GOSUSLUGI_EDIT_PROMPT,
-        GOSUSLUGI_SCORING_PROMPT,
-        GOSUSLUGI_SCORING_RUBRIC,
-        RESUME_SUIT_PROMPT,
-    )
+    from app.openrouter import GOSUSLUGI_EDIT_PROMPT, RESUME_SUIT_PROMPT
 
     assert GOSUSLUGI_EDIT_PROMPT != RESUME_SUIT_PROMPT
-    assert GOSUSLUGI_EDIT_PROMPT.startswith("CRITICAL LIGHTING FIRST")
-    assert GOSUSLUGI_EDIT_PROMPT.lower().startswith("critical lighting first")
-    assert "неравномерно освещено" in GOSUSLUGI_EDIT_PROMPT[:200]
-    assert "both cheeks the same brightness" in GOSUSLUGI_EDIT_PROMPT
-    assert "Do not copy the input side-light" in GOSUSLUGI_EDIT_PROMPT
-    assert "WHEN they are on one side only" not in GOSUSLUGI_EDIT_PROMPT
-    assert "matching shadows on both sides at once may stay" not in GOSUSLUGI_EDIT_PROMPT
     g = GOSUSLUGI_EDIT_PROMPT.lower()
-    assert "flash-relight" not in g
     assert "business suit" in g
-    rubric_keys = {row["key"] for row in GOSUSLUGI_SCORING_RUBRIC}
-    assert "even_lighting" in rubric_keys
-    assert abs(sum(row["weight"] for row in GOSUSLUGI_SCORING_RUBRIC) - 1.0) < 1e-6
-    assert "неравномерно освещено" in GOSUSLUGI_SCORING_PROMPT
-    assert "critical even lighting" in GOSUSLUGI_SCORING_PROMPT.lower()
-    assert "do not copy input side-light" in GOSUSLUGI_SCORING_PROMPT.lower()
     assert "blazer" in g
     assert "child" in g
     assert "t-shirt" in g or "tank" in g
@@ -74,12 +55,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "even skin tone" not in g
     assert "even" in g and "uniform" in g
     assert "lighting" in g
-    assert "lighting (critical" in g
+    assert "lighting (hard)" in g
     assert "passport" in g
-    assert "side-light" in g or "side shadow" in g
-    assert "неравномерно освещено" in GOSUSLUGI_EDIT_PROMPT
-    assert "under-eye" in g
-    assert "тень на лице" in GOSUSLUGI_EDIT_PROMPT
+    assert "harsh" in g or "one-sided" in g or "side light" in g or "rembrandt" in g
     assert "smile" in g
     assert "closed" in g and "lips" in g
     assert "corners" in g

@@ -52,11 +52,6 @@ RESUME_SUIT_PROMPT = (
 
 # Main process edit = resume look, but pure white document background (no skin retouch).
 GOSUSLUGI_EDIT_PROMPT = (
-    "CRITICAL LIGHTING FIRST (Gosuslugi rejects «неравномерно освещено»): "
-    "even flat front light on the whole face; both cheeks the same brightness. "
-    "Erase side shadows from the source (under-eye, nose cast, cheek gradient). "
-    "Do not copy the input side-light. Do not bleach or puff the face — only "
-    "even the light. "
     "Professional resume / LinkedIn headshot from this selfie. "
     "CLOTHING: if the person wears religious clothing or a religious head covering "
     "(hijab, khimar, tichel, turban, kippah, nun's veil, abaya, modest religious "
@@ -86,10 +81,16 @@ GOSUSLUGI_EDIT_PROMPT = (
     "replace with a dark solid child's t-shirt (navy, charcoal, or dark blue). "
     "Adults in a light tank/tee (and not in religious clothing): still the "
     "business suit. "
-    "Lighting (CRITICAL — «лицо неравномерно освещено»): "
-    "flat front fill; left cheek = right cheek; no leftover side shadow "
-    "(тень на лице от неравномерного освещения при фото). "
-    "If already even — keep it. No bleach, no plastic flash look. "
+    "Lighting (HARD): on every photo, always even out face illumination to a flat "
+    "passport-style front fill, whatever the input light was. Left cheek, right "
+    "cheek, forehead, both eye sockets, nose, and jaw must finish at the same "
+    "brightness. If the input has a side gradient, one brighter half, wall-side "
+    "shadow, under-eye dark from uneven light, a Rembrandt triangle, a half-face "
+    "shadow, or a strong side key — remove it. If the input is already even, keep "
+    "it even: do not add a new key light, a new shadow, or a new left-right "
+    "gradient. No specular hotspots. "
+    "Keep natural skin tone and midtone brightness — do not bleach, overexpose, "
+    "flash-relight, or wash out the skin; no high-key chalky white cheeks/forehead. "
     "Keep pores and real texture — no plastic skin, no heavy beauty filter, "
     "no age change, no blemish/acne/redness retouch or skin smoothing. "
     "FORBIDDEN skin marks: do not invent, add, densify, or scatter moles, freckles, "
@@ -132,8 +133,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "Subject alone in frame: no other people, no toys, no pacifiers, no foreign "
     "objects in hands or near the face (same rules for children as for adults). "
     "Framing: upper body / shoulders visible, face centered; "
-    "even uniform face lighting (both halves same brightness). "
-    "Final check: not «неравномерно освещено». "
+    "even uniform face lighting on every face: both halves the same brightness, "
+    "no leftover side gradient (not a bright studio key light or harsh side light). "
     "Background: pure seamless #FFFFFF white only — no gray, no off-white, "
     "no shadows, vignette, or room props. "
     "MUST erase every isolated flyaway / stray hair that sticks out of the hair "
@@ -189,11 +190,9 @@ POST_CROP_CLEANUP_PROMPT = (
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
-    "CRITICAL even lighting first: flat front fill; both cheeks same brightness; "
-    "no «неравномерно освещено»; do not copy input side-light. "
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
-    "even uniform face lighting on every input "
-    "(both halves the same brightness; no harsh side shadows) "
+    "even uniform face lighting / flat passport front fill on every input "
+    "(both halves the same brightness, no leftover side gradient or harsh side shadows) "
     "with natural skin exposure "
     "(no bleach/overexpose); no invented moles/freckles; "
     "open face with no hair on the oval (sweep/part away if needed — never tuck "
@@ -225,34 +224,25 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
         "key": "white_bg",
         "label": "Pure white background",
         "description": "Backdrop is solid #FFFFFF with no shadows, vignette, or room objects.",
-        "weight": 0.25,
+        "weight": 0.3,
     },
     {
         "key": "identity",
         "label": "Identity fidelity",
         "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
-        "weight": 0.25,
-    },
-    {
-        "key": "even_lighting",
-        "label": "Even face lighting",
-        "description": (
-            "Flat front fill; both cheeks same brightness; no leftover side "
-            "shadow («неравномерно освещено» fails)."
-        ),
-        "weight": 0.2,
+        "weight": 0.3,
     },
     {
         "key": "hair_integrity",
         "label": "Hair without white holes",
         "description": "No swiss-cheese / salt-pepper white gaps inside the hair mass.",
-        "weight": 0.2,
+        "weight": 0.25,
     },
     {
         "key": "ear_edges",
         "label": "Clean ear edges",
         "description": "No wall crumbs behind ears; cartilage preserved.",
-        "weight": 0.1,
+        "weight": 0.15,
     },
 ]
 
