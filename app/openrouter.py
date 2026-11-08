@@ -56,9 +56,7 @@ GOSUSLUGI_EDIT_PROMPT = (
     "flat passport front fill on the whole face — zero leftover shadow from "
     "the source photo's uneven / directional light. MUST erase under-eye "
     "crescent, inner eye-corner / nose-bridge dark, nose cast on cheek, and "
-    "left-right cheek gradient WHEN they are on one side only and the other "
-    "side is clean (односторонняя тень; на другой стороне теней нет). Soft "
-    "matching shadows on both sides at once may stay if the face stays even. "
+    "left-right cheek gradient. "
     "Professional resume / LinkedIn headshot from this selfie. "
     "CLOTHING: if the person wears religious clothing or a religious head covering "
     "(hijab, khimar, tichel, turban, kippah, nun's veil, abaya, modest religious "
@@ -100,9 +98,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "under-eye crescent, dark triangle at the inner eye corner / nose bridge, "
     "nose cast on a cheek, wall-side half-face shadow, Rembrandt triangle, "
     "cheek or temple gradient, darker eye socket on one side, jaw/neck "
-    "falloff from a side key — especially when only one side of the face has "
-    "them and the other side has none. If the input has any of these "
-    "one-sided marks — MUST remove and flatten. "
+    "falloff from a side key. If the input has any of these — MUST remove "
+    "and flatten. "
     "If the input is already even, keep it even: do not add a new key light, "
     "a new shadow, or a new left-right gradient. No specular hotspots. "
     "REQUIRED: flatten uneven face light as above — that is passport compliance, "
@@ -211,9 +208,8 @@ POST_CROP_CLEANUP_PROMPT = (
 
 GOSUSLUGI_SCORING_PROMPT = (
     "HARD even lighting first: flat passport front fill; MUST erase under-eye / "
-    "nose / cheek shadows that sit on one side only while the other side is "
-    "clean — never leave «неравномерно освещено» face shadows or a leftover "
-    "side gradient. "
+    "nose / cheek shadows from uneven source light — never leave "
+    "«неравномерно освещено» face shadows or a leftover side gradient. "
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
     "even uniform face lighting on every input "
     "(both halves the same brightness; no harsh side shadows) "
@@ -261,8 +257,8 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
         "label": "Even face lighting",
         "description": (
             "Flat passport front fill; both face halves same brightness; no "
-            "one-sided under-eye / nose / cheek shadow (other side clean) from "
-            "uneven source light («неравномерно освещено» fails)."
+            "under-eye / nose / cheek shadow from uneven source light "
+            "(«неравномерно освещено» fails)."
         ),
         "weight": 0.2,
     },
