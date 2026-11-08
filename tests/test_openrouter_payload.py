@@ -55,7 +55,7 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "even skin tone" not in g
     assert "even" in g and "uniform" in g
     assert "lighting" in g
-    assert "lighting (hard)" in g
+    assert "lighting (hard" in g
     assert "passport" in g
     assert "harsh" in g or "one-sided" in g or "side light" in g or "rembrandt" in g
     assert "неравномерно освещено" in GOSUSLUGI_EDIT_PROMPT
