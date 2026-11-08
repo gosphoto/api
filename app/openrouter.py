@@ -52,6 +52,11 @@ RESUME_SUIT_PROMPT = (
 
 # Main process edit = resume look, but pure white document background (no skin retouch).
 GOSUSLUGI_EDIT_PROMPT = (
+    "CRITICAL LIGHTING FIRST (Gosuslugi rejects «неравномерно освещено»): "
+    "flat passport front fill on the whole face — zero leftover shadow from "
+    "the source photo's uneven / directional light. MUST erase under-eye "
+    "crescent, inner eye-corner / nose-bridge dark, nose cast on cheek, and "
+    "left-right cheek gradient. Copying input lighting = failed photo. "
     "Professional resume / LinkedIn headshot from this selfie. "
     "CLOTHING: if the person wears religious clothing or a religious head covering "
     "(hijab, khimar, tichel, turban, kippah, nun's veil, abaya, modest religious "
@@ -97,8 +102,10 @@ GOSUSLUGI_EDIT_PROMPT = (
     "and flatten; copying the source light is a failed photo. "
     "If the input is already even, keep it even: do not add a new key light, "
     "a new shadow, or a new left-right gradient. No specular hotspots. "
-    "Keep natural skin tone and midtone brightness — do not bleach, overexpose, "
-    "flash-relight, or wash out the skin; no high-key chalky white cheeks/forehead. "
+    "REQUIRED: flatten uneven face light as above — that is passport compliance, "
+    "not beauty retouch. Keep natural skin tone and midtone brightness — do not "
+    "bleach, overexpose, or wash out the skin into chalky high-key white; "
+    "no plastic flash look. "
     "Keep pores and real texture — no plastic skin, no heavy beauty filter, "
     "no age change, no blemish/acne/redness retouch or skin smoothing. "
     "FORBIDDEN skin marks: do not invent, add, densify, or scatter moles, freckles, "
@@ -200,11 +207,12 @@ POST_CROP_CLEANUP_PROMPT = (
 )
 
 GOSUSLUGI_SCORING_PROMPT = (
+    "HARD even lighting first: flat passport front fill; MUST erase under-eye / "
+    "nose / cheek shadows from uneven source light — never leave "
+    "«неравномерно освещено» face shadows or a leftover side gradient. "
     "Prefer a pure #FFFFFF seamless backdrop (not gray); keep face identity and "
-    "even uniform face lighting / flat passport front fill on every input "
-    "(both halves the same brightness; MUST erase under-eye / nose / cheek "
-    "shadows from uneven source light — never leave «неравномерно освещено» "
-    "face shadows; no leftover side gradient or harsh side shadows) "
+    "even uniform face lighting on every input "
+    "(both halves the same brightness; no harsh side shadows) "
     "with natural skin exposure "
     "(no bleach/overexpose); no invented moles/freckles; "
     "open face with no hair on the oval (sweep/part away if needed — never tuck "
@@ -236,25 +244,35 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
         "key": "white_bg",
         "label": "Pure white background",
         "description": "Backdrop is solid #FFFFFF with no shadows, vignette, or room objects.",
-        "weight": 0.3,
+        "weight": 0.25,
     },
     {
         "key": "identity",
         "label": "Identity fidelity",
         "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
-        "weight": 0.3,
+        "weight": 0.25,
+    },
+    {
+        "key": "even_lighting",
+        "label": "Even face lighting",
+        "description": (
+            "Flat passport front fill; both face halves same brightness; no "
+            "under-eye / nose / cheek shadow from uneven source light "
+            "(«неравномерно освещено» fails)."
+        ),
+        "weight": 0.2,
     },
     {
         "key": "hair_integrity",
         "label": "Hair without white holes",
         "description": "No swiss-cheese / salt-pepper white gaps inside the hair mass.",
-        "weight": 0.25,
+        "weight": 0.2,
     },
     {
         "key": "ear_edges",
         "label": "Clean ear edges",
         "description": "No wall crumbs behind ears; cartilage preserved.",
-        "weight": 0.15,
+        "weight": 0.1,
     },
 ]
 

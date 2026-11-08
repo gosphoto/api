@@ -27,11 +27,26 @@ def test_prompt_forbids_invented_jewelry():
 
 
 def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
-    from app.openrouter import GOSUSLUGI_EDIT_PROMPT, RESUME_SUIT_PROMPT
+    from app.openrouter import (
+        GOSUSLUGI_EDIT_PROMPT,
+        GOSUSLUGI_SCORING_PROMPT,
+        GOSUSLUGI_SCORING_RUBRIC,
+        RESUME_SUIT_PROMPT,
+    )
 
     assert GOSUSLUGI_EDIT_PROMPT != RESUME_SUIT_PROMPT
+    assert GOSUSLUGI_EDIT_PROMPT.startswith("CRITICAL LIGHTING FIRST")
+    assert GOSUSLUGI_EDIT_PROMPT.lower().startswith("critical lighting first")
+    assert "неравномерно освещено" in GOSUSLUGI_EDIT_PROMPT[:200]
     g = GOSUSLUGI_EDIT_PROMPT.lower()
+    assert "passport compliance" in g or "not beauty retouch" in g
+    assert "flash-relight" not in g
     assert "business suit" in g
+    rubric_keys = {row["key"] for row in GOSUSLUGI_SCORING_RUBRIC}
+    assert "even_lighting" in rubric_keys
+    assert abs(sum(row["weight"] for row in GOSUSLUGI_SCORING_RUBRIC) - 1.0) < 1e-6
+    assert "неравномерно освещено" in GOSUSLUGI_SCORING_PROMPT
+    assert "hard even lighting" in GOSUSLUGI_SCORING_PROMPT.lower()
     assert "blazer" in g
     assert "child" in g
     assert "t-shirt" in g or "tank" in g
