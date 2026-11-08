@@ -18,6 +18,7 @@ from .compose_bg import composite_on_white
 from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
 from .edit_router import choose_edit_model
+from .face_light import flatten_face_lighting
 from .openrouter import edit_selfie, edit_selfie_resume, edit_selfie_riverflow
 from .whitening import force_white_background
 
@@ -83,6 +84,14 @@ def run_edit_riverflow(
     out = composite_on_white(decoded)
     out = _uniform_max_side(out, config.MAX_IMAGE_SIDE)
     out = force_white_background(out, tol=48)
+    out, light_meta = flatten_face_lighting(out)
+    if light_meta.get("applied"):
+        out = force_white_background(out, tol=48)
+        log.info(
+            "Face light flatten applied before=%s after=%s",
+            light_meta.get("before"),
+            light_meta.get("after"),
+        )
 
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
     cutout = "riverflow" if "riverflow" in use_model.lower() else "openrouter_edit"
@@ -104,6 +113,7 @@ def run_edit_riverflow(
         "face_protected": False,
         "passes": 1,
         "prompt": "gosuslugi_riverflow",
+        "face_light": light_meta,
         "src_size": [int(src_p.shape[1]), int(src_p.shape[0])],
         "kept_model_aspect": True,
         "width": int(out.shape[1]),
