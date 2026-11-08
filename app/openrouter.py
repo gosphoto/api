@@ -86,7 +86,7 @@ GOSUSLUGI_EDIT_PROMPT = (
     "replace with a dark solid child's t-shirt (navy, charcoal, or dark blue). "
     "Adults in a light tank/tee (and not in religious clothing): still the "
     "business suit. "
-    "Lighting (HARD — Gosuslugi rejects uneven face light / "
+    "Lighting (CRITICAL — Gosuslugi rejects uneven face light / "
     "«лицо неравномерно освещено»): on every photo, always even out face "
     "illumination to a flat passport-style front fill, whatever the input light "
     "was. Left cheek, right cheek, forehead, both eye sockets / under-eyes, "
