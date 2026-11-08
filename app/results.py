@@ -306,6 +306,63 @@ def attach_variant_jpegs(
         return False
 
 
+def attach_paid_jpegs(
+    result_id: str,
+    digital_jpeg: bytes,
+    print_jpeg: bytes,
+    *,
+    crop: dict[str, Any] | None = None,
+    compliance: dict[str, Any] | None = None,
+    print_sheet: dict[str, Any] | None = None,
+    edit: dict[str, Any] | None = None,
+    mark_ready: bool = True,
+) -> bool:
+    """Write primary digital.jpg / print.jpg after pay (no dual variants)."""
+    if not digital_jpeg or not print_jpeg:
+        return False
+    if not load_meta(result_id):
+        return False
+    try:
+        folder = result_dir(result_id)
+        preview_digital = make_preview_jpeg(digital_jpeg)
+        preview_print = make_preview_jpeg(print_jpeg)
+        (folder / "digital.jpg").write_bytes(digital_jpeg)
+        (folder / "print.jpg").write_bytes(print_jpeg)
+        (folder / "preview_digital.jpg").write_bytes(preview_digital)
+        (folder / "preview_print.jpg").write_bytes(preview_print)
+        meta = load_meta(result_id)
+        if not meta:
+            return False
+        meta.pop("variants", None)
+        meta["digital"] = "digital.jpg"
+        meta["print"] = "print.jpg"
+        meta["digital_bytes"] = len(digital_jpeg)
+        meta["print_bytes"] = len(print_jpeg)
+        meta["preview_only"] = False
+        if crop is not None:
+            meta["crop"] = crop
+        if compliance is not None:
+            meta["compliance"] = compliance
+        if print_sheet is not None:
+            meta["print_sheet"] = print_sheet
+        if edit is not None:
+            meta["edit_full"] = edit
+        if mark_ready:
+            meta["full"] = {"status": "ready"}
+        _write_meta(result_id, meta)
+        log.info(
+            "Attached paid jpegs id=%s ready=%s digital_bytes=%s print_bytes=%s",
+            result_id,
+            mark_ready,
+            len(digital_jpeg),
+            len(print_jpeg),
+        )
+        return True
+    except Exception as e:
+        log.warning("Failed to attach paid jpegs id=%s: %s", result_id, e)
+        return False
+
+
 def attach_full_jpegs(
     result_id: str,
     digital_jpeg: bytes,
@@ -317,17 +374,15 @@ def attach_full_jpegs(
     edit: dict[str, Any] | None = None,
     mark_ready: bool = True,
 ) -> bool:
-    """Write the paid Riverflow full frame (primary alias) + variant files."""
-    return attach_variant_jpegs(
+    """Compat alias: paid primary JPEGs (no Riverflow / no variants)."""
+    return attach_paid_jpegs(
         result_id,
-        VARIANT_RIVERFLOW,
         digital_jpeg,
         print_jpeg,
         crop=crop,
         compliance=compliance,
         print_sheet=print_sheet,
         edit=edit,
-        primary_alias=True,
         mark_ready=mark_ready,
     )
 

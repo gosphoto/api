@@ -140,6 +140,7 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
     if paid and full == "ready":
         body["digital_url"] = f"/api/result/{result_id}/digital.jpg"
         body["print_url"] = f"/api/result/{result_id}/print.jpg"
+        # Legacy dual-variant orders only: new pays have no meta.variants.
         raw_variants = meta.get("variants")
         if isinstance(raw_variants, list):
             for v in raw_variants:
@@ -178,20 +179,6 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
                         f"/api/result/{result_id}/{prev_p}"
                     )
                 variants_out.append(entry)
-        if not variants_out:
-            # Legacy paid results without variants meta.
-            variants_out.append(
-                {
-                    "id": results_mod.VARIANT_RIVERFLOW,
-                    "label": results_mod.VARIANT_LABELS[
-                        results_mod.VARIANT_RIVERFLOW
-                    ],
-                    "digital_url": body["digital_url"],
-                    "print_url": body["print_url"],
-                    "preview_digital_url": body["preview_digital_url"],
-                    "preview_print_url": body["preview_print_url"],
-                }
-            )
     else:
         body["digital_url"] = None
         body["print_url"] = None
@@ -1289,8 +1276,6 @@ async def email_result(result_id: str, body: ResultEmailBody, request: Request):
     )
     if not digital or not print_jpeg:
         raise HTTPException(status_code=404, detail="Result not found")
-    digital_gemini = load_file(result_id, "digital_gemini.jpg")
-    print_gemini = load_file(result_id, "print_gemini.jpg")
     try:
         result_email_mod.check_rate_limit(_client_ip(request))
         email_n = result_email_mod.validate_email(body.email)
@@ -1299,8 +1284,6 @@ async def email_result(result_id: str, body: ResultEmailBody, request: Request):
             result_id=result_id,
             digital_jpeg=digital,
             print_jpeg=print_jpeg,
-            digital_gemini=digital_gemini,
-            print_gemini=print_gemini,
         )
         await asyncio.to_thread(result_email_mod.send_result_email, msg)
     except result_email_mod.FeedbackRateLimitError as e:

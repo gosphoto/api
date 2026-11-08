@@ -98,7 +98,7 @@ def test_build_result_email_has_two_attachments():
     assert "/result/" + ("a" * 32) in body
 
 
-def test_build_result_email_has_four_attachments_when_two_variants():
+def test_build_result_email_ignores_legacy_variant_kwargs():
     msg = result_email_mod.build_result_email(
         email="user@example.com",
         result_id="a" * 32,
@@ -108,15 +108,10 @@ def test_build_result_email_has_four_attachments_when_two_variants():
         print_gemini=b"\xff\xd8\xffp2",
     )
     names = [a.get_filename() for a in msg.iter_attachments()]
-    assert names == [
-        "gosphoto-v1-passport.jpg",
-        "gosphoto-v1-10x15.jpg",
-        "gosphoto-v2-passport.jpg",
-        "gosphoto-v2-10x15.jpg",
-    ]
+    assert names == ["gosphoto-passport.jpg", "gosphoto-10x15.jpg"]
     body = msg.get_body(preferencelist=("plain",)).get_content()
-    assert "Вариант 1" in body
-    assert "Вариант 2" in body
+    assert "Вариант 1" not in body
+    assert "Вариант 2" not in body
 
 
 def test_email_forbidden_until_paid(tmp_path, monkeypatch):
