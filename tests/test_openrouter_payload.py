@@ -58,6 +58,10 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "lighting (hard)" in g
     assert "passport" in g
     assert "harsh" in g or "one-sided" in g or "side light" in g or "rembrandt" in g
+    assert "неравномерно освещено" in GOSUSLUGI_EDIT_PROMPT
+    assert "under-eye" in g
+    assert "forbidden to keep input lighting" in g or "do not leave any face shadow" in g
+    assert "тень на лице" in GOSUSLUGI_EDIT_PROMPT
     assert "smile" in g
     assert "closed" in g and "lips" in g
     assert "corners" in g
