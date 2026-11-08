@@ -84,14 +84,16 @@ def run_edit_riverflow(
     out = composite_on_white(decoded)
     out = _uniform_max_side(out, config.MAX_IMAGE_SIDE)
     out = force_white_background(out, tol=48)
-    out, light_meta = flatten_face_lighting(out)
-    if light_meta.get("applied"):
-        out = force_white_background(out, tol=48)
-        log.info(
-            "Face light flatten applied before=%s after=%s",
-            light_meta.get("before"),
-            light_meta.get("after"),
-        )
+    light_meta: dict[str, Any] = {"applied": False, "reason": "disabled"}
+    if config.FACE_LIGHT_FLATTEN_ENABLED:
+        out, light_meta = flatten_face_lighting(out)
+        if light_meta.get("applied"):
+            out = force_white_background(out, tol=48)
+            log.info(
+                "Face light flatten applied before=%s after=%s",
+                light_meta.get("before"),
+                light_meta.get("after"),
+            )
 
     bg_mode = config.RIVERFLOW_BG_MODE or "solid"
     cutout = "riverflow" if "riverflow" in use_model.lower() else "openrouter_edit"
