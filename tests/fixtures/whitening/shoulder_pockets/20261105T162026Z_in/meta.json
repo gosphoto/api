@@ -1,0 +1,201 @@
+{
+  "saved_at": "20261105T162026Z",
+  "original_filename": "in.jpg",
+  "in": "in.jpg",
+  "out": "out.jpg",
+  "in_bytes": 242959,
+  "out_bytes": 14710,
+  "doc_type": "zagran",
+  "doc_label": "Загранпаспорт",
+  "gate": {
+    "blur": 370.28,
+    "width": 826,
+    "height": 1062,
+    "face_count": 1,
+    "yaw": -0.25,
+    "pitch": 0.76,
+    "roll": 7.35,
+    "face_height_frac": 0.489,
+    "rotation_deg": 0,
+    "upright_yaw": -0.25,
+    "upright_pitch": 0.76,
+    "upright_roll": 7.35,
+    "upright_blur": 370.28,
+    "chin_below_forehead": true,
+    "face_center_y": 0.577
+  },
+  "torso": {
+    "ok": false,
+    "reason": "upsell_disabled"
+  },
+  "torso_ok": false,
+  "readiness": {
+    "ready": true,
+    "reason": "studio_ready",
+    "reasons": [],
+    "scores": {
+      "corner_white_ok": true,
+      "corner_bgr": [
+        253.0,
+        253.9,
+        254.1
+      ],
+      "subject_area_frac": 0.688,
+      "border_white_frac": 0.993,
+      "border_luma_mean": 253.4,
+      "border_bg_pix": 123882,
+      "border_ok": true,
+      "border_sparse": false,
+      "bg_luma_std": 2.65,
+      "bg_chroma_mean": 0.25,
+      "bg_uniform_ok": true
+    },
+    "source": "cpu_studio"
+  },
+  "edit": {
+    "model": "google/gemini-2.5-flash-image",
+    "cutout": "openrouter_edit",
+    "edit_route": {
+      "model": "google/gemini-2.5-flash-image",
+      "reason": "explicit"
+    },
+    "background_mode": "solid",
+    "background_hex_color": "#FFFFFF",
+    "image_size": "1K",
+    "reasoning": null,
+    "face_protected": false,
+    "passes": 1,
+    "prompt": "gosuslugi_riverflow",
+    "src_size": [
+      826,
+      1062
+    ],
+    "kept_model_aspect": true,
+    "width": 864,
+    "height": 1184,
+    "preview": true
+  },
+  "crop": {
+    "roll_corrected_deg": -0.29,
+    "width": 497,
+    "height": 638,
+    "face_ratio_target": 0.75,
+    "crown_factor": 0.433,
+    "top_margin_target": 0.1,
+    "face_ratio_est": 0.75,
+    "width_corr": 1.0,
+    "src_aspect": 0.7297,
+    "attempt_score": 1000.0,
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.881,
+      "gap_ratio": 0.433,
+      "crown_factor": 0.433,
+      "source": "silhouette"
+    },
+    "dpi": 360,
+    "post_crop_cleanup": {
+      "applied": false,
+      "model": "google/gemini-2.5-flash-image",
+      "reason": "disabled"
+    },
+    "face_size_experiment": 1.0,
+    "face_ratio_aim": 0.75
+  },
+  "compliance": {
+    "width": 497,
+    "height": 638,
+    "dpi_target": 360,
+    "face_ratio": 0.747,
+    "top_margin": 0.103,
+    "head_height_mm": 33.6,
+    "head_width_mm": 20.3,
+    "bg": {
+      "bgr": [
+        255.0,
+        255.0,
+        255.0
+      ],
+      "white_ok": true
+    },
+    "checks": {
+      "size_ok": true,
+      "face_oval_ok": true,
+      "head_height_mm_ok": true,
+      "head_width_mm_ok": true,
+      "top_margin_ok": true,
+      "bg_white_ok": true,
+      "single_face_ok": true,
+      "face_ratio_ok": true
+    },
+    "pass": true,
+    "source": "rg.ru/2011/08/22/pasport-dok.html §34.3",
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.871,
+      "gap_ratio": 0.43,
+      "crown_factor": 0.43,
+      "source": "silhouette"
+    }
+  },
+  "print_sheet": {
+    "width": 1181,
+    "height": 1772,
+    "dpi": 300,
+    "copies": 4,
+    "bytes": 143512,
+    "size_cm": [
+      10,
+      15
+    ],
+    "mime": "image/jpeg",
+    "layout": "2x2"
+  },
+  "resume": null,
+  "resume_error": null,
+  "pipeline": [
+    "gate",
+    "preview",
+    "crop",
+    "print_10x15"
+  ],
+  "width": 497,
+  "height": 638,
+  "dpi": 360,
+  "mime": "image/jpeg",
+  "archive_files": {
+    "edit_gemini.jpg": {
+      "bytes": 150892,
+      "saved_at": "20261105T162026Z"
+    },
+    "out_gemini.jpg": {
+      "bytes": 14710,
+      "saved_at": "20261105T162026Z"
+    },
+    "edit_riverflow.jpg": {
+      "bytes": 142761,
+      "model": "sourceful/riverflow-v2.5-pro",
+      "saved_at": "20261105T162321Z"
+    },
+    "out_riverflow.jpg": {
+      "bytes": 56326,
+      "model": "sourceful/riverflow-v2.5-pro",
+      "saved_at": "20261105T162321Z"
+    }
+  },
+  "edit_gemini": "edit_gemini.jpg",
+  "out_gemini": "out_gemini.jpg",
+  "pre_crop_edits": {
+    "edit_gemini.jpg": {
+      "bytes": 150892,
+      "saved_at": "20261105T162026Z"
+    },
+    "edit_riverflow.jpg": {
+      "bytes": 142761,
+      "model": "sourceful/riverflow-v2.5-pro",
+      "saved_at": "20261105T162321Z"
+    }
+  },
+  "edit_riverflow": "edit_riverflow.jpg",
+  "out_riverflow": "out_riverflow.jpg"
+}

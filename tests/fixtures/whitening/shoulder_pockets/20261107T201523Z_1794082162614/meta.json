@@ -1,0 +1,188 @@
+{
+  "saved_at": "20261107T201523Z",
+  "original_filename": "1794082162614.jpg",
+  "in": "in.jpg",
+  "out": "out.jpg",
+  "in_bytes": 45186,
+  "out_bytes": 12168,
+  "doc_type": "zagran",
+  "doc_label": "Загранпаспорт",
+  "gate": {
+    "blur": 58.44,
+    "width": 768,
+    "height": 1020,
+    "face_count": 1,
+    "yaw": -4.45,
+    "pitch": -1.6,
+    "roll": -5.11,
+    "face_height_frac": 0.261,
+    "rotation_deg": 0,
+    "upright_yaw": -4.45,
+    "upright_pitch": -1.6,
+    "upright_roll": -5.11,
+    "upright_blur": 58.44,
+    "chin_below_forehead": true,
+    "face_center_y": 0.413
+  },
+  "torso": {
+    "ok": false,
+    "reason": "upsell_disabled"
+  },
+  "torso_ok": false,
+  "readiness": {
+    "ready": false,
+    "reason": "bg_not_white",
+    "reasons": [
+      "bg_not_white",
+      "border_not_white",
+      "subject_too_large"
+    ],
+    "scores": {
+      "corner_white_ok": false,
+      "corner_bgr": [
+        198.7,
+        201.7,
+        199.7
+      ],
+      "subject_area_frac": 0.998,
+      "border_white_frac": 0.0,
+      "border_luma_mean": 217.4,
+      "border_bg_pix": 1651,
+      "border_ok": false,
+      "border_sparse": false,
+      "bg_luma_std": 0.51,
+      "bg_chroma_mean": 3.62,
+      "bg_uniform_ok": true
+    },
+    "source": "cpu_studio"
+  },
+  "edit": {
+    "model": "google/gemini-2.5-flash-image",
+    "cutout": "openrouter_edit",
+    "edit_route": {
+      "model": "google/gemini-2.5-flash-image",
+      "reason": "explicit"
+    },
+    "background_mode": "solid",
+    "background_hex_color": "#FFFFFF",
+    "image_size": "1K",
+    "reasoning": null,
+    "face_protected": false,
+    "passes": 1,
+    "prompt": "gosuslugi_riverflow",
+    "src_size": [
+      768,
+      1020
+    ],
+    "kept_model_aspect": true,
+    "width": 864,
+    "height": 1184,
+    "preview": true
+  },
+  "crop": {
+    "roll_corrected_deg": -0.3,
+    "width": 497,
+    "height": 638,
+    "face_ratio_target": 0.75,
+    "crown_factor": 0.379,
+    "top_margin_target": 0.1,
+    "face_ratio_est": 0.75,
+    "width_corr": 1.0,
+    "src_aspect": 0.7297,
+    "attempt_score": 1000.0,
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.664,
+      "gap_ratio": 0.379,
+      "crown_factor": 0.379,
+      "source": "silhouette"
+    },
+    "dpi": 360,
+    "post_crop_cleanup": {
+      "applied": false,
+      "model": "google/gemini-2.5-flash-image",
+      "reason": "disabled"
+    },
+    "face_size_experiment": 1.0,
+    "face_ratio_aim": 0.75
+  },
+  "compliance": {
+    "width": 497,
+    "height": 638,
+    "dpi_target": 360,
+    "face_ratio": 0.741,
+    "top_margin": 0.097,
+    "head_height_mm": 33.3,
+    "head_width_mm": 23.4,
+    "bg": {
+      "bgr": [
+        255.0,
+        255.0,
+        255.0
+      ],
+      "white_ok": true
+    },
+    "checks": {
+      "size_ok": true,
+      "face_oval_ok": true,
+      "head_height_mm_ok": true,
+      "head_width_mm_ok": true,
+      "top_margin_ok": true,
+      "bg_white_ok": true,
+      "single_face_ok": true,
+      "face_ratio_ok": true
+    },
+    "pass": true,
+    "source": "rg.ru/2011/08/22/pasport-dok.html §34.3",
+    "baldness": {
+      "is_bald": false,
+      "confidence": 0.811,
+      "gap_ratio": 0.415,
+      "crown_factor": 0.415,
+      "source": "silhouette"
+    }
+  },
+  "print_sheet": {
+    "width": 1181,
+    "height": 1772,
+    "dpi": 300,
+    "copies": 4,
+    "bytes": 116565,
+    "size_cm": [
+      10,
+      15
+    ],
+    "mime": "image/jpeg",
+    "layout": "2x2"
+  },
+  "resume": null,
+  "resume_error": null,
+  "pipeline": [
+    "gate",
+    "preview",
+    "crop",
+    "print_10x15"
+  ],
+  "width": 497,
+  "height": 638,
+  "dpi": 360,
+  "mime": "image/jpeg",
+  "archive_files": {
+    "edit_gemini.jpg": {
+      "bytes": 76945,
+      "saved_at": "20261107T201523Z"
+    },
+    "out_gemini.jpg": {
+      "bytes": 12168,
+      "saved_at": "20261107T201523Z"
+    }
+  },
+  "edit_gemini": "edit_gemini.jpg",
+  "out_gemini": "out_gemini.jpg",
+  "pre_crop_edits": {
+    "edit_gemini.jpg": {
+      "bytes": 76945,
+      "saved_at": "20261107T201523Z"
+    }
+  }
+}

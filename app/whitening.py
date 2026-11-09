@@ -417,6 +417,95 @@ def _hair_edge_soften_enabled() -> bool:
     )
 
 
+def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
+    """Enclosed mid-gray studio crumbs between hair and shoulders.
+
+    Gemini often leaves the original wall in hair↔jacket caves. Those pixels sit
+    under the fat subject mask, so the top-seeded studio plate never reaches
+    them. Bleach only lateral low-chroma blobs that touch the white plate.
+    """
+    h, w = bgr.shape[:2]
+    if min(h, w) < 32:
+        return np.zeros((h, w), dtype=bool)
+
+    geom = _face_geom(bgr)
+    if geom is None:
+        return np.zeros((h, w), dtype=bool)
+    chin_y, crown_y, cx, face_w = geom
+
+    luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    f = bgr.astype(np.float32)
+    chroma = np.linalg.norm(f - f.mean(axis=2, keepdims=True), axis=2)
+
+    y0 = int(crown_y + 0.40 * (chin_y - crown_y))
+    y1 = min(h, chin_y + int(face_w * 1.45))
+    band = np.zeros((h, w), dtype=bool)
+    band[y0:y1, :] = True
+
+    yy, xx = np.ogrid[:h, :w]
+    face = (
+        (xx - cx) ** 2 / max(face_w * 0.70, 1.0) ** 2
+        + (yy - (crown_y + chin_y) / 2.0) ** 2
+        / max((chin_y - crown_y) * 0.72, 1.0) ** 2
+    ) <= 1.0
+
+    cand = (
+        band
+        & (~face)
+        & (luma >= 155.0)
+        & (luma <= 246.0)
+        & (chroma < 30.0)
+    )
+    # Close hair-strand gaps so one cave becomes one component.
+    closed = cv2.morphologyEx(
+        cand.astype(np.uint8) * 255,
+        cv2.MORPH_CLOSE,
+        np.ones((5, 5), np.uint8),
+    )
+    near_white = (
+        cv2.dilate((luma >= 248.0).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
+    )
+
+    num, labels, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
+    keep = np.zeros((h, w), dtype=bool)
+    for i in range(1, num):
+        area = int(stats[i, cv2.CC_STAT_AREA])
+        if area < 50 or area > 25000:
+            continue
+        m = labels == i
+        if not bool(near_white[m].any()):
+            continue
+        if float(chroma[m].mean()) > 24.0:
+            continue
+        xs = np.where(m)[1]
+        if xs.size == 0:
+            continue
+        if abs(float(np.median(xs)) - cx) < face_w * 0.38:
+            continue  # center shirt / neck island
+        keep |= m
+
+    keep &= cand
+    grow = cv2.dilate(keep.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    grow &= (
+        band
+        & (~face)
+        & (luma >= 150.0)
+        & (luma <= 248.0)
+        & (chroma < 32.0)
+    )
+    return grow
+
+
+def _bleach_shoulder_hair_pockets(bgr: np.ndarray) -> np.ndarray:
+    """Paint hair↔shoulder studio pockets to #FFFFFF. No-op when none fire."""
+    mask = _shoulder_hair_pocket_mask(bgr)
+    if not bool(mask.any()):
+        return bgr
+    out = bgr.copy()
+    out[mask] = 255
+    return out
+
+
 def force_white_background(
     bgr: np.ndarray,
     tol: int = 52,
@@ -484,6 +573,14 @@ def force_white_background(
     cleaned[hard] = bgr[hard]
     cleaned = _bleach_corner_chips(cleaned, np.where(hard, 255, 0).astype(np.uint8))
     cleaned[hard] = bgr[hard]
+    # After hard restore: kill enclosed hair↔shoulder gray Gemini leaves behind.
+    # Mask on the *source* (pre-whiten): hard restore puts those wall crumbs
+    # back; bleaching only on `cleaned` would miss pockets that the plate
+    # already partially ate or reshaped.
+    src_pocket = _shoulder_hair_pocket_mask(bgr)
+    if bool(src_pocket.any()):
+        cleaned[src_pocket] = 255
+    cleaned = _bleach_shoulder_hair_pockets(cleaned)
     # Defer both soft passes until after the optional post-crop model cleanup.
     if soften:
         cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)

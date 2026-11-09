@@ -1,0 +1,194 @@
+[
+  {
+    "pair": "20261108T150220Z_IMG_5554",
+    "mask_px": 20639,
+    "path": "/app/pairs/20261108T150220Z_IMG_5554/edit_gemini.jpg",
+    "result_id": "efffa92ac494f2acec73fe07818c0907",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/efffa92ac494f2acec73fe07818c0907"
+  },
+  {
+    "pair": "20261109T080456Z_IMG_4570",
+    "mask_px": 14857,
+    "path": "/app/pairs/20261109T080456Z_IMG_4570/edit_gemini.jpg",
+    "result_id": "b42283168f52aadd999ef936e6fcca00",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/b42283168f52aadd999ef936e6fcca00"
+  },
+  {
+    "pair": "20261109T075858Z_IMG_4572",
+    "mask_px": 9467,
+    "path": "/app/pairs/20261109T075858Z_IMG_4572/edit_gemini.jpg",
+    "result_id": "55214e0cdc5432562559c6c9d58c194f",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/55214e0cdc5432562559c6c9d58c194f"
+  },
+  {
+    "pair": "20261107T095404Z_selfie",
+    "mask_px": 7454,
+    "path": "/app/pairs/20261107T095404Z_selfie/edit_gemini.jpg",
+    "result_id": "2243bee26457faa0f4804ed0e3fc166e",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/2243bee26457faa0f4804ed0e3fc166e"
+  },
+  {
+    "pair": "20261109T070051Z_IMG_4564",
+    "mask_px": 6558,
+    "path": "/app/pairs/20261109T070051Z_IMG_4564/edit_gemini.jpg",
+    "result_id": "f3965beb999f8baaa028dcd859b61e63",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/f3965beb999f8baaa028dcd859b61e63"
+  },
+  {
+    "pair": "20261108T223719Z_IMG_20261109_011404_915",
+    "mask_px": 5762,
+    "path": "/app/pairs/20261108T223719Z_IMG_20261109_011404_915/edit_gemini.jpg",
+    "result_id": "3eb9dd6674492e8302ca201c77653d1a",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/3eb9dd6674492e8302ca201c77653d1a"
+  },
+  {
+    "pair": "20261104T093930Z_1000030817",
+    "mask_px": 5109,
+    "path": "/app/pairs/20261104T093930Z_1000030817/edit_gemini.jpg",
+    "result_id": "459df51181b388172914b1499c90a634",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/459df51181b388172914b1499c90a634"
+  },
+  {
+    "pair": "20261107T094926Z_selfie",
+    "mask_px": 4756,
+    "path": "/app/pairs/20261107T094926Z_selfie/edit_gemini.jpg",
+    "result_id": "07709125b9f00e09e2c33b8ab1d6a45f",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/07709125b9f00e09e2c33b8ab1d6a45f"
+  },
+  {
+    "pair": "20261105T091107Z_1000323483",
+    "mask_px": 4596,
+    "path": "/app/pairs/20261105T091107Z_1000323483/edit_gemini.jpg",
+    "result_id": "f1d647e47d98bcee129eb81665511783",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/f1d647e47d98bcee129eb81665511783"
+  },
+  {
+    "pair": "20261105T054253Z_261101212141",
+    "mask_px": 4585,
+    "path": "/app/pairs/20261105T054253Z_261101212141/edit_gemini.jpg",
+    "result_id": "a464066ff83c510fd3f641b09fc96b3d",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/a464066ff83c510fd3f641b09fc96b3d"
+  },
+  {
+    "pair": "20261107T095610Z_selfie",
+    "mask_px": 4557,
+    "path": "/app/pairs/20261107T095610Z_selfie/edit_gemini.jpg",
+    "result_id": "00776c476199185017e1748cb6233e46",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/00776c476199185017e1748cb6233e46"
+  },
+  {
+    "pair": "20261109T063156Z_IMG_20261109_110706",
+    "mask_px": 4479,
+    "path": "/app/pairs/20261109T063156Z_IMG_20261109_110706/edit_gemini.jpg",
+    "result_id": "dce17f84b2a3ec5f752fe777a6f5caca",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/dce17f84b2a3ec5f752fe777a6f5caca"
+  },
+  {
+    "pair": "20261107T095144Z_selfie",
+    "mask_px": 4463,
+    "path": "/app/pairs/20261107T095144Z_selfie/edit_gemini.jpg",
+    "result_id": "c9bb2b898b9e529ee8f069b600d7607f",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/c9bb2b898b9e529ee8f069b600d7607f"
+  },
+  {
+    "pair": "20261109T075339Z_in",
+    "mask_px": 4337,
+    "path": "/app/pairs/20261109T075339Z_in/edit_gemini.jpg",
+    "result_id": "fb21d341a8ba44e61e49da85404bdedf",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/fb21d341a8ba44e61e49da85404bdedf"
+  },
+  {
+    "pair": "20261106T135457Z_Untitled-6",
+    "mask_px": 4217,
+    "path": "/app/pairs/20261106T135457Z_Untitled-6/edit_gemini.jpg",
+    "result_id": "bf583c95f78737f67d3ce7105fc5e998",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/bf583c95f78737f67d3ce7105fc5e998"
+  },
+  {
+    "pair": "20261108T073946Z_2",
+    "mask_px": 4055,
+    "path": "/app/pairs/20261108T073946Z_2/edit_gemini.jpg",
+    "result_id": "834985861f2022ce647c3a6d97acb824",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/834985861f2022ce647c3a6d97acb824"
+  },
+  {
+    "pair": "20261107T202413Z_2",
+    "mask_px": 3942,
+    "path": "/app/pairs/20261107T202413Z_2/edit_gemini.jpg",
+    "result_id": "ead0a16e3faf686ff32786f636363b53",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/ead0a16e3faf686ff32786f636363b53"
+  },
+  {
+    "pair": "20261108T093355Z_photo_2026-11-08_12-33-16",
+    "mask_px": 3907,
+    "path": "/app/pairs/20261108T093355Z_photo_2026-11-08_12-33-16/edit_gemini.jpg",
+    "result_id": "7a79246d42b1bc7274d14fdf93385d23",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/7a79246d42b1bc7274d14fdf93385d23"
+  },
+  {
+    "pair": "20261105T061824Z_foto-na-dokumenty",
+    "mask_px": 3899,
+    "path": "/app/pairs/20261105T061824Z_foto-na-dokumenty/edit_gemini.jpg",
+    "result_id": "8f49a79cc7537d957a1a439d7302cf07",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/8f49a79cc7537d957a1a439d7302cf07"
+  },
+  {
+    "pair": "20261107T095322Z_selfie",
+    "mask_px": 3573,
+    "path": "/app/pairs/20261107T095322Z_selfie/edit_gemini.jpg",
+    "result_id": "bb6930ef7055cc81be942818b325995c",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/bb6930ef7055cc81be942818b325995c"
+  },
+  {
+    "pair": "20261109T104750Z_cand_e",
+    "mask_px": 3209,
+    "path": "/app/pairs/20261109T104750Z_cand_e/edit_gemini.jpg",
+    "result_id": "6eec2c559fa52c6fde6551d1f7e44424",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/6eec2c559fa52c6fde6551d1f7e44424"
+  },
+  {
+    "pair": "20261105T044333Z_1000629507",
+    "mask_px": 3178,
+    "path": "/app/pairs/20261105T044333Z_1000629507/edit_gemini.jpg",
+    "result_id": "285a62b9d2506971951186b25c5011a3",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/285a62b9d2506971951186b25c5011a3"
+  },
+  {
+    "pair": "20261105T162026Z_in",
+    "mask_px": 3167,
+    "path": "/app/pairs/20261105T162026Z_in/edit_gemini.jpg",
+    "result_id": "74b7b2f4ec393cb0c23dc3b9869bf2dc",
+    "paid": true,
+    "result_url": "https://gosphoto.ru/result/74b7b2f4ec393cb0c23dc3b9869bf2dc"
+  },
+  {
+    "pair": "20261107T201523Z_1794082162614",
+    "mask_px": 3104,
+    "path": "/app/pairs/20261107T201523Z_1794082162614/edit_gemini.jpg",
+    "result_id": "3d1f812b3bc22f38f1c44c91cf4f9dbf",
+    "paid": false,
+    "result_url": "https://gosphoto.ru/result/3d1f812b3bc22f38f1c44c91cf4f9dbf"
+  }
+]
