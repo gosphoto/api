@@ -26,6 +26,12 @@ FIX = (
     / "whitening"
     / "shoulder_hair_gray_pocket.jpg"
 )
+NECK_WARM = (
+    Path(__file__).resolve().parent
+    / "fixtures"
+    / "whitening"
+    / "neck_warm_wall_pocket.jpg"
+)
 CROP = Path(__file__).resolve().parent / "fixtures" / "crop_regression"
 CORPUS = Path(__file__).resolve().parent / "fixtures" / "whitening" / "shoulder_pockets"
 MANIFEST = CORPUS / "MANIFEST.json"
@@ -126,6 +132,39 @@ def test_does_not_bleach_high_hair_girl_locks():
     after = float(cv2.cvtColor(out[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY).mean())
     assert before < 200
     assert after < before + 25, f"hair locks bleached: before={before:.1f} after={after:.1f}"
+
+
+def _side_neck_gray_count(bgr: np.ndarray, side: str) -> int:
+    h, w = bgr.shape[:2]
+    y0, y1 = int(0.35 * h), int(0.65 * h)
+    if side == "L":
+        x0, x1 = int(0.15 * w), int(0.35 * w)
+    else:
+        x0, x1 = int(0.65 * w), int(0.85 * w)
+    roi = bgr[y0:y1, x0:x1].astype(np.float32)
+    luma = cv2.cvtColor(bgr[y0:y1, x0:x1], cv2.COLOR_BGR2GRAY).astype(np.float32)
+    chroma = np.linalg.norm(roi - roi.mean(axis=2, keepdims=True), axis=2)
+    return int(((luma >= 160) & (luma <= 245) & (chroma < 28)).sum())
+
+
+def test_neck_warm_wall_strip_bleaches():
+    """Warm-tinted gray strip beside the neck (not neutral) must go to white."""
+    bgr = cv2.imread(str(NECK_WARM))
+    assert bgr is not None
+    before_l = _side_neck_gray_count(bgr, "L")
+    before_r = _side_neck_gray_count(bgr, "R")
+    assert before_l > 2000 and before_r > 2000, (
+        f"fixture lost neck wall: L={before_l} R={before_r}"
+    )
+    mask = _wall_mask(bgr)
+    color = _wall_color(bgr, mask)
+    _assert_wall_color_is_gray_studio(color)
+    out = force_white_background(bgr, tol=48)
+    after_l = _side_neck_gray_count(out, "L")
+    after_r = _side_neck_gray_count(out, "R")
+    assert after_l < 400, f"left neck wall remains: {before_l} -> {after_l}"
+    assert after_r < 500, f"right neck wall remains: {before_r} -> {after_r}"
+    _assert_former_wall_is_white(out, mask)
 
 
 @pytest.mark.parametrize("pair", _corpus_pairs())

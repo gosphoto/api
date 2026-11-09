@@ -1,5 +1,14 @@
 [
   {
+    "pair": "neck_warm_wall_screenshot",
+    "mask_px": 12919,
+    "path": "tests/fixtures/whitening/shoulder_pockets/neck_warm_wall_screenshot/edit_gemini.jpg",
+    "result_id": "1000323483-screenshot",
+    "paid": null,
+    "result_url": "https://gosphoto.ru/result/f1d647e47d98bcee129eb81665511783",
+    "note": "warm-tinted gray strip beside neck; user miss screenshot"
+  },
+  {
     "pair": "20261108T150220Z_IMG_5554",
     "mask_px": 20639,
     "path": "/app/pairs/20261108T150220Z_IMG_5554/edit_gemini.jpg",

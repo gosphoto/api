@@ -420,9 +420,10 @@ def _hair_edge_soften_enabled() -> bool:
 def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
     """Enclosed mid-gray studio crumbs between hair and shoulders.
 
-    Gemini often leaves the original wall in hair↔jacket caves. Those pixels sit
-    under the fat subject mask, so the top-seeded studio plate never reaches
-    them. Bleach only lateral low-chroma blobs that touch the white plate.
+    Gemini often leaves the original wall in hair↔jacket caves — including a
+    warm-tinted gray strip beside the neck that a fat face ellipse used to
+    swallow. Bleach lateral flat crumbs that touch #FFFFFF; refuse only deep
+    textured blonde locks far from the white plate.
     """
     h, w = bgr.shape[:2]
     if min(h, w) < 32:
@@ -433,66 +434,94 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
         return np.zeros((h, w), dtype=bool)
     chin_y, crown_y, cx, face_w = geom
 
-    luma = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    f = bgr.astype(np.float32)
-    chroma = np.linalg.norm(f - f.mean(axis=2, keepdims=True), axis=2)
+    b_ch, g_ch, r_ch = (c.astype(np.float32) for c in cv2.split(bgr))
+    luma = (b_ch + g_ch + r_ch) / 3.0
+    chroma = np.maximum(np.maximum(b_ch, g_ch), r_ch) - np.minimum(
+        np.minimum(b_ch, g_ch), r_ch
+    )
+    blur = cv2.GaussianBlur(luma, (5, 5), 0)
+    local_std = np.sqrt(np.maximum(cv2.blur((luma - blur) ** 2, (5, 5)), 0.0))
 
-    y0 = int(crown_y + 0.40 * (chin_y - crown_y))
-    y1 = min(h, chin_y + int(face_w * 1.45))
+    y0 = int(crown_y + 0.08 * (chin_y - crown_y))
+    y1 = min(h, chin_y + int(face_w * 1.55))
     band = np.zeros((h, w), dtype=bool)
     band[y0:y1, :] = True
 
     yy, xx = np.ogrid[:h, :w]
+    # Tight face oval — neck-side wall must stay outside.
     face = (
-        (xx - cx) ** 2 / max(face_w * 0.70, 1.0) ** 2
+        (xx - cx) ** 2 / max(face_w * 0.48, 1.0) ** 2
         + (yy - (crown_y + chin_y) / 2.0) ** 2
-        / max((chin_y - crown_y) * 0.72, 1.0) ** 2
+        / max((chin_y - crown_y) * 0.58, 1.0) ** 2
     ) <= 1.0
 
-    cand = (
+    hair = _head_hair_region(
+        chin_y=chin_y, crown_y=crown_y, cx=cx, face_w=face_w, h=h, w=w
+    )
+    white = luma >= 248.0
+    dist = cv2.distanceTransform((~white).astype(np.uint8), cv2.DIST_L2, 5)
+    warm_deep = (
+        hair
+        & (r_ch > b_ch + 14)
+        & (chroma > 18)
+        & (luma >= 145.0)
+        & (luma <= 230.0)
+        & (dist > 16)
+        & (local_std > 10)
+    )
+    near_white = cv2.dilate(white.astype(np.uint8), np.ones((19, 19), np.uint8)) > 0
+
+    wall = (
         band
         & (~face)
-        & (luma >= 155.0)
+        & (~warm_deep)
+        & (luma >= 140.0)
         & (luma <= 246.0)
-        & (chroma < 30.0)
+        & (chroma < 38.0)
     )
-    # Close hair-strand gaps so one cave becomes one component.
-    closed = cv2.morphologyEx(
-        cand.astype(np.uint8) * 255,
-        cv2.MORPH_CLOSE,
-        np.ones((5, 5), np.uint8),
+    # Warm-tinted gray strip beside the neck (live miss 1000323483 / screenshot).
+    neck_y0 = int(crown_y + 0.45 * (chin_y - crown_y))
+    neck = (
+        (yy >= neck_y0)
+        & (yy <= chin_y + int(face_w * 0.85))
+        & (~face)
+        & (np.abs(xx - cx) > face_w * 0.32)
+        & (luma >= 155.0)
+        & (luma <= 238.0)
+        & (chroma < 45.0)
+        & near_white
+        & (local_std <= 20.0)
     )
-    near_white = (
-        cv2.dilate((luma >= 248.0).astype(np.uint8), np.ones((9, 9), np.uint8)) > 0
-    )
+    wall = wall | neck
 
+    closed = cv2.morphologyEx(
+        wall.astype(np.uint8) * 255,
+        cv2.MORPH_CLOSE,
+        np.ones((11, 11), np.uint8),
+    )
     num, labels, stats, _ = cv2.connectedComponentsWithStats(closed, connectivity=8)
     keep = np.zeros((h, w), dtype=bool)
     for i in range(1, num):
         area = int(stats[i, cv2.CC_STAT_AREA])
-        if area < 50 or area > 25000:
+        if area < 15 or area > 100000:
             continue
         m = labels == i
         if not bool(near_white[m].any()):
             continue
-        if float(chroma[m].mean()) > 24.0:
+        if float(chroma[m].mean()) > 36.0:
             continue
         xs = np.where(m)[1]
         if xs.size == 0:
             continue
-        if abs(float(np.median(xs)) - cx) < face_w * 0.38:
-            continue  # center shirt / neck island
+        if abs(float(np.median(xs)) - cx) < face_w * 0.20:
+            continue
         keep |= m
 
-    keep &= cand
-    grow = cv2.dilate(keep.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
-    grow &= (
-        band
-        & (~face)
-        & (luma >= 150.0)
-        & (luma <= 248.0)
-        & (chroma < 32.0)
-    )
+    keep &= wall
+    grow = keep.copy()
+    for _ in range(6):
+        dil = cv2.dilate(grow.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
+        grow |= dil & wall
     return grow
 
 
