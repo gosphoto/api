@@ -105,6 +105,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "toy" in g or "foreign object" in g
     assert "mole" in g or "freckle" in g
     assert "invent" in g
+    assert "close focus" in g or "close-range" in g
+    assert "one meter" in g or "1 m" in g or "under ~1" in g
+    assert "perspective" in g
     lower = EDIT_PROMPT.lower()
     assert "underexposed" in lower or "dark" in lower
     assert "beauty" in lower

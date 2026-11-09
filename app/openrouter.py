@@ -99,6 +99,16 @@ GOSUSLUGI_EDIT_PROMPT = (
     "output must match — zero invented spots. "
     "CRITICAL: preserve exact face identity, age, hair style/color, "
     "eye color, facial proportions from the input. "
+    "CLOSE FOCUS / DISTANCE <1m (CONDITIONAL — test): "
+    "If the selfie looks shot from under about one meter (phone very close to "
+    "the face — enlarged nose/forehead, recessed ears, wide-angle/barrel "
+    "perspective, shallow DOF with soft ears/shoulders): MUST correct that "
+    "close-range perspective to a normal passport distance look "
+    "(~1–1.5 m / arms-length). Undo close-lens distortion: restore natural "
+    "nose–ear–jaw balance and an orthographic document-photo face. "
+    "Keep the same person and identity — only fix the close-focus geometry. "
+    "If the input already looks arms-length with no close-up distortion: "
+    "do nothing on perspective. "
     "Gosuslugi / RF passport rules: face must match the person's age; face fully "
     "open — hair must NOT cover or touch eyes, brows, forehead, cheekbones, or "
     "the face oval. "
@@ -216,7 +226,9 @@ GOSUSLUGI_SCORING_PROMPT = (
     "visible under frames; no hats/uniforms (keep religious cover + clothing "
     "if face oval open); "
     "alone in frame, no toys/objects; keep pores/texture — no blemish "
-    "retouch, plastic skin, or heavy beauty filter."
+    "retouch, plastic skin, or heavy beauty filter; "
+    "if shot from under ~1 m (close focus / enlarged nose, recessed ears): "
+    "correct perspective to arms-length passport look without changing identity."
 )
 
 GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
