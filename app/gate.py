@@ -316,10 +316,8 @@ def validate_image(data: bytes) -> GateResult:
         "face_count": face_count,
     }
 
-    # no_face hard-reject disabled: MediaPipe often misses clear faces on
-    # full-body / distant portraits; let edit+crop proceed.
     if face_count == 0:
-        return GateResult(True, None, _MESSAGES["ok"], 0, metrics)
+        return GateResult(False, "no_face", _MESSAGES["no_face"], 0, metrics)
     if face_count > 1:
         return GateResult(
             False, "multiple_faces", _MESSAGES["multiple_faces"], face_count, metrics
