@@ -38,7 +38,7 @@ MANIFEST = CORPUS / "MANIFEST.json"
 
 _WALL_LUMA_MIN = 155.0
 _WALL_LUMA_MAX = 246.0
-_WALL_CHROMA_MAX = 32.0
+_WALL_CHROMA_MAX = 40.0  # warm-tinted neck wall (not only neutral gray)
 _MASK_MIN_PX = 800
 _AFTER_WHITE_MIN = 245
 
@@ -165,6 +165,22 @@ def test_neck_warm_wall_strip_bleaches():
     assert after_l < 400, f"left neck wall remains: {before_l} -> {after_l}"
     assert after_r < 500, f"right neck wall remains: {before_r} -> {after_r}"
     _assert_former_wall_is_white(out, mask)
+
+
+def test_pocket_mask_drops_sub_diameter_filaments():
+    """Open must remove hair-gap filaments; fat pocket core must survive."""
+    bgr = cv2.imread(str(NECK_WARM))
+    assert bgr is not None
+    mask = _wall_mask(bgr)
+    assert int(mask.sum()) > 5000
+    # Surviving mask must have a real inscribed radius (not only 1px snakes).
+    radius = float(
+        cv2.distanceTransform(mask.astype(np.uint8), cv2.DIST_L2, 5).max()
+    )
+    assert radius >= 5.0, f"pocket core missing after diameter open: r={radius:.2f}"
+    # Erode by 3×3 — if only filaments remained, this would wipe the mask.
+    eroded = cv2.erode(mask.astype(np.uint8), np.ones((3, 3), np.uint8))
+    assert int(eroded.sum()) > 2000, "mask is filament-only after diameter limit"
 
 
 @pytest.mark.parametrize("pair", _corpus_pairs())

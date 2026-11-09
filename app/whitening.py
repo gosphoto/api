@@ -424,6 +424,10 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
     warm-tinted gray strip beside the neck that a fat face ellipse used to
     swallow. Bleach lateral flat crumbs that touch #FFFFFF; refuse only deep
     textured blonde locks far from the white plate.
+
+    Cavity width is limited with morphological opening (no grow-into-wall):
+    thin filaments between strands are dropped so bleach does not punch holes
+    in the hair silhouette.
     """
     h, w = bgr.shape[:2]
     if min(h, w) < 32:
@@ -518,11 +522,23 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
         keep |= m
 
     keep &= wall
-    grow = keep.copy()
-    for _ in range(6):
-        dil = cv2.dilate(grow.astype(np.uint8), np.ones((5, 5), np.uint8)) > 0
-        grow |= dil & wall
-    return grow
+    if not bool(keep.any()):
+        return keep
+    # Do NOT grow into `wall` — that crawls between hair strands and punches
+    # holes in the silhouette. Limit cavity diameter with morphological open:
+    # filaments thinner than open_px are dropped; fat neck/shoulder pockets stay.
+    # Adaptive: fat pockets (inscribed radius ≥ 8) use 5px; thin real wall strips
+    # keep a milder 3px open so they still bleach.
+    pocket_r = float(
+        cv2.distanceTransform(keep.astype(np.uint8), cv2.DIST_L2, 5).max()
+    )
+    open_px = (5 if pocket_r >= 8.0 else 3) | 1
+    opened = cv2.morphologyEx(
+        keep.astype(np.uint8) * 255,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_px, open_px)),
+    )
+    return opened > 0
 
 
 def _bleach_shoulder_hair_pockets(bgr: np.ndarray) -> np.ndarray:
