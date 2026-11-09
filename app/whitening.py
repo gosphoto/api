@@ -541,14 +541,78 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
     return opened > 0
 
 
-def _bleach_shoulder_hair_pockets(bgr: np.ndarray) -> np.ndarray:
-    """Paint hair↔shoulder studio pockets to #FFFFFF. No-op when none fire."""
-    mask = _shoulder_hair_pocket_mask(bgr)
+def _bleach_mask_soft(
+    bgr: np.ndarray,
+    mask: np.ndarray,
+    *,
+    sigma: float | None = None,
+) -> np.ndarray:
+    """Paint pocket white with a soft ramp into leftover light studio gray.
+
+    Feather only into already-light wall-like pixels (never into dark hair —
+    that created mid-gray halos). Then anti-alias the white seam so the cut
+    is not stair-stepped; restore solid white on the original mask after.
+    """
     if not bool(mask.any()):
         return bgr
+    h, w = bgr.shape[:2]
+    m = float(min(h, w))
+    if sigma is None:
+        sigma = max(2.8, 0.0055 * m)
+    core_u8 = (mask.astype(np.uint8)) * 255
+    b_ch, g_ch, r_ch = (c.astype(np.float32) for c in cv2.split(bgr))
+    luma = (b_ch + g_ch + r_ch) / 3.0
+    chroma = np.maximum(np.maximum(b_ch, g_ch), r_ch) - np.minimum(
+        np.minimum(b_ch, g_ch), r_ch
+    )
+    light_wall = (luma >= 155.0) & (luma <= 250.0) & (chroma < 42.0)
+
+    dist = cv2.distanceTransform(core_u8, cv2.DIST_L2, 5)
+    solid = dist >= 1.5
     out = bgr.copy()
-    out[mask] = 255
+    out[solid] = 255
+    # Soft ramp for the mask rim + a halo into leftover light studio gray.
+    rim = cv2.dilate(core_u8, np.ones((5, 5), np.uint8), iterations=2)
+    field = cv2.GaussianBlur(rim, (0, 0), sigmaX=float(sigma)).astype(np.float32) / 255.0
+    # Near-full on every mask pixel so wall clears; solid core stays pure white.
+    alpha = np.maximum(field, mask.astype(np.float32) * 0.96)
+    alpha = np.maximum(alpha, solid.astype(np.float32))
+    paint = (~solid) & light_wall & (alpha > 0.04)
+    if bool(paint.any()) or bool((mask & ~solid).any()):
+        src = bgr.astype(np.float32)
+        blended = src * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
+        use = (mask & ~solid) | paint
+        out = np.where(use[:, :, None], blended, out.astype(np.float32))
+        out = np.clip(out, 0, 255).astype(np.uint8)
+    # Anti-alias stair-steps along the bright seam; keep solid core pure.
+    grad = cv2.morphologyEx(
+        core_u8,
+        cv2.MORPH_GRADIENT,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+    )
+    seam = cv2.GaussianBlur(
+        grad, (0, 0), sigmaX=max(2.0, 0.0045 * m)
+    ).astype(np.float32) / 255.0
+    out_luma = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY).astype(np.float32)
+    mix = (seam > 0.04) & (out_luma >= 190.0) & (~solid)
+    if bool(mix.any()):
+        blurred = cv2.GaussianBlur(out, (0, 0), sigmaX=max(2.4, 0.005 * m))
+        s = np.clip(seam * 0.8, 0.0, 1.0)[:, :, None]
+        mixed = out.astype(np.float32) * (1.0 - s) + blurred.astype(np.float32) * s
+        out = np.where(mix[:, :, None], mixed, out.astype(np.float32))
+        out = np.clip(out, 0, 255).astype(np.uint8)
+    out[solid] = 255
     return out
+
+
+def _bleach_shoulder_hair_pockets(
+    bgr: np.ndarray,
+    mask: np.ndarray | None = None,
+) -> np.ndarray:
+    """Feather studio pockets to #FFFFFF. No-op when none fire."""
+    if mask is None:
+        mask = _shoulder_hair_pocket_mask(bgr)
+    return _bleach_mask_soft(bgr, mask)
 
 
 def force_white_background(
@@ -621,11 +685,16 @@ def force_white_background(
     # After hard restore: kill enclosed hair↔shoulder gray Gemini leaves behind.
     # Mask on the *source* (pre-whiten): hard restore puts those wall crumbs
     # back; bleaching only on `cleaned` would miss pockets that the plate
-    # already partially ate or reshaped.
+    # already partially ate or reshaped. Soft feather — hard paint left tooth
+    # edges against hair.
     src_pocket = _shoulder_hair_pocket_mask(bgr)
-    if bool(src_pocket.any()):
-        cleaned[src_pocket] = 255
-    cleaned = _bleach_shoulder_hair_pockets(cleaned)
+    cleaned = _bleach_shoulder_hair_pockets(cleaned, mask=src_pocket)
+    # Residual crumbs after plate reshape: hard fill only (no seam AA) so we
+    # do not re-gray the already-feathered source pocket.
+    residual = _shoulder_hair_pocket_mask(cleaned)
+    if bool(residual.any()):
+        cleaned = cleaned.copy()
+        cleaned[residual] = 255
     # Defer both soft passes until after the optional post-crop model cleanup.
     if soften:
         cleaned = _blur_hair_wall_spill(cleaned, chin_y=chin_y)
@@ -635,6 +704,14 @@ def force_white_background(
             chin_y=chin_y,
             subject_hard=np.where(hard, 255, 0).astype(np.uint8),
         )
+    # Soft blur can re-gray pocket cores — restore solid white, keep feathered rim.
+    if bool(src_pocket.any()):
+        solid = (
+            cv2.distanceTransform(src_pocket.astype(np.uint8), cv2.DIST_L2, 5) >= 1.5
+        )
+        if bool(solid.any()):
+            cleaned = cleaned.copy()
+            cleaned[solid] = 255
     return cleaned
 
 

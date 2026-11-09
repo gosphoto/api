@@ -80,7 +80,11 @@ def _assert_wall_color_is_gray_studio(color_bgr: np.ndarray) -> None:
 
 
 def _assert_former_wall_is_white(out: np.ndarray, before_mask: np.ndarray) -> None:
-    pix = out[before_mask]
+    # Soft AA leaves a 1px feather on the rim — score the solid pocket core.
+    core = cv2.erode(before_mask.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+    if int(core.sum()) < 80:
+        core = before_mask
+    pix = out[core]
     assert pix.size > 0
     mins = pix.min(axis=1)
     white_frac = float((mins >= _AFTER_WHITE_MIN).mean())
@@ -181,6 +185,33 @@ def test_pocket_mask_drops_sub_diameter_filaments():
     # Erode by 3×3 — if only filaments remained, this would wipe the mask.
     eroded = cv2.erode(mask.astype(np.uint8), np.ones((3, 3), np.uint8))
     assert int(eroded.sum()) > 2000, "mask is filament-only after diameter limit"
+
+
+def test_pocket_bleach_has_feathered_not_binary_edge():
+    """Pocket whitening must ramp into leftover light wall — not a binary cliff."""
+    from app.whitening import _bleach_mask_soft
+
+    bgr = cv2.imread(str(NECK_WARM))
+    assert bgr is not None
+    mask = _wall_mask(bgr)
+    assert int(mask.sum()) > 1000
+    soft = _bleach_mask_soft(bgr, mask)
+    # Rim = light studio pixels just outside the hard mask.
+    dil = cv2.dilate(mask.astype(np.uint8), np.ones((7, 7), np.uint8)) > 0
+    b_ch, g_ch, r_ch = (c.astype(np.float32) for c in cv2.split(bgr))
+    luma = (b_ch + g_ch + r_ch) / 3.0
+    chroma = np.maximum(np.maximum(b_ch, g_ch), r_ch) - np.minimum(
+        np.minimum(b_ch, g_ch), r_ch
+    )
+    rim = dil & ~mask & (luma >= 155) & (luma <= 250) & (chroma < 42)
+    assert int(rim.sum()) > 30
+    binary_dil = bgr.copy()
+    binary_dil[dil] = 255
+    soft_l = float(soft[rim].astype(np.float32).mean())
+    src_l = float(bgr[rim].astype(np.float32).mean())
+    bin_l = float(binary_dil[rim].astype(np.float32).mean())
+    assert soft_l > src_l + 8, "feather did not lift light rim toward white"
+    assert soft_l < bin_l - 2, "rim is a hard binary step, not a ramp"
 
 
 @pytest.mark.parametrize("pair", _corpus_pairs())
