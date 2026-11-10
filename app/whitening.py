@@ -38,11 +38,12 @@ def _subject_mask(bgr: np.ndarray) -> tuple[np.ndarray | None, int | None]:
     hair_rx = max(int(face_w * 1.15), 10)
     hair_ry = max(int(face_h * 0.85), 10)
     cv2.ellipse(mask, (int(cx), crown), (hair_rx, hair_ry), 0, 180, 360, 255, -1)
-    # Full head oval covering ears + side hair
+    # Full head oval covering ears + side hair (1.05× so temple locks
+    # survive the bg flood — in075 bite above the ear).
     cv2.ellipse(
         mask,
         (int(cx), int((crown + chin) / 2)),
-        (max(int(face_w * 0.95), 10), max(int(face_h * 0.85), 10)),
+        (max(int(face_w * 1.15), 10), max(int(face_h * 0.92), 10)),
         0,
         0,
         360,
@@ -87,6 +88,13 @@ def defringe_near_white(
     )
     near = (luma >= float(luma_min)) & (np.min(f, axis=2) < 250)
     mask = mask | near
+    # Blonde locks are near-white + warm — never defringe them into #FFFFFF.
+    b_ch, g_ch, r_ch = cv2.split(f)
+    ch_rgb = np.maximum(np.maximum(b_ch, g_ch), r_ch) - np.minimum(
+        np.minimum(b_ch, g_ch), r_ch
+    )
+    warm_lock = (r_ch > b_ch + 10.0) & (ch_rgb > 14.0) & (luma <= 230.0)
+    mask = mask & (~warm_lock)
     out[mask] = 255
     return out
 
@@ -183,6 +191,80 @@ def _face_geom(bgr: np.ndarray) -> tuple[int, int, float, float] | None:
         int(ys.min()),
         float(xs.mean()),
         float(max(xs.max() - xs.min(), 1.0)),
+    )
+
+
+def _face_landmark_hull(bgr: np.ndarray) -> np.ndarray | None:
+    """Tight face hull from landmarks — no hair-dome / shoulder dilation."""
+    h, w = bgr.shape[:2]
+    rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
+    result = _landmarker().detect(
+        mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
+    )
+    if not result.face_landmarks:
+        return None
+    lm = result.face_landmarks[0]
+    xs = np.array([p.x * w for p in lm], dtype=np.float32)
+    ys = np.array([p.y * h for p in lm], dtype=np.float32)
+    pts = np.stack([xs, ys], axis=1).astype(np.int32)
+    hull = cv2.convexHull(pts)
+    mask = np.zeros((h, w), np.uint8)
+    cv2.fillConvexPoly(mask, hull, 255)
+    # Dilate ~12–15px so pale temple edge (just outside raw hull) is protected.
+    k = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (25, 25))
+    mask = cv2.dilate(mask, k, iterations=1)
+    return mask
+
+
+def _temple_skin_mask(
+    bgr: np.ndarray,
+    *,
+    chin_y: int,
+    crown_y: int,
+    cx: float,
+    face_w: float,
+) -> np.ndarray:
+    """Sacred FG skin on temples / upper cheeks — never studio wall.
+
+    Trimap: restore only textured face skin above ear_mid. Flat warm wall
+    beside the neck must stay bleachable (neck_warm_wall_pocket).
+    """
+    h, w = bgr.shape[:2]
+    yy, xx = np.ogrid[:h, :w]
+    ear_mid = int(crown_y + 0.52 * (chin_y - crown_y))
+    protect = (
+        (xx - cx) ** 2 / max(face_w * 0.68, 1.0) ** 2
+        + (yy - (crown_y + chin_y) / 2.0) ** 2
+        / max((chin_y - crown_y) * 0.68, 1.0) ** 2
+    ) <= 1.0
+    # Temple + upper cheek (not the far neck-wall band below/ beside).
+    protect &= (
+        (yy >= crown_y - int(0.08 * (chin_y - crown_y)))
+        & (yy <= chin_y + int(face_w * 0.12))
+        & (np.abs(xx - cx) < face_w * 0.58)
+    )
+    b_ch, g_ch, r_ch = (c.astype(np.float32) for c in cv2.split(bgr))
+    luma = (b_ch + g_ch + r_ch) / 3.0
+    chroma = np.maximum(np.maximum(b_ch, g_ch), r_ch) - np.minimum(
+        np.minimum(b_ch, g_ch), r_ch
+    )
+    blur = cv2.GaussianBlur(luma, (5, 5), 0)
+    local_std = np.sqrt(np.maximum(cv2.blur((luma - blur) ** 2, (5, 5)), 0.0))
+    # Restore/feather: textured skin, or smooth high-chroma jaw (C>28).
+    # Warm neck wall stays at C≲28 / low r−g.
+    return (
+        protect
+        & (r_ch > g_ch)
+        & (g_ch >= b_ch - 8)
+        & (r_ch > b_ch + 12)
+        & (luma >= 100.0)
+        & (luma <= 215.0)
+        & (chroma >= 14.0)
+        & (chroma <= 80.0)
+        & (
+            (local_std > 5.0)
+            | ((r_ch > g_ch + 18.0) & (chroma > 28.0))
+        )
     )
 
 
@@ -452,18 +534,52 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
     band[y0:y1, :] = True
 
     yy, xx = np.ogrid[:h, :w]
-    # Tight face oval — neck-side wall must stay outside.
-    face = (
+    # Face oval, with a lateral cheek notch: flat near-ear wall often sits inside
+    # the landmark oval and must stay bleachable (in075 neck halo).
+    face_oval = (
         (xx - cx) ** 2 / max(face_w * 0.48, 1.0) ** 2
         + (yy - (crown_y + chin_y) / 2.0) ** 2
         / max((chin_y - crown_y) * 0.58, 1.0) ** 2
     ) <= 1.0
+    ear_mid = int(crown_y + 0.52 * (chin_y - crown_y))
+    # Temples sit outside the 0.48 oval — widen FG only above ear_mid so
+    # pocket/feather cannot punch white spots into the cheek. Skip flat
+    # studio wall that also sits in that band (neck_warm_wall_pocket).
+    temple_oval = (
+        (yy < ear_mid)
+        & (
+            (xx - cx) ** 2 / max(face_w * 0.62, 1.0) ** 2
+            + (yy - (crown_y + chin_y) / 2.0) ** 2
+            / max((chin_y - crown_y) * 0.62, 1.0) ** 2
+            <= 1.0
+        )
+        & ~(
+            (local_std <= 5.0)
+            & (chroma < 32.0)
+            & (luma >= 165.0)
+        )
+    )
+    # Notch from mid-ear down — flat near-ear wall inside the oval must stay
+    # bleachable (in075). Textured cheek skin is stripped from `keep` later.
+    cheek_notch = (
+        (np.abs(xx - cx) > face_w * 0.34)
+        & (yy >= ear_mid)
+        & (yy <= chin_y + int(face_w * 0.55))
+        & (local_std <= 9.0)
+        & (luma >= 160.0)
+        & (luma <= 240.0)
+        & (chroma < 42.0)
+    )
+    face = (face_oval | temple_oval) & (~cheek_notch)
 
     hair = _head_hair_region(
         chin_y=chin_y, crown_y=crown_y, cx=cx, face_w=face_w, h=h, w=w
     )
     white = luma >= 248.0
     dist = cv2.distanceTransform((~white).astype(np.uint8), cv2.DIST_L2, 5)
+    # Refuse only deep textured blonde locks far from the white plate (e8).
+    # Near-plate smooth hair is handled by diameter open — grow-into-wall is
+    # what punches silhouette holes (in075).
     warm_deep = (
         hair
         & (r_ch > b_ch + 14)
@@ -473,6 +589,8 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
         & (dist > 16)
         & (local_std > 10)
     )
+    # Do not subtract temple skin here — that starved the neck-wall pocket.
+    # Trimap FG restore happens after bleach in force_white_background.
     near_white = cv2.dilate(white.astype(np.uint8), np.ones((19, 19), np.uint8)) > 0
 
     wall = (
@@ -524,11 +642,9 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
     keep &= wall
     if not bool(keep.any()):
         return keep
-    # Do NOT grow into `wall` — that crawls between hair strands and punches
-    # holes in the silhouette. Limit cavity diameter with morphological open:
-    # filaments thinner than open_px are dropped; fat neck/shoulder pockets stay.
-    # Adaptive: fat pockets (inscribed radius ≥ 8) use 5px; thin real wall strips
-    # keep a milder 3px open so they still bleach.
+    # Limit cavity diameter: drop thin hair-gap filaments. No grow-into-wall.
+    # Mild open everywhere so neck/shoulder wall still clears; hair filaments
+    # are stripped by hair_bite below instead of a hard upper open.
     pocket_r = float(
         cv2.distanceTransform(keep.astype(np.uint8), cv2.DIST_L2, 5).max()
     )
@@ -538,7 +654,72 @@ def _shoulder_hair_pocket_mask(bgr: np.ndarray) -> np.ndarray:
         cv2.MORPH_OPEN,
         cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_px, open_px)),
     )
-    return opened > 0
+    keep = opened > 0
+    # Drop textured locks in the mask (sawn blonde silhouette).
+    # Neck wall is flat (std~1–2, C~17); blonde locks are warmer (C≳20).
+    # Shoulder gray is cool (C~8) — chroma gate keeps it bleachable.
+    hair_bite = (
+        keep
+        & hair
+        & (r_ch > b_ch + 6)
+        & (chroma > 10)
+        & (chroma < 42.0)
+        & (luma <= 220.0)
+        & (
+            ((yy < ear_mid) & (local_std > 4.0))
+            | ((local_std > 4.5) & (chroma > 16.0) & (r_ch > b_ch + 14))
+        )
+    )
+    keep &= ~hair_bite
+    # Never hard-pocket the side-hair silhouette above mid-ear (blonde saw).
+    # Neck/shoulder wall sits at/below ear_mid — leave it bleachable.
+    side_hair = (
+        hair
+        & (yy < ear_mid)
+        & (local_std > 3.5)
+        & (chroma > 12.0)
+        & (r_ch > b_ch + 6)
+    )
+    keep &= ~side_hair
+    # Medial steps into the cheek notch only (neck halo), never into bites.
+    neck_fill = (
+        (yy >= ear_mid)
+        & (yy <= chin_y + int(face_w * 0.55))
+        & cheek_notch
+        & near_white
+        & (local_std <= 4.0)
+        & (np.abs(xx - cx) < face_w * 0.58)
+        & ~(
+            (r_ch > b_ch + 8)
+            & (chroma > 12)
+            & (luma <= 205.0)
+            & (local_std > 3.5)
+            & hair
+        )
+    )
+    for _ in range(2):
+        dil = cv2.dilate(keep.astype(np.uint8), np.ones((3, 3), np.uint8)) > 0
+        keep |= dil & neck_fill
+    keep &= ~hair_bite
+    keep &= ~side_hair
+    # Drop cheek/temple skin that cheek_notch would bleach (white face spots).
+    # Smooth jaw: high chroma + strong r−g (C~40). Warm wall is C≲28.
+    cheek_skin = (
+        (r_ch > g_ch)
+        & (r_ch > b_ch + 12)
+        & (chroma >= 14.0)
+        & (chroma <= 80.0)
+        & (
+            (local_std > 5.0)
+            | ((r_ch > g_ch + 18.0) & (chroma > 28.0))
+        )
+        & (luma >= 100.0)
+        & (luma <= 215.0)
+        & (yy <= chin_y + int(face_w * 0.20))
+        & (np.abs(xx - cx) < face_w * 0.55)
+    )
+    keep &= ~cheek_skin
+    return keep
 
 
 def _bleach_mask_soft(
@@ -565,43 +746,140 @@ def _bleach_mask_soft(
     chroma = np.maximum(np.maximum(b_ch, g_ch), r_ch) - np.minimum(
         np.minimum(b_ch, g_ch), r_ch
     )
-    light_wall = (luma >= 155.0) & (luma <= 250.0) & (chroma < 42.0)
+    blur_l = cv2.GaussianBlur(luma, (5, 5), 0)
+    local_std = np.sqrt(np.maximum(cv2.blur((luma - blur_l) ** 2, (5, 5)), 0.0))
+    # Soft ramp into light studio gray. Skip textured warm hair (magenta
+    # fringe); keep flat warm neck wall bleachable (low std).
+    light_wall = (
+        (luma >= 155.0)
+        & (luma <= 250.0)
+        & (chroma < 45.0)
+        & ~(
+            (r_ch > b_ch + 10.0)
+            & (chroma > 14.0)
+            & (luma <= 225.0)
+            & (local_std > 4.0)
+        )
+    )
+    geom = _face_geom(bgr)
+    if geom is not None:
+        chin_y, crown_y, cx, face_w = geom
+        light_wall &= ~_temple_skin_mask(
+            bgr, chin_y=chin_y, crown_y=crown_y, cx=cx, face_w=face_w
+        )
 
-    dist = cv2.distanceTransform(core_u8, cv2.DIST_L2, 5)
-    solid = dist >= 1.5
     out = bgr.copy()
-    out[solid] = 255
-    # Soft ramp for the mask rim + a halo into leftover light studio gray.
-    rim = cv2.dilate(core_u8, np.ones((5, 5), np.uint8), iterations=2)
-    field = cv2.GaussianBlur(rim, (0, 0), sigmaX=float(sigma)).astype(np.float32) / 255.0
-    # Near-full on every mask pixel so wall clears; solid core stays pure white.
-    alpha = np.maximum(field, mask.astype(np.float32) * 0.96)
-    alpha = np.maximum(alpha, solid.astype(np.float32))
-    paint = (~solid) & light_wall & (alpha > 0.04)
-    if bool(paint.any()) or bool((mask & ~solid).any()):
+    # Full paint on flat pocket core. Soft ramp outward + AA seam so the
+    # cut against hair is not stair-stepped.
+    # Textured warm rim beside the *upper* hair = locks / gray fringe.
+    # Neck/shoulder wall is also r>b with mild std — keep it in flat_core.
+    lock_band = np.zeros((h, w), dtype=bool)
+    if geom is not None:
+        chin_y, crown_y, cx, face_w = geom
+        ear_mid = int(crown_y + 0.52 * (chin_y - crown_y))
+        yy_b, _ = np.ogrid[:h, :w]
+        hair_r = _head_hair_region(
+            chin_y=chin_y, crown_y=crown_y, cx=cx, face_w=face_w, h=h, w=w
+        )
+        # Upper hair + hanging textured locks (high std). Flat neck/shoulder
+        # wall stays out of lock_rim so it hard-bleaches.
+        lock_band = hair_r & (
+            (yy_b < ear_mid)
+            | ((local_std > 5.0) & (chroma > 16.0) & (r_ch > b_ch + 14))
+        )
+    lock_rim = (
+        mask
+        & lock_band
+        & (r_ch > b_ch + 6)
+        & (chroma > 10.0)
+        & (local_std > 4.0)
+        & (luma <= 220.0)
+    )
+    # Real locks: keep source. Soft gray fringe: ramp toward white.
+    true_lock = (
+        lock_rim
+        & (local_std > 7.0)
+        & (chroma > 16.0)
+        & (r_ch > b_ch + 10)
+    )
+    # Warm/textured pixels in the hair band never hard-white (sawn silhouette).
+    hair_soft = (
+        mask
+        & lock_band
+        & (r_ch > b_ch + 6)
+        & (chroma > 12.0)
+        & (local_std > 3.5)
+        & (luma <= 220.0)
+    )
+    gray_fringe = (lock_rim | hair_soft) & (~true_lock)
+    flat_core = mask & (~lock_rim) & (~hair_soft)
+    out[flat_core] = 255
+    rim = cv2.dilate((flat_core.astype(np.uint8)) * 255, np.ones((5, 5), np.uint8), iterations=3)
+    field = cv2.GaussianBlur(rim, (0, 0), sigmaX=float(sigma) * 1.25).astype(
+        np.float32
+    ) / 255.0
+    # Soft only cool fringe / light wall — never warm lock_rim (magenta fringe).
+    cool_fringe = gray_fringe & light_wall
+    soft_zone = (cool_fringe | ((~mask) & light_wall)) & (field > 0.03)
+    if bool(soft_zone.any()):
         src = bgr.astype(np.float32)
-        blended = src * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
-        use = (mask & ~solid) | paint
-        out = np.where(use[:, :, None], blended, out.astype(np.float32))
+        pull = np.where(cool_fringe, np.clip(field * 0.75, 0.0, 1.0), field)
+        blended = src * (1.0 - pull[:, :, None]) + 255.0 * pull[:, :, None]
+        out = np.where(soft_zone[:, :, None], blended, out.astype(np.float32))
         out = np.clip(out, 0, 255).astype(np.uint8)
-    # Anti-alias stair-steps along the bright seam; keep solid core pure.
+    # Anti-alias bright seam; restore flat core after.
     grad = cv2.morphologyEx(
-        core_u8,
+        (flat_core.astype(np.uint8)) * 255,
         cv2.MORPH_GRADIENT,
-        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (7, 7)),
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (9, 9)),
     )
     seam = cv2.GaussianBlur(
-        grad, (0, 0), sigmaX=max(2.0, 0.0045 * m)
+        grad, (0, 0), sigmaX=max(2.4, 0.0055 * m)
     ).astype(np.float32) / 255.0
     out_luma = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY).astype(np.float32)
-    mix = (seam > 0.04) & (out_luma >= 190.0) & (~solid)
+    mix = (seam > 0.03) & (out_luma >= 190.0) & (~flat_core) & (~true_lock)
     if bool(mix.any()):
-        blurred = cv2.GaussianBlur(out, (0, 0), sigmaX=max(2.4, 0.005 * m))
+        blurred = cv2.GaussianBlur(out, (0, 0), sigmaX=max(2.8, 0.006 * m))
         s = np.clip(seam * 0.8, 0.0, 1.0)[:, :, None]
         mixed = out.astype(np.float32) * (1.0 - s) + blurred.astype(np.float32) * s
         out = np.where(mix[:, :, None], mixed, out.astype(np.float32))
         out = np.clip(out, 0, 255).astype(np.uint8)
-    out[solid] = 255
+    out[flat_core] = 255
+    # Snap soft mid-gray halo next to flat wall back to white (neck count).
+    # Never snap true locks.
+    if bool(flat_core.any()):
+        near_flat = (
+            cv2.dilate(flat_core.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=3)
+            > 0
+        )
+        out_l = cv2.cvtColor(out, cv2.COLOR_BGR2GRAY).astype(np.float32)
+        b_o, g_o, r_o = (c.astype(np.float32) for c in cv2.split(out))
+        ch_o = np.maximum(np.maximum(b_o, g_o), r_o) - np.minimum(
+            np.minimum(b_o, g_o), r_o
+        )
+        hair_guard = (
+            lock_band
+            & (r_ch > b_ch + 10)
+            & (chroma > 14.0)
+            & (local_std > 4.5)
+            & (luma <= 220.0)
+        )
+        snap = (
+            near_flat
+            & (~flat_core)
+            & (~true_lock)
+            & (~lock_rim)
+            & (~hair_guard)
+            & light_wall
+            & (out_l >= 160.0)
+            & (out_l < 250.0)
+            & (ch_o < 36.0)
+        )
+        if bool(snap.any()):
+            out[snap] = 255
+    # Keep true locks as source — never hard-white them.
+    if bool(true_lock.any()):
+        out[true_lock] = bgr[true_lock]
     return out
 
 
@@ -632,8 +910,73 @@ def force_white_background(
         chin_y = None
 
     plate = _studio_plate_mask(bgr, subject, chin_y=chin_y)
+    # Pale face highlights match plate cand; top-edge flood walks into the
+    # face. Punch dilated landmark hull out of plate, but keep flat wall
+    # (neck halo that sits near the cheek) bleachable.
+    hull = _face_landmark_hull(bgr)
+    geom_h = _face_geom(bgr)
+    if hull is not None and bool((hull > 0).any()):
+        # Protect upper face (forehead/temple) only — below ear_mid the hull
+        # can overlap bleachable neck wall.
+        yy_h, _xx_h = np.ogrid[:h, :w]
+        if geom_h is not None:
+            g_chin, g_crown, _g_cx, _g_fw = geom_h
+            ear_mid_h = int(g_crown + 0.52 * (g_chin - g_crown))
+            face_keep = (hull > 0) & (yy_h <= ear_mid_h)
+        else:
+            face_keep = hull > 0
+        if bool(face_keep.any()):
+            plate = plate.copy()
+            plate[face_keep] = 0
+    # Textured locks look plate-like (light + lowish chroma) — punch them out
+    # so plate flood does not saw the blonde silhouette.
+    if geom_h is not None:
+        g_chin, g_crown, g_cx, g_fw = geom_h
+        hair_r = _head_hair_region(
+            chin_y=g_chin, crown_y=g_crown, cx=g_cx, face_w=g_fw, h=h, w=w
+        )
+        b_p, g_p, r_p = (c.astype(np.float32) for c in cv2.split(bgr))
+        luma_p = (b_p + g_p + r_p) / 3.0
+        chroma_p = np.maximum(np.maximum(b_p, g_p), r_p) - np.minimum(
+            np.minimum(b_p, g_p), r_p
+        )
+        blur_p = cv2.GaussianBlur(luma_p, (5, 5), 0)
+        std_p = np.sqrt(np.maximum(cv2.blur((luma_p - blur_p) ** 2, (5, 5)), 0.0))
+        # Textured locks never enter the plate — even at the white silhouette.
+        # Flat gray wall in the hair band stays plate-bleachable.
+        ear_mid_p = int(g_crown + 0.52 * (g_chin - g_crown))
+        yy_p, _ = np.ogrid[:h, :w]
+        # Broad: keep hair-like pixels out of the *plate* flood (blonde saw).
+        # Flat cool gray wall (shoulder C~8, neck std~1) stays plate-bleachable.
+        plate_lock = (
+            hair_r
+            & (luma_p <= 230.0)
+            & (
+                ((std_p > 4.0) & (chroma_p > 10.0))
+                | ((r_p > b_p + 10) & (chroma_p > 14.0) & (std_p > 3.0))
+            )
+        )
+        # Narrow: only high-texture warm locks for bg keep-out / sawn restore
+        # so neck wall is not blocked from bleaching.
+        lock = (
+            hair_r
+            & (r_p > b_p + 10)
+            & (chroma_p > 16.0)
+            & (chroma_p < 42.0)
+            & (luma_p <= 220.0)
+            & (std_p > 5.5)
+        )
+        if bool(plate_lock.any()):
+            plate = plate.copy()
+            plate[plate_lock] = 0
+        # Textured plate_lock also joins hard subject so the bg flood cannot
+        # saw blonde edges. Flat neck wall (low std) stays bleachable.
+        lock_hard = plate_lock & (std_p > 5.0)
+    else:
+        lock = np.zeros((h, w), dtype=bool)
+        lock_hard = np.zeros((h, w), dtype=bool)
     # Fat hair dilation is not the person — don't restore gray studio over it.
-    hard = (subject > 0) & (plate == 0)
+    hard = ((subject > 0) | lock_hard) & (plate == 0)
 
     band = max(8, int(0.05 * min(h, w)))
     sample = np.concatenate(
@@ -668,11 +1011,16 @@ def force_white_background(
 
     bg[hard] = 0
     bg = cv2.morphologyEx(bg, cv2.MORPH_CLOSE, np.ones((5, 5), np.uint8))
-    bg = cv2.dilate(bg, np.ones((3, 3), np.uint8), iterations=1)
     bg[hard] = 0
+    # No dilate into the silhouette — even 1px crawled into blonde locks.
+    # Soft Gaussian alpha below covers sub-pixel fringe without hard bite.
+    if bool(lock.any()):
+        bg[lock] = 0
 
     alpha = cv2.GaussianBlur(bg, (5, 5), 0).astype(np.float32) / 255.0
     alpha[hard] = 0.0
+    if bool(lock.any()):
+        alpha[lock] = 0.0
 
     out = bgr.astype(np.float32)
     out = out * (1.0 - alpha[:, :, None]) + 255.0 * alpha[:, :, None]
@@ -688,11 +1036,51 @@ def force_white_background(
     # already partially ate or reshaped. Soft feather — hard paint left tooth
     # edges against hair.
     src_pocket = _shoulder_hair_pocket_mask(bgr)
+    # Never pocket-bleach upper face hull (forehead/temple) or textured locks.
+    if bool(src_pocket.any()) and hull is not None:
+        if geom_h is not None:
+            g_chin, g_crown, g_cx, g_fw = geom_h
+            ear_mid_h = int(g_crown + 0.52 * (g_chin - g_crown))
+            yy_h, _ = np.ogrid[:h, :w]
+            src_pocket = src_pocket & ~((hull > 0) & (yy_h <= ear_mid_h))
+        else:
+            src_pocket = src_pocket & ~(hull > 0)
+    if bool(lock.any()):
+        src_pocket = src_pocket & ~lock
     cleaned = _bleach_shoulder_hair_pockets(cleaned, mask=src_pocket)
-    # Residual crumbs after plate reshape: hard fill only (no seam AA) so we
-    # do not re-gray the already-feathered source pocket.
+    # Residual crumbs after plate reshape: hard fill only (no seam AA).
+    # Must stay glued to the source pocket — a fresh mask on `cleaned` can
+    # reclassify feathered hair rims as wall and punch silhouette holes.
     residual = _shoulder_hair_pocket_mask(cleaned)
-    if bool(residual.any()):
+    if bool(residual.any()) and bool(src_pocket.any()):
+        near_src = (
+            cv2.dilate(src_pocket.astype(np.uint8), np.ones((7, 7), np.uint8), iterations=1)
+            > 0
+        )
+        residual = residual & near_src & (~src_pocket)
+        # Hard residual fill only on flat wall crumbs — not textured locks.
+        if bool(residual.any()) and geom_h is not None:
+            hair_res = _head_hair_region(
+                chin_y=g_chin, crown_y=g_crown, cx=g_cx, face_w=g_fw, h=h, w=w
+            )
+            b_r, g_r, r_r = (c.astype(np.float32) for c in cv2.split(cleaned))
+            luma_r = (b_r + g_r + r_r) / 3.0
+            chroma_r = np.maximum(np.maximum(b_r, g_r), r_r) - np.minimum(
+                np.minimum(b_r, g_r), r_r
+            )
+            blur_r = cv2.GaussianBlur(luma_r, (5, 5), 0)
+            std_r = np.sqrt(np.maximum(cv2.blur((luma_r - blur_r) ** 2, (5, 5)), 0.0))
+            residual = residual & ~(
+                hair_res
+                & (r_r > b_r + 6)
+                & (chroma_r > 10.0)
+                & (std_r > 4.5)
+                & (luma_r <= 220.0)
+            )
+        if bool(residual.any()):
+            cleaned = cleaned.copy()
+            cleaned[residual] = 255
+    elif bool(residual.any()):
         cleaned = cleaned.copy()
         cleaned[residual] = 255
     # Defer both soft passes until after the optional post-crop model cleanup.
@@ -704,14 +1092,99 @@ def force_white_background(
             chin_y=chin_y,
             subject_hard=np.where(hard, 255, 0).astype(np.uint8),
         )
-    # Soft blur can re-gray pocket cores — restore solid white, keep feathered rim.
+    # Soft blur can re-gray the pocket — restore flat core only.
     if bool(src_pocket.any()):
-        solid = (
-            cv2.distanceTransform(src_pocket.astype(np.uint8), cv2.DIST_L2, 5) >= 1.5
+        b_s, g_s, r_s = (c.astype(np.float32) for c in cv2.split(bgr))
+        luma_s = (b_s + g_s + r_s) / 3.0
+        chroma_s = np.maximum(np.maximum(b_s, g_s), r_s) - np.minimum(
+            np.minimum(b_s, g_s), r_s
         )
-        if bool(solid.any()):
+        blur_s = cv2.GaussianBlur(luma_s, (5, 5), 0)
+        std_s = np.sqrt(np.maximum(cv2.blur((luma_s - blur_s) ** 2, (5, 5)), 0.0))
+        lock_band = np.zeros((h, w), dtype=bool)
+        if geom_h is not None:
+            ear_mid_s = int(g_crown + 0.52 * (g_chin - g_crown))
+            yy_s, _ = np.ogrid[:h, :w]
+            hair_s = _head_hair_region(
+                chin_y=g_chin, crown_y=g_crown, cx=g_cx, face_w=g_fw, h=h, w=w
+            )
+            lock_band = hair_s & (
+                (yy_s < ear_mid_s)
+                | ((std_s > 5.0) & (chroma_s > 16.0) & (r_s > b_s + 14))
+            )
+        lock_rim = (
+            src_pocket
+            & lock_band
+            & (r_s > b_s + 6)
+            & (chroma_s > 10.0)
+            & (std_s > 4.0)
+            & (luma_s <= 220.0)
+        )
+        true_lock = (
+            lock_rim
+            & (std_s > 7.0)
+            & (chroma_s > 16.0)
+            & (r_s > b_s + 10)
+        )
+        flat_pocket = src_pocket & (~lock_rim)
+        cleaned = cleaned.copy()
+        cleaned[flat_pocket] = 255
+        # Soft blur re-grays the snap halo — push near-flat mid-gray to white.
+        if bool(flat_pocket.any()):
+            near_flat = (
+                cv2.dilate(
+                    flat_pocket.astype(np.uint8), np.ones((5, 5), np.uint8), iterations=3
+                )
+                > 0
+            )
+            out_l = cleaned.min(axis=2).astype(np.float32)
+            b_c, g_c, r_c = (c.astype(np.float32) for c in cv2.split(cleaned))
+            ch_c = np.maximum(np.maximum(b_c, g_c), r_c) - np.minimum(
+                np.minimum(b_c, g_c), r_c
+            )
+            # Never snap into textured warm locks beside the pocket.
+            hair_guard = (
+                lock_band
+                & (r_s > b_s + 10)
+                & (chroma_s > 14.0)
+                & (std_s > 4.5)
+                & (luma_s <= 220.0)
+            )
+            snap = (
+                near_flat
+                & (~flat_pocket)
+                & (~true_lock)
+                & (~lock_rim)
+                & (~hair_guard)
+                & (out_l >= 160.0)
+                & (out_l < 250.0)
+                & (ch_c < 36.0)
+                & (luma_s >= 155.0)
+                & (chroma_s < 48.0)
+            )
+            if bool(snap.any()):
+                cleaned[snap] = 255
+        if bool(true_lock.any()):
+            cleaned[true_lock] = bgr[true_lock]
+    # Trimap rule: restore temple/cheek skin if pocket/feather hit it.
+    # Pale-face plate punch above already keeps highlights via hard restore —
+    # do not broaden restore here or neck wall comes back.
+    geom = _face_geom(bgr)
+    if geom is not None:
+        g_chin, g_crown, g_cx, g_fw = geom
+        face_skin = _temple_skin_mask(
+            bgr, chin_y=g_chin, crown_y=g_crown, cx=g_cx, face_w=g_fw
+        )
+        if bool(face_skin.any()):
             cleaned = cleaned.copy()
-            cleaned[solid] = 255
+            cleaned[face_skin] = bgr[face_skin]
+    # Restore locks the pipeline whitened. High lock gate above avoids
+    # putting warm neck wall gray back.
+    if bool(lock.any()):
+        sawn = lock & (cleaned.min(axis=2) >= 250) & (bgr.min(axis=2) < 245)
+        if bool(sawn.any()):
+            cleaned = cleaned.copy()
+            cleaned[sawn] = bgr[sawn]
     return cleaned
 
 
