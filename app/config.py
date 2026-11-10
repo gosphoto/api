@@ -51,6 +51,21 @@ SKIP_EDIT_IF_READY = os.getenv("SKIP_EDIT_IF_READY", "0").strip().lower() in (
 EDIT_CUTOUT = os.getenv("EDIT_CUTOUT", "silueta").strip().lower()
 REMBG_MODEL = os.getenv("REMBG_MODEL", "u2netp").strip()
 MIN_PROCESS_SIDE = int(os.getenv("MIN_PROCESS_SIDE", "900"))
+# Hosted cutout before Gemini/Riverflow edit (Replicate 851-labs/background-remover).
+PRE_EDIT_REPLICATE_CUTOUT = os.getenv(
+    "PRE_EDIT_REPLICATE_CUTOUT", "1"
+).strip().lower() in ("1", "true", "yes", "on")
+REPLICATE_API_TOKEN = os.getenv("REPLICATE_API_TOKEN", "").strip()
+REPLICATE_API_BASE = os.getenv(
+    "REPLICATE_API_BASE", "https://api.replicate.com/v1"
+).rstrip("/")
+REPLICATE_BG_MODEL = os.getenv(
+    "REPLICATE_BG_MODEL", "851-labs/background-remover"
+).strip()
+# Optional pin; empty → resolve latest_version from the model endpoint.
+REPLICATE_BG_VERSION = os.getenv("REPLICATE_BG_VERSION", "").strip()
+REPLICATE_TIMEOUT_SEC = float(os.getenv("REPLICATE_TIMEOUT_SEC", "60"))
+REPLICATE_POLL_INTERVAL_SEC = float(os.getenv("REPLICATE_POLL_INTERVAL_SEC", "0.75"))
 SELFIE_SEGMENTER_PATH = Path(
     os.getenv(
         "SELFIE_SEGMENTER_PATH",

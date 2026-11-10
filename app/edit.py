@@ -20,9 +20,48 @@ from .gate import _decode_image, _resize_max_side
 from .edit_router import choose_edit_model
 from .face_light import flatten_face_lighting
 from .openrouter import edit_selfie, edit_selfie_resume, edit_selfie_riverflow
+from .replicate_bg import ReplicateBgError, remove_background
 from .whitening import force_white_background
 
 log = logging.getLogger("gosphoto-gate")
+
+
+def _pre_edit_replicate_cutout(orig_jpg: bytes) -> tuple[bytes, dict[str, Any]]:
+    """Cutout via Replicate → white composite → JPEG for Gemini.
+
+    Fail-open: on any error return the original JPEG and meta.ok=False.
+    """
+    meta: dict[str, Any] = {
+        "applied": False,
+        "ok": False,
+        "model": config.REPLICATE_BG_MODEL,
+    }
+    if not config.PRE_EDIT_REPLICATE_CUTOUT:
+        meta["reason"] = "disabled"
+        return orig_jpg, meta
+    if not config.REPLICATE_API_TOKEN:
+        meta["reason"] = "no_token"
+        log.warning("Pre-edit Replicate cutout skipped: REPLICATE_API_TOKEN empty")
+        return orig_jpg, meta
+    try:
+        png, cut_meta = remove_background(orig_jpg, mime="image/jpeg")
+        meta.update(cut_meta)
+        decoded = _decode_any(png)
+        if decoded is None:
+            raise ReplicateBgError("cutout PNG decode failed")
+        on_white = composite_on_white(decoded)
+        ok, buf = cv2.imencode(".jpg", on_white, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+        if not ok:
+            raise ReplicateBgError("cutout JPEG re-encode failed")
+        meta["applied"] = True
+        meta["ok"] = True
+        return buf.tobytes(), meta
+    except Exception as exc:
+        meta["ok"] = False
+        meta["applied"] = False
+        meta["error"] = str(exc)[:400]
+        log.warning("Pre-edit Replicate cutout failed (fail-open): %s", exc)
+        return orig_jpg, meta
 
 
 def _uniform_max_side(bgr: np.ndarray, max_side: int) -> np.ndarray:
@@ -57,6 +96,7 @@ def run_edit_riverflow(
     if not ok:
         raise RuntimeError("encode_for_riverflow_failed")
     orig_jpg = buf.tobytes()
+    orig_jpg, pre_cutout = _pre_edit_replicate_cutout(orig_jpg)
 
     if model:
         use_model = model
@@ -105,6 +145,7 @@ def run_edit_riverflow(
     return out, {
         "model": use_model,
         "cutout": cutout,
+        "pre_cutout": pre_cutout,
         "edit_route": route_meta,
         "background_mode": bg_mode,
         "background_hex_color": (
