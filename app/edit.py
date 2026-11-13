@@ -97,6 +97,8 @@ def run_edit_riverflow(
         raise RuntimeError("encode_for_riverflow_failed")
     orig_jpg = buf.tobytes()
     orig_jpg, pre_cutout = _pre_edit_replicate_cutout(orig_jpg)
+    # Transient bytes for pair archive (main pops before meta.json).
+    pre_cutout_jpeg = orig_jpg if pre_cutout.get("ok") else b""
 
     if model:
         use_model = model
@@ -142,7 +144,7 @@ def run_edit_riverflow(
         if reasoning is not None
         else (config.RIVERFLOW_REASONING if cutout == "riverflow" else None)
     )
-    return out, {
+    meta_out: dict[str, Any] = {
         "model": use_model,
         "cutout": cutout,
         "pre_cutout": pre_cutout,
@@ -162,6 +164,9 @@ def run_edit_riverflow(
         "width": int(out.shape[1]),
         "height": int(out.shape[0]),
     }
+    if pre_cutout_jpeg:
+        meta_out["_pre_cutout_jpeg"] = pre_cutout_jpeg
+    return out, meta_out
 
 
 def run_preview_edit(image_bytes: bytes) -> tuple[np.ndarray, dict[str, Any]]:

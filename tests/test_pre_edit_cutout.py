@@ -69,6 +69,9 @@ def test_run_edit_riverflow_applies_pre_cutout(monkeypatch):
     assert meta["pre_cutout"]["ok"] is True
     assert meta["pre_cutout"]["prediction_id"] == "pred-test"
     assert "cutout_in" in seen and "gemini_in" in seen
+    # Pair archive gets the same white-composited JPEG Gemini saw.
+    assert isinstance(meta.get("_pre_cutout_jpeg"), (bytes, bytearray))
+    assert bytes(meta["_pre_cutout_jpeg"]) == seen["gemini_in"]
     # Gemini must receive the white-composited JPEG, not the raw resize.
     assert seen["gemini_in"] != seen["cutout_in"]
     gemini_decoded = cv2.imdecode(
@@ -111,6 +114,7 @@ def test_run_edit_riverflow_fail_open_on_cutout_error(monkeypatch):
     assert meta["pre_cutout"]["ok"] is False
     assert meta["pre_cutout"]["applied"] is False
     assert "simulated outage" in meta["pre_cutout"]["error"]
+    assert "_pre_cutout_jpeg" not in meta
     assert out.shape == (40, 32, 3)
 
 

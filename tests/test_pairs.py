@@ -6,6 +6,7 @@ import numpy as np
 from app import config
 from app.pairs import (
     EDIT_GEMINI,
+    EDIT_REPLICATE,
     EDIT_RIVERFLOW,
     OUT_GEMINI,
     OUT_RIVERFLOW,
@@ -44,18 +45,22 @@ def test_save_pair_writes_pre_crop_edits(tmp_path, monkeypatch):
         b"\xff\xd8\xffout",
         filename="selfie.jpg",
         pre_crop_edits={
+            EDIT_REPLICATE: b"\xff\xd8\xffrep",
             EDIT_GEMINI: b"\xff\xd8\xffgem",
             EDIT_RIVERFLOW: b"\xff\xd8\xffrf",
             OUT_GEMINI: b"\xff\xd8\xffog",
         },
     )
     assert folder is not None
+    assert (folder / EDIT_REPLICATE).read_bytes() == b"\xff\xd8\xffrep"
     assert (folder / EDIT_GEMINI).read_bytes() == b"\xff\xd8\xffgem"
     assert (folder / EDIT_RIVERFLOW).read_bytes() == b"\xff\xd8\xffrf"
     assert (folder / OUT_GEMINI).read_bytes() == b"\xff\xd8\xffog"
     meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
     assert EDIT_GEMINI in meta["pre_crop_edits"]
     assert EDIT_RIVERFLOW in meta["pre_crop_edits"]
+    assert EDIT_REPLICATE not in meta.get("pre_crop_edits", {})
+    assert EDIT_REPLICATE in meta["archive_files"]
     assert OUT_GEMINI in meta["archive_files"]
 
 

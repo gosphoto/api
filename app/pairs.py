@@ -20,12 +20,14 @@ _SAFE = re.compile(r"[^a-zA-Z0-9._-]+")
 
 EDIT_GEMINI = "edit_gemini.jpg"
 EDIT_RIVERFLOW = "edit_riverflow.jpg"
+EDIT_REPLICATE = "edit_replicate.jpg"
 OUT_GEMINI = "out_gemini.jpg"
 OUT_RIVERFLOW = "out_riverflow.jpg"
 
 # Side files archived next to in.*/out.jpg
+# edit_replicate = Replicate bg-remover on white, before Gemini/Riverflow.
 ARCHIVE_FILES = frozenset(
-    {EDIT_GEMINI, EDIT_RIVERFLOW, OUT_GEMINI, OUT_RIVERFLOW}
+    {EDIT_GEMINI, EDIT_RIVERFLOW, EDIT_REPLICATE, OUT_GEMINI, OUT_RIVERFLOW}
 )
 
 

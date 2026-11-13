@@ -29,7 +29,13 @@ from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, valid
 from .preview import PREVIEW_MAX_SIDE, make_preview_jpeg
 from .openrouter import OpenRouterError
 from .readiness import assess_readiness
-from .pairs import EDIT_GEMINI, OUT_GEMINI, encode_pre_crop_jpeg, save_pair
+from .pairs import (
+    EDIT_GEMINI,
+    EDIT_REPLICATE,
+    OUT_GEMINI,
+    encode_pre_crop_jpeg,
+    save_pair,
+)
 from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 from .process_cache import lookup as process_cache_lookup
 from .process_cache import put as process_cache_put
@@ -861,6 +867,20 @@ def _run_process_pipeline(
         "mime": "image/jpeg",
     }
     archive: dict[str, bytes] = {}
+    # Pop transient Replicate JPEG so meta.json / API never see raw bytes.
+    replicate_jpeg = b""
+    if isinstance(edit_meta, dict):
+        raw = edit_meta.pop("_pre_cutout_jpeg", b"")
+        if isinstance(raw, (bytes, bytearray)):
+            replicate_jpeg = bytes(raw)
+    if replicate_jpeg:
+        archive[EDIT_REPLICATE] = replicate_jpeg
+        log.info(
+            "Process will archive post-replicate file=%s bytes=%s model=%s",
+            EDIT_REPLICATE,
+            len(replicate_jpeg),
+            ((edit_meta or {}).get("pre_cutout") or {}).get("model"),
+        )
     edited_jpeg = passport.get("edited_jpeg") or b""
     if edited_jpeg:
         archive[EDIT_GEMINI] = edited_jpeg
@@ -893,8 +913,10 @@ def _run_process_pipeline(
         except ValueError:
             pair_meta["source_pair"] = pair_dir.name
         log.info(
-            "Process pair archived source_pair=%s has_edit_gemini=%s has_out_gemini=%s",
+            "Process pair archived source_pair=%s has_edit_replicate=%s "
+            "has_edit_gemini=%s has_out_gemini=%s",
             pair_meta.get("source_pair"),
+            bool(replicate_jpeg),
             bool(edited_jpeg),
             bool(preview_digital),
         )
