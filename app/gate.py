@@ -43,6 +43,7 @@ _MESSAGES = {
     "pose_pitch": "Держите голову ровно (не задирайте и не опускайте подбородок)",
     "pose_roll": "Выровняйте голову (не наклоняйте вбок)",
     "blur": "Фото размыто — переснимите при хорошем свете",
+    "grayscale": "Черно белое фото не допускается",
     "decode_error": "Не удалось прочитать изображение",
 }
 
@@ -135,6 +136,32 @@ def _blur_score(bgr: np.ndarray) -> float:
     return float(lap.var())
 
 
+def _face_chroma_p90(bgr: np.ndarray, landmarks) -> float:
+    """P90 per-pixel chroma inside the face-mesh convex hull (0 = pure gray)."""
+    h, w = bgr.shape[:2]
+    pts = np.array(
+        [[int(round(lm.x * w)), int(round(lm.y * h))] for lm in landmarks],
+        dtype=np.int32,
+    )
+    if len(pts) < 3:
+        return 0.0
+    mask = np.zeros((h, w), dtype=np.uint8)
+    hull = cv2.convexHull(pts)
+    cv2.fillConvexPoly(mask, hull, 255)
+    # Shrink slightly so hair / backdrop edge pixels do not inflate chroma.
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    eroded = cv2.erode(mask, kernel, iterations=1)
+    if int(eroded.sum()) >= 32 * 255:
+        mask = eroded
+    ys, xs = np.where(mask > 0)
+    if len(xs) == 0:
+        return 0.0
+    pix = bgr[ys, xs].astype(np.float32)
+    mean = pix.mean(axis=1, keepdims=True)
+    chroma = np.sqrt(((pix - mean) ** 2).mean(axis=1))
+    return float(np.percentile(chroma, 90))
+
+
 def _euler_from_matrix(mat4: np.ndarray) -> tuple[float, float, float]:
     """Extract yaw/pitch/roll (degrees) from 4x4 facial transformation matrix."""
     r = mat4[:3, :3]
@@ -182,15 +209,15 @@ def _encode_jpeg(bgr: np.ndarray, quality: int = 92) -> bytes | None:
 
 def _analyze_bgr(
     bgr: np.ndarray,
-) -> tuple[int, float, float, float, float, bool, float, float]:
-    """face_count, yaw, pitch, roll, blur, chin_below_forehead, face_center_y, face_height_frac."""
+) -> tuple[int, float, float, float, float, bool, float, float, Any]:
+    """face_count, yaw, pitch, roll, blur, upright, face_cy, face_h, landmarks|None."""
     blur = _blur_score(bgr)
     rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
     mp_image = mp.Image(image_format=mp.ImageFormat.SRGB, data=rgb)
     result = _landmarker().detect(mp_image)
     face_count = len(result.face_landmarks) if result.face_landmarks else 0
     if face_count != 1:
-        return face_count, 0.0, 0.0, 0.0, blur, False, 0.5, 0.0
+        return face_count, 0.0, 0.0, 0.0, blur, False, 0.5, 0.0, None
 
     landmarks = result.face_landmarks[0]
     if (
@@ -207,7 +234,17 @@ def _analyze_bgr(
     upright = chin.y > forehead.y
     face_center_y = float((chin.y + forehead.y) / 2.0)
     face_h_frac = face_height_frac_from_landmarks(landmarks)
-    return face_count, yaw, pitch, roll, blur, upright, face_center_y, face_h_frac
+    return (
+        face_count,
+        yaw,
+        pitch,
+        roll,
+        blur,
+        upright,
+        face_center_y,
+        face_h_frac,
+        landmarks,
+    )
 
 
 def _pose_score(
@@ -250,7 +287,7 @@ def upright_image(data: bytes) -> tuple[bytes | None, dict[str, Any]]:
 
     for k in (0, 1, 2, 3):
         cand = src if k == 0 else np.ascontiguousarray(np.rot90(src, k))
-        face_count, yaw, pitch, roll, blur, upright, face_cy, face_h = (
+        face_count, yaw, pitch, roll, blur, upright, face_cy, face_h, _lm = (
             _analyze_bgr(cand)
         )
         if face_count != 1:
@@ -306,8 +343,8 @@ def validate_image(data: bytes) -> GateResult:
         )
 
     bgr = _resize_max_side(bgr, config.MAX_IMAGE_SIDE)
-    face_count, yaw, pitch, roll, blur, _upright, _face_cy, face_h = _analyze_bgr(
-        bgr
+    face_count, yaw, pitch, roll, blur, _upright, _face_cy, face_h, landmarks = (
+        _analyze_bgr(bgr)
     )
     metrics: dict[str, Any] = {
         "blur": round(blur, 2),
@@ -331,6 +368,14 @@ def validate_image(data: bytes) -> GateResult:
             "face_height_frac": round(face_h, 3),
         }
     )
+
+    if landmarks is not None:
+        chroma_p90 = _face_chroma_p90(bgr, landmarks)
+        metrics["face_chroma_p90"] = round(chroma_p90, 2)
+        if chroma_p90 < config.MIN_FACE_CHROMA_P90:
+            return GateResult(
+                False, "grayscale", _MESSAGES["grayscale"], 1, metrics
+            )
 
     if abs(yaw) > config.MAX_YAW_DEG:
         return GateResult(False, "pose_yaw", _MESSAGES["pose_yaw"], 1, metrics)

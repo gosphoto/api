@@ -40,6 +40,10 @@ jobs:
           test -f tests/test_gate_upright.py
           test -d tests/fixtures/upright_regression
           test -f tests/fixtures/upright_regression/inverted_selfie/in.jpg
+          test -f tests/test_gate_grayscale.py
+          test -d tests/fixtures/grayscale_gate
+          test -f tests/fixtures/grayscale_gate/bw_stepa.jpg
+          test -f tests/fixtures/grayscale_gate/color_1.jpg
           test -f tests/test_process_cache.py
           echo "API OK"
 

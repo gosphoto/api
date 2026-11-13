@@ -43,7 +43,7 @@ def test_upright_regression_case(case_dir: Path):
     # Oriented pixels must keep a single face with chin below forehead.
     bgr = _decode_image(oriented)
     assert bgr is not None
-    face_count, _yaw, _pitch, _roll, _blur, upright, face_cy, _face_h = (
+    face_count, _yaw, _pitch, _roll, _blur, upright, face_cy, _face_h, _lm = (
         _analyze_bgr(bgr)
     )
     assert face_count == 1
