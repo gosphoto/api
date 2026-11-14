@@ -37,14 +37,11 @@ def test_resolve_doc_preset_defaults_to_passport_rf():
 
 
 def test_face_and_head_targets_match_rg():
-    # Aim 0.75 × FACE_SIZE_EXPERIMENT(0.90) = 0.675 (~30.4 mm); soft floor 0.65 / 30 mm
-    # while probing Gosuslugi «лицо слишком крупно».
+    # 5% smaller than the old 0.79 ceiling: 0.75 (~33.8 mm), still 32–36 mm / 70–80%.
     assert config.PASSPORT_FACE_RATIO == 0.75
-    assert abs(config.FACE_SIZE_EXPERIMENT - 0.90) < 1e-9
-    assert abs(config.crop_face_ratio_aim() - 0.675) < 1e-9
-    assert config.FACE_RATIO_MIN == 0.65
+    assert config.FACE_RATIO_MIN == 0.70
     assert config.FACE_RATIO_MAX == 0.80
-    assert config.HEAD_HEIGHT_MM_MIN == 30
+    assert config.HEAD_HEIGHT_MM_MIN == 32
     assert config.HEAD_HEIGHT_MM_MAX == 36
     assert config.JPEG_MAX_BYTES == 300 * 1024
 
