@@ -174,12 +174,11 @@ PASSPORT_HEIGHT = int(
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
 # ---------------------------------------------------------------------------
 # Face size knob: PASSPORT_FACE_RATIO × FACE_SIZE_EXPERIMENT.
-# 2026-09-02: tried 0.95 (heads ~5% smaller → 0.7125). Prod feedback 2026-11-02
-# (zagran / Госуслуги): +5% tighter crop fixes small-head rejects → default 1.0
-# (aim back to 0.75 ≈ 33.8 mm, still inside FMS 32–36 mm / 70–80%).
+# 2026-11-14: Gosuslugi «лицо слишком крупно» on 0.75 aim → default 0.95
+# (heads ~5% smaller → 0.7125 ≈ 32.1 mm, still inside FMS 32–36 mm / 70–80%).
 # One knob — do not scatter multipliers elsewhere. Override via env if needed.
 # ---------------------------------------------------------------------------
-FACE_SIZE_EXPERIMENT = float(os.getenv("FACE_SIZE_EXPERIMENT", "1.0"))
+FACE_SIZE_EXPERIMENT = float(os.getenv("FACE_SIZE_EXPERIMENT", "0.95"))
 FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.70"))
 FACE_RATIO_MAX = float(os.getenv("FACE_RATIO_MAX", "0.80"))
 
