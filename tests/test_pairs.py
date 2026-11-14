@@ -10,6 +10,9 @@ from app.pairs import (
     EDIT_RIVERFLOW,
     OUT_GEMINI,
     OUT_RIVERFLOW,
+    PREVIEW_DIGITAL,
+    PREVIEW_PRINT,
+    PRINT,
     encode_pre_crop_jpeg,
     out_crop_name,
     pre_crop_edit_name,
@@ -49,6 +52,9 @@ def test_save_pair_writes_pre_crop_edits(tmp_path, monkeypatch):
             EDIT_GEMINI: b"\xff\xd8\xffgem",
             EDIT_RIVERFLOW: b"\xff\xd8\xffrf",
             OUT_GEMINI: b"\xff\xd8\xffog",
+            PREVIEW_DIGITAL: b"\xff\xd8\xffpd",
+            PREVIEW_PRINT: b"\xff\xd8\xffpp",
+            PRINT: b"\xff\xd8\xffpr",
         },
     )
     assert folder is not None
@@ -56,12 +62,18 @@ def test_save_pair_writes_pre_crop_edits(tmp_path, monkeypatch):
     assert (folder / EDIT_GEMINI).read_bytes() == b"\xff\xd8\xffgem"
     assert (folder / EDIT_RIVERFLOW).read_bytes() == b"\xff\xd8\xffrf"
     assert (folder / OUT_GEMINI).read_bytes() == b"\xff\xd8\xffog"
+    assert (folder / PREVIEW_DIGITAL).read_bytes() == b"\xff\xd8\xffpd"
+    assert (folder / PREVIEW_PRINT).read_bytes() == b"\xff\xd8\xffpp"
+    assert (folder / PRINT).read_bytes() == b"\xff\xd8\xffpr"
     meta = json.loads((folder / "meta.json").read_text(encoding="utf-8"))
     assert EDIT_GEMINI in meta["pre_crop_edits"]
     assert EDIT_RIVERFLOW in meta["pre_crop_edits"]
     assert EDIT_REPLICATE not in meta.get("pre_crop_edits", {})
     assert EDIT_REPLICATE in meta["archive_files"]
     assert OUT_GEMINI in meta["archive_files"]
+    assert PREVIEW_DIGITAL in meta["archive_files"]
+    assert PREVIEW_PRINT in meta["archive_files"]
+    assert PRINT in meta["archive_files"]
 
 
 def test_save_pair_file_out_riverflow(tmp_path, monkeypatch):

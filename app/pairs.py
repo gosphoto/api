@@ -23,11 +23,24 @@ EDIT_RIVERFLOW = "edit_riverflow.jpg"
 EDIT_REPLICATE = "edit_replicate.jpg"
 OUT_GEMINI = "out_gemini.jpg"
 OUT_RIVERFLOW = "out_riverflow.jpg"
+PRINT = "print.jpg"
+PREVIEW_DIGITAL = "preview_digital.jpg"
+PREVIEW_PRINT = "preview_print.jpg"
 
 # Side files archived next to in.*/out.jpg
 # edit_replicate = Replicate bg-remover on white, before Gemini/Riverflow.
+# print.jpg = full 10×15 sheet @300dpi; preview_* = page screen previews.
 ARCHIVE_FILES = frozenset(
-    {EDIT_GEMINI, EDIT_RIVERFLOW, EDIT_REPLICATE, OUT_GEMINI, OUT_RIVERFLOW}
+    {
+        EDIT_GEMINI,
+        EDIT_RIVERFLOW,
+        EDIT_REPLICATE,
+        OUT_GEMINI,
+        OUT_RIVERFLOW,
+        PRINT,
+        PREVIEW_DIGITAL,
+        PREVIEW_PRINT,
+    }
 )
 
 

@@ -33,6 +33,9 @@ from .pairs import (
     EDIT_GEMINI,
     EDIT_REPLICATE,
     OUT_GEMINI,
+    PREVIEW_DIGITAL,
+    PREVIEW_PRINT,
+    PRINT,
     encode_pre_crop_jpeg,
     save_pair,
 )
@@ -751,6 +754,7 @@ def _run_preview_stages(
         "ok": True,
         "preview_digital": preview_digital,
         "preview_print": preview_print,
+        "print_jpeg": print_jpeg,
         "print_meta": print_meta,
         "edit_meta": edit_meta,
         "edited_jpeg": edited_jpeg,
@@ -836,6 +840,7 @@ def _run_process_pipeline(
 
     preview_digital = passport["preview_digital"]
     preview_print = passport["preview_print"]
+    print_jpeg = passport.get("print_jpeg") or b""
     print_meta = passport["print_meta"]
     edit_meta = passport["edit_meta"]
     crop_metrics = passport["crop_metrics"]
@@ -895,10 +900,23 @@ def _run_process_pipeline(
     # Cropped Gemini frame (card preview) — also kept as out.jpg for compat.
     if preview_digital:
         archive[OUT_GEMINI] = preview_digital
+        archive[PREVIEW_DIGITAL] = preview_digital
         log.info(
             "Process will archive crop file=%s bytes=%s",
             OUT_GEMINI,
             len(preview_digital),
+        )
+    if preview_print:
+        archive[PREVIEW_PRINT] = preview_print
+        log.info(
+            "Process will archive preview_print bytes=%s",
+            len(preview_print),
+        )
+    if print_jpeg:
+        archive[PRINT] = print_jpeg
+        log.info(
+            "Process will archive print 10x15 bytes=%s",
+            len(print_jpeg),
         )
     pair_dir = save_pair(
         data,
@@ -914,11 +932,13 @@ def _run_process_pipeline(
             pair_meta["source_pair"] = pair_dir.name
         log.info(
             "Process pair archived source_pair=%s has_edit_replicate=%s "
-            "has_edit_gemini=%s has_out_gemini=%s",
+            "has_edit_gemini=%s has_out_gemini=%s has_preview_print=%s has_print=%s",
             pair_meta.get("source_pair"),
             bool(replicate_jpeg),
             bool(edited_jpeg),
             bool(preview_digital),
+            bool(preview_print),
+            bool(print_jpeg),
         )
     else:
         log.warning("Process pair archive skipped or failed filename=%s", filename)
