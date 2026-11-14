@@ -57,6 +57,8 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "lighting" in g
     assert "lighting (hard" in g
     assert "compare" in g and "left" in g and "right" in g
+    assert "only one side" in g or "одной стороны" in g
+    assert "evenly lit" in g or "равномерно" in g
     assert "equalize" in g or "неравномерно" in g
     assert "passport" in g
     assert "harsh" in g or "one-sided" in g or "side light" in g or "rembrandt" in g
