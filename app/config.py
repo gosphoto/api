@@ -174,12 +174,12 @@ PASSPORT_HEIGHT = int(
 PASSPORT_FACE_RATIO = float(os.getenv("PASSPORT_FACE_RATIO", "0.75"))
 # ---------------------------------------------------------------------------
 # Face size knob: PASSPORT_FACE_RATIO × FACE_SIZE_EXPERIMENT.
-# 2026-11-14: Gosuslugi «лицо слишком крупно» on 0.75 aim → default 0.95
-# (heads ~5% smaller → 0.7125 ≈ 32.1 mm, still inside FMS 32–36 mm / 70–80%).
+# 2026-11-14: Gosuslugi «лицо слишком крупно» → shrink again 0.95 → 0.90
+# (aim 0.675 ≈ 30.4 mm). Soft floor below classic FMS 32 mm while probing.
 # One knob — do not scatter multipliers elsewhere. Override via env if needed.
 # ---------------------------------------------------------------------------
-FACE_SIZE_EXPERIMENT = float(os.getenv("FACE_SIZE_EXPERIMENT", "0.95"))
-FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.70"))
+FACE_SIZE_EXPERIMENT = float(os.getenv("FACE_SIZE_EXPERIMENT", "0.90"))
+FACE_RATIO_MIN = float(os.getenv("FACE_RATIO_MIN", "0.65"))
 FACE_RATIO_MAX = float(os.getenv("FACE_RATIO_MAX", "0.80"))
 
 
@@ -188,7 +188,7 @@ def crop_face_ratio_aim() -> float:
     return float(PASSPORT_FACE_RATIO) * float(FACE_SIZE_EXPERIMENT)
 # Верхнее поле ~4.5 мм из 45 мм
 PASSPORT_TOP_MARGIN = float(os.getenv("PASSPORT_TOP_MARGIN", "0.10"))
-HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "32"))
+HEAD_HEIGHT_MM_MIN = float(os.getenv("HEAD_HEIGHT_MM_MIN", "30"))
 HEAD_HEIGHT_MM_MAX = float(os.getenv("HEAD_HEIGHT_MM_MAX", "36"))
 HEAD_WIDTH_MM_MIN = float(os.getenv("HEAD_WIDTH_MM_MIN", "18"))
 HEAD_WIDTH_MM_MAX = float(os.getenv("HEAD_WIDTH_MM_MAX", "25"))
