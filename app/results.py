@@ -95,6 +95,51 @@ def result_dir(result_id: str) -> Path:
     return Path(config.RESULTS_DIR) / result_id
 
 
+def mirror_result_into_pair(
+    result_id: str,
+    *,
+    meta: dict[str, Any] | None = None,
+) -> int:
+    """
+    Copy every file from results/<id>/ into the linked pair folder.
+
+    Skips meta.json (pair keeps its own). No-op if source_pair missing.
+    """
+    from .pairs import resolve_pair_dir
+
+    if not is_valid_result_id(result_id):
+        return 0
+    m = meta if isinstance(meta, dict) else (load_meta(result_id) or {})
+    pair = resolve_pair_dir(m.get("source_pair") if isinstance(m, dict) else None)
+    if pair is None:
+        return 0
+    src = result_dir(result_id)
+    if not src.is_dir():
+        return 0
+    n = 0
+    for path in src.iterdir():
+        if not path.is_file() or path.name == "meta.json":
+            continue
+        try:
+            shutil.copy2(path, pair / path.name)
+            n += 1
+        except OSError as e:
+            log.warning(
+                "Mirror result→pair failed id=%s file=%s: %s",
+                result_id,
+                path.name,
+                e,
+            )
+    if n:
+        log.info(
+            "Mirrored result into pair id=%s files=%s pair=%s",
+            result_id,
+            n,
+            pair.name,
+        )
+    return n
+
+
 def save_result(
     digital_jpeg: bytes,
     print_jpeg: bytes,
@@ -159,6 +204,7 @@ def save_result(
             folder,
             resume_offer,
         )
+        mirror_result_into_pair(rid, meta=payload)
         return rid
     except Exception as e:
         log.warning("Failed to save result: %s", e)
@@ -213,6 +259,7 @@ def save_preview_result(
             encoding="utf-8",
         )
         log.info("Saved preview result id=%s dir=%s", rid, folder)
+        mirror_result_into_pair(rid, meta=payload)
         return rid
     except Exception as e:
         log.warning("Failed to save preview result: %s", e)
@@ -295,6 +342,7 @@ def attach_variant_jpegs(
             primary_alias,
             mark_ready,
         )
+        mirror_result_into_pair(result_id, meta=meta)
         return True
     except Exception as e:
         log.warning(
@@ -357,6 +405,7 @@ def attach_paid_jpegs(
             len(digital_jpeg),
             len(print_jpeg),
         )
+        mirror_result_into_pair(result_id, meta=meta)
         return True
     except Exception as e:
         log.warning("Failed to attach paid jpegs id=%s: %s", result_id, e)

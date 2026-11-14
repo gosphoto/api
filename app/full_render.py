@@ -139,15 +139,7 @@ def promote_paid_from_edit_gemini(result_id: str, meta: dict) -> bool:
         mark_ready=False,
     )
     if ok:
-        from .pairs import PREVIEW_PRINT, PRINT, save_pair_file
-        from .preview import make_preview_jpeg
-
-        save_pair_file(pair_dir, print_jpeg, name=PRINT)
-        save_pair_file(
-            pair_dir,
-            make_preview_jpeg(print_jpeg),
-            name=PREVIEW_PRINT,
-        )
+        # attach_paid_jpegs already mirrors all results/* into source_pair
         log.info(
             "Paid promote ready id=%s digital_bytes=%s print_bytes=%s",
             result_id,

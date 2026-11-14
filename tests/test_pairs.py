@@ -125,3 +125,44 @@ def test_save_pair_disabled(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "PAIRS_ENABLED", False)
     assert save_pair(b"a", b"b") is None
     assert list(tmp_path.iterdir()) == []
+
+
+def test_mirror_result_into_pair_copies_all_but_meta(tmp_path, monkeypatch):
+    from PIL import Image
+    import io
+
+    from app.results import mirror_result_into_pair, save_preview_result
+
+    results_root = tmp_path / "results"
+    pairs_root = tmp_path / "pairs"
+    results_root.mkdir()
+    pairs_root.mkdir()
+    monkeypatch.setattr(config, "RESULTS_DIR", results_root)
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    monkeypatch.setattr(config, "PAIRS_DIR", pairs_root)
+    monkeypatch.setattr(config, "PAIRS_ENABLED", True)
+
+    pair = save_pair(b"\xff\xd8\xffin", b"\xff\xd8\xffout", filename="x.jpg")
+    assert pair is not None
+    rel = str(pair.relative_to(pairs_root))
+
+    buf = io.BytesIO()
+    Image.new("RGB", (40, 50), (9, 9, 9)).save(buf, format="JPEG")
+    jpeg = buf.getvalue()
+    rid = save_preview_result(
+        jpeg,
+        jpeg,
+        meta={"source_pair": rel},
+    )
+    assert rid is not None
+    # save_preview_result already mirrors; assert files landed and meta stayed pair's
+    assert (pair / "preview_digital.jpg").is_file()
+    assert (pair / "preview_print.jpg").is_file()
+    assert (pair / "meta.json").is_file()
+    pair_meta = json.loads((pair / "meta.json").read_text(encoding="utf-8"))
+    assert pair_meta.get("out") == "out.jpg"
+    assert "preview_only" not in pair_meta
+
+    # second call still ok
+    n = mirror_result_into_pair(rid)
+    assert n >= 2
