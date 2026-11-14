@@ -30,7 +30,6 @@ def _png_rgba_cutout() -> bytes:
 def test_run_edit_riverflow_applies_pre_cutout(monkeypatch):
     monkeypatch.setattr(edit_mod.config, "PRE_EDIT_REPLICATE_CUTOUT", True)
     monkeypatch.setattr(edit_mod.config, "REPLICATE_API_TOKEN", "r8_test")
-    monkeypatch.setattr(edit_mod.config, "FACE_LIGHT_FLATTEN_ENABLED", False)
     monkeypatch.setattr(edit_mod.config, "RIVERFLOW_MODEL", "google/gemini-2.5-flash-image")
 
     src = np.full((40, 32, 3), 80, np.uint8)
@@ -85,7 +84,6 @@ def test_run_edit_riverflow_applies_pre_cutout(monkeypatch):
 def test_run_edit_riverflow_fail_open_on_cutout_error(monkeypatch):
     monkeypatch.setattr(edit_mod.config, "PRE_EDIT_REPLICATE_CUTOUT", True)
     monkeypatch.setattr(edit_mod.config, "REPLICATE_API_TOKEN", "r8_test")
-    monkeypatch.setattr(edit_mod.config, "FACE_LIGHT_FLATTEN_ENABLED", False)
 
     src = np.full((40, 32, 3), 80, np.uint8)
     gemini_out = np.full((40, 32, 3), 255, np.uint8)
@@ -121,7 +119,6 @@ def test_run_edit_riverflow_fail_open_on_cutout_error(monkeypatch):
 def test_run_edit_riverflow_skips_without_token(monkeypatch):
     monkeypatch.setattr(edit_mod.config, "PRE_EDIT_REPLICATE_CUTOUT", True)
     monkeypatch.setattr(edit_mod.config, "REPLICATE_API_TOKEN", "")
-    monkeypatch.setattr(edit_mod.config, "FACE_LIGHT_FLATTEN_ENABLED", False)
 
     src = np.full((40, 32, 3), 80, np.uint8)
     gemini_out = np.full((40, 32, 3), 255, np.uint8)

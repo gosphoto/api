@@ -142,11 +142,6 @@ POST_CROP_CLEANUP_ENABLED = os.getenv(
 POST_CROP_CLEANUP_MODEL = os.getenv(
     "POST_CROP_CLEANUP_MODEL", "google/gemini-2.5-flash-image"
 ).strip()
-# CPU cheek L-equalize after Gemini. Off by default: flattens contour and can
-# make kids look puffy/washed (see 446a7dfc…). Keep code; enable only if needed.
-FACE_LIGHT_FLATTEN_ENABLED = os.getenv(
-    "FACE_LIGHT_FLATTEN_ENABLED", "0"
-).strip().lower() in ("1", "true", "yes", "on")
 
 # Passport crop — РФ паспорт, п.34.3 адмрегламента ФМС
 # https://rg.ru/documents/2011/08/22/pasport-dok.html
