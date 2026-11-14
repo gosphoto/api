@@ -64,12 +64,18 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "teeth" in g
     assert "soft" in g or "polite" in g or "resting" in g
     assert "gosuslugi rejects" in g or "zero visible smile" in g
-    assert "flyaway" in g or "wisp" in g
-    assert "erase" in g or "remove" in g
-    assert "must" in g
-    assert "halo" in g
-    assert "zero stray" in g or "invisible" in g
-    assert "leftover" in g or "original-wall" in g or "wall" in g
+    # BG cutout is upstream (Replicate); prompt must not ask Gemini to re-matte.
+    assert "background (hard)" in g
+    assert "already" in g and "cutout" in g
+    assert "upstream" in g
+    assert "re-matte" in g or "re-cut" in g
+    assert "silhouette" in g
+    assert "temple" in g
+    assert "bald" in g
+    assert "flyaway" in g  # only as "do not … as if they were flyaways"
+    assert "must erase every isolated flyaway" not in g
+    assert "zero stray" not in g
+    assert "leftover original-wall" not in g
     assert "face oval" in g
     assert "sweep" in g or "part" in g
     assert "do not tuck" in g
