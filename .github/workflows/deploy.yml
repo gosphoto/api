@@ -44,6 +44,12 @@ jobs:
           test -d tests/fixtures/grayscale_gate
           test -f tests/fixtures/grayscale_gate/bw_stepa.jpg
           test -f tests/fixtures/grayscale_gate/color_1.jpg
+          test -f tests/test_gate_bangs.py
+          test -d tests/fixtures/bangs_gate/positive
+          test -d tests/fixtures/bangs_gate/negative
+          test -f tests/fixtures/bangs_gate/positive/semenova.jpg
+          test "$(find tests/fixtures/bangs_gate/positive -name '*.jpg' | wc -l)" -ge 30
+          test "$(find tests/fixtures/bangs_gate/negative -name '*.jpg' | wc -l)" -ge 30
           test -f tests/test_process_cache.py
           echo "API OK"
 

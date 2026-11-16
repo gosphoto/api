@@ -13,6 +13,7 @@ import numpy as np
 from mediapipe.tasks import python as mp_python
 from mediapipe.tasks.python import vision
 
+from . import bangs as bangs_mod
 from . import config
 from .gate_warnings import soft_warnings_for_face_height
 
@@ -44,6 +45,10 @@ _MESSAGES = {
     "pose_roll": "Выровняйте голову (не наклоняйте вбок)",
     "blur": "Фото размыто — переснимите при хорошем свете",
     "grayscale": "Черно белое фото не допускается",
+    "bangs_on_brows": (
+        "На фото чёлка закрывает брови — такое фото не примут на Госуслугах. "
+        "Поднимите или уберите чёлку с бровей и загрузите снова."
+    ),
     "decode_error": "Не удалось прочитать изображение",
 }
 
@@ -375,6 +380,16 @@ def validate_image(data: bytes) -> GateResult:
         if chroma_p90 < config.MIN_FACE_CHROMA_P90:
             return GateResult(
                 False, "grayscale", _MESSAGES["grayscale"], 1, metrics
+            )
+        bangs_scores = bangs_mod.bangs_on_brows_score(bgr, landmarks)
+        metrics["bangs"] = bangs_scores
+        if bangs_scores.get("bangs_on_brows"):
+            return GateResult(
+                False,
+                "bangs_on_brows",
+                _MESSAGES["bangs_on_brows"],
+                1,
+                metrics,
             )
 
     if abs(yaw) > config.MAX_YAW_DEG:
