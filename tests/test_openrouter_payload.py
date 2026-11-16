@@ -82,10 +82,13 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "behind the ears" in g  # mentioned only as forbidden
     assert "invent" in g and "ear" in g
     assert "clear" in g or "covering" in g
-    assert "do not cut" in g or "do not shorten" in g
+    assert "cut it short" in g or "cut to short fringe" in g or "do not cut" in g
     assert "bangs" in g or "чёлка" in g
-    assert "conditional" in g
-    assert "if bangs" in g and "else" in g
+    assert "absolute" in g or "mandatory" in g
+    assert "виски" in g
+    assert "temple" in g
+    assert "top third" in g or "top ~1/3" in g
+    assert "bare forehead" in g or "bare temple" in g or "forehead bare" in g
     assert "sunglasses" in g
     assert "headwear" in g or "hat" in g
     assert "hijab" in g or "religious" in g
