@@ -196,8 +196,7 @@ GOSUSLUGI_SCORING_PROMPT = (
     "if any hair covers or touches either brow or either cheekbone, including a "
     "side strand on the brow tail or a face-framing curtain on the cheek, sweep "
     "it off the skin until both eyebrows and both cheekbones are bare — otherwise "
-    "leave bangs unchanged; MUST erase "
-    "isolated flyaway wisps and leftover wall halo; "
+    "leave bangs unchanged; "
     "HARD no-smile: closed lips in a straight line, corners level (not raised), "
     "no soft/polite/resting smile or teeth; gaze at camera; "
     "adults: stylish modern business suit UNLESS religious clothing/covering "
@@ -226,19 +225,13 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
         "key": "identity",
         "label": "Identity fidelity",
         "description": "Same face, age, skin tone/exposure and texture, hair as the input; no bleach, no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
-        "weight": 0.3,
-    },
-    {
-        "key": "hair_integrity",
-        "label": "Hair without white holes",
-        "description": "No swiss-cheese / salt-pepper white gaps inside the hair mass.",
-        "weight": 0.25,
+        "weight": 0.45,
     },
     {
         "key": "ear_edges",
         "label": "Clean ear edges",
-        "description": "No wall crumbs behind ears; cartilage preserved.",
-        "weight": 0.15,
+        "description": "Ear cartilage preserved; no redrawn or invented ears.",
+        "weight": 0.25,
     },
 ]
 

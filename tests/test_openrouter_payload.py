@@ -71,8 +71,19 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "re-matte" not in g
     assert "re-cut" not in g
     assert "must erase every isolated flyaway" not in g
+    assert "flyaway" not in g
+    assert "wall halo" not in g
     assert "zero stray" not in g
     assert "leftover original-wall" not in g
+    from app.openrouter import GOSUSLUGI_SCORING_PROMPT, GOSUSLUGI_SCORING_RUBRIC
+
+    s = GOSUSLUGI_SCORING_PROMPT.lower()
+    assert "flyaway" not in s
+    assert "wisps" not in s
+    assert "wall halo" not in s
+    assert "swiss-cheese" not in s
+    assert "salt-pepper" not in s
+    assert not any(r.get("key") == "hair_integrity" for r in GOSUSLUGI_SCORING_RUBRIC)
     assert "face oval" in g
     assert "sweep" in g or "part" in g
     assert "do not tuck" in g
