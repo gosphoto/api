@@ -34,6 +34,9 @@ class GateResult:
     metrics: dict[str, Any]
     warnings: list[str] | None = None
     warning_message: str | None = None
+    # BiSeNet analysis artifacts (not exposed in API JSON)
+    bisenet_overlay_png: bytes | None = None
+    bisenet_mask_png: bytes | None = None
 
 
 _MESSAGES = {
@@ -46,8 +49,9 @@ _MESSAGES = {
     "blur": "Фото размыто — переснимите при хорошем свете",
     "grayscale": "Черно белое фото не допускается",
     "bangs_on_brows": (
-        "На фото чёлка закрывает брови — такое фото не примут на Госуслугах. "
-        "Поднимите или уберите чёлку с бровей и загрузите снова."
+        "На фото чёлка закрывает брови или глаза — такое фото не примут "
+        "на Госуслугах. Поднимите или уберите чёлку с бровей/глаз и "
+        "загрузите снова."
     ),
     "decode_error": "Не удалось прочитать изображение",
 }
@@ -374,6 +378,9 @@ def validate_image(data: bytes) -> GateResult:
         }
     )
 
+    bisenet_overlay: bytes | None = None
+    bisenet_mask: bytes | None = None
+
     if landmarks is not None:
         chroma_p90 = _face_chroma_p90(bgr, landmarks)
         metrics["face_chroma_p90"] = round(chroma_p90, 2)
@@ -382,6 +389,8 @@ def validate_image(data: bytes) -> GateResult:
                 False, "grayscale", _MESSAGES["grayscale"], 1, metrics
             )
         bangs_scores = bangs_mod.bangs_on_brows_score(bgr, landmarks)
+        bisenet_overlay = bangs_scores.pop("bisenet_overlay_png", None)
+        bisenet_mask = bangs_scores.pop("bisenet_mask_png", None)
         metrics["bangs"] = bangs_scores
         if bangs_scores.get("bangs_on_brows"):
             return GateResult(
@@ -390,16 +399,50 @@ def validate_image(data: bytes) -> GateResult:
                 _MESSAGES["bangs_on_brows"],
                 1,
                 metrics,
+                bisenet_overlay_png=bisenet_overlay,
+                bisenet_mask_png=bisenet_mask,
             )
 
     if abs(yaw) > config.MAX_YAW_DEG:
-        return GateResult(False, "pose_yaw", _MESSAGES["pose_yaw"], 1, metrics)
+        return GateResult(
+            False,
+            "pose_yaw",
+            _MESSAGES["pose_yaw"],
+            1,
+            metrics,
+            bisenet_overlay_png=bisenet_overlay,
+            bisenet_mask_png=bisenet_mask,
+        )
     if abs(pitch) > config.MAX_PITCH_DEG:
-        return GateResult(False, "pose_pitch", _MESSAGES["pose_pitch"], 1, metrics)
+        return GateResult(
+            False,
+            "pose_pitch",
+            _MESSAGES["pose_pitch"],
+            1,
+            metrics,
+            bisenet_overlay_png=bisenet_overlay,
+            bisenet_mask_png=bisenet_mask,
+        )
     if abs(roll) > config.MAX_ROLL_DEG:
-        return GateResult(False, "pose_roll", _MESSAGES["pose_roll"], 1, metrics)
+        return GateResult(
+            False,
+            "pose_roll",
+            _MESSAGES["pose_roll"],
+            1,
+            metrics,
+            bisenet_overlay_png=bisenet_overlay,
+            bisenet_mask_png=bisenet_mask,
+        )
     if blur < config.MIN_BLUR_VARIANCE:
-        return GateResult(False, "blur", _MESSAGES["blur"], 1, metrics)
+        return GateResult(
+            False,
+            "blur",
+            _MESSAGES["blur"],
+            1,
+            metrics,
+            bisenet_overlay_png=bisenet_overlay,
+            bisenet_mask_png=bisenet_mask,
+        )
 
     warnings, warning_message = soft_warnings_for_face_height(face_h)
     return GateResult(
@@ -410,6 +453,8 @@ def validate_image(data: bytes) -> GateResult:
         metrics,
         warnings=warnings or None,
         warning_message=warning_message,
+        bisenet_overlay_png=bisenet_overlay,
+        bisenet_mask_png=bisenet_mask,
     )
 
 

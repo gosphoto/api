@@ -25,6 +25,7 @@ from . import torso as torso_mod
 from .bg import warmup_cutout
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
+from . import face_parse as face_parse_mod
 from .gate import _decode_image, _resize_max_side, prepare_upload, warmup, validate_image
 from .preview import PREVIEW_MAX_SIDE, make_preview_jpeg
 from .openrouter import OpenRouterError
@@ -249,6 +250,11 @@ async def lifespan(_app: FastAPI):
         log.info("Cutout ready backend=%s", config.EDIT_CUTOUT)
     except Exception as e:
         log.warning("Cutout warmup failed (will retry on request): %s", e)
+    try:
+        face_parse_mod.warmup()
+        log.info("BiSeNet ready model=%s", config.BISENET_MODEL_PATH)
+    except Exception as e:
+        log.warning("BiSeNet warmup failed (bangs gate may skip): %s", e)
     log.info(
         "Gate ready; edit_backend=%s riverflow=%s cutout=%s openrouter=%s "
         "payments=%s payments_dir=%s free_unlock=%s resume_upsell=%s resume_price=%s",
@@ -340,6 +346,8 @@ async def validate(file: UploadFile = File(...)):
             message=result.message,
             metrics=result.metrics,
             filename=file.filename,
+            bisenet_overlay_png=result.bisenet_overlay_png,
+            bisenet_mask_png=result.bisenet_mask_png,
         )
     body: dict = {
         "ok": result.ok,
@@ -398,6 +406,8 @@ async def edit_only(file: UploadFile = File(...), format: str = "json"):
             message=gate.message,
             metrics=gate.metrics,
             filename=file.filename,
+            bisenet_overlay_png=gate.bisenet_overlay_png,
+            bisenet_mask_png=gate.bisenet_mask_png,
         )
         return JSONResponse(
             {
@@ -785,6 +795,8 @@ def _run_process_pipeline(
             message=gate.message,
             metrics=gate.metrics,
             filename=filename,
+            bisenet_overlay_png=gate.bisenet_overlay_png,
+            bisenet_mask_png=gate.bisenet_mask_png,
         )
         return {
             "ok": False,
@@ -947,6 +959,8 @@ def _run_process_pipeline(
         preview_print,
         meta=pair_meta,
         resume_jpeg=resume_jpeg,
+        bisenet_overlay_png=gate.bisenet_overlay_png,
+        bisenet_mask_png=gate.bisenet_mask_png,
     )
     if result_id:
         process_cache_put(data, preset["doc_type"], result_id)

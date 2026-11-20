@@ -42,6 +42,8 @@ def save_rejected(
     message: str | None = None,
     metrics: dict | None = None,
     filename: str | None = None,
+    bisenet_overlay_png: bytes | None = None,
+    bisenet_mask_png: bytes | None = None,
 ) -> Path | None:
     """
     Write rejected upload bytes (+ sidecar JSON) into REJECTEDS_DIR.
@@ -71,6 +73,14 @@ def save_rejected(
             "bytes": len(data),
             "image": img_path.name,
         }
+        if bisenet_overlay_png or bisenet_mask_png:
+            side = root / f"{stem}_bisenet"
+            side.mkdir(parents=True, exist_ok=True)
+            if bisenet_overlay_png:
+                (side / "overlay.png").write_bytes(bisenet_overlay_png)
+            if bisenet_mask_png:
+                (side / "mask.png").write_bytes(bisenet_mask_png)
+            meta["bisenet_dir"] = side.name
         img_path.with_suffix(img_path.suffix + ".json").write_text(
             json.dumps(meta, ensure_ascii=False, indent=2),
             encoding="utf-8",

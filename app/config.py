@@ -98,6 +98,25 @@ U2NET_MODEL_PATH = Path(
         str(Path(__file__).resolve().parent.parent / "models" / "u2net.onnx"),
     )
 )
+# yakhyo BiSeNet resnet18 — face parsing for bangs gate
+BISENET_MODEL_PATH = Path(
+    os.getenv(
+        "BISENET_MODEL_PATH",
+        str(
+            Path(__file__).resolve().parent.parent
+            / "models"
+            / "bisenet_resnet18.onnx"
+        ),
+    )
+)
+# BiSeNet bangs gate thresholds (light brow tip-touch must pass)
+BANGS_MID_MIN = float(os.getenv("BANGS_MID_MIN", "0.30"))
+BANGS_FALLBACK_MIN = float(os.getenv("BANGS_FALLBACK_MIN", "0.35"))
+BANGS_SKIN_TOUCH_MIN = float(os.getenv("BANGS_SKIN_TOUCH_MIN", "0.28"))
+BANGS_BROW_TOUCH_MIN = float(os.getenv("BANGS_BROW_TOUCH_MIN", "0.33"))
+BANGS_BROWS_MISSING_MID_MIN = float(os.getenv("BANGS_BROWS_MISSING_MID_MIN", "0.25"))
+BANGS_BROW_DILATE_PX = int(os.getenv("BANGS_BROW_DILATE_PX", "10"))
+BANGS_SKIN_DILATE_PX = int(os.getenv("BANGS_SKIN_DILATE_PX", "6"))
 
 # OpenRouter edit (optional / fallback)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()

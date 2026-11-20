@@ -22,6 +22,9 @@ jobs:
           curl -fsSL \
             "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" \
             -o models/face_landmarker.task
+          curl -fsSL \
+            "https://github.com/yakhyo/face-parsing/releases/download/weights/resnet18.onnx" \
+            -o models/bisenet_resnet18.onnx
           python -c "from rembg import new_session; new_session('u2netp')"
 
       - name: Download sample selfies
@@ -39,6 +42,7 @@ jobs:
       - name: Process
         env:
           GATE_MODEL_PATH: ${{ github.workspace }}/models/face_landmarker.task
+          BISENET_MODEL_PATH: ${{ github.workspace }}/models/bisenet_resnet18.onnx
           EDIT_BACKEND: local
           REMBG_MODEL: u2netp
           PYTHONPATH: ${{ github.workspace }}

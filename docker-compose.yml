@@ -38,6 +38,7 @@ services:
       EDIT_CUTOUT: ${EDIT_CUTOUT:-silueta}
       U2NETP_MODEL_PATH: /app/models/u2netp.onnx
       SILUETA_MODEL_PATH: /app/models/silueta.onnx
+      BISENET_MODEL_PATH: /app/models/bisenet_resnet18.onnx
       OPENROUTER_IMAGE_MODEL: ${OPENROUTER_IMAGE_MODEL:-openai/gpt-image-1}
       OPENROUTER_TRANSPARENT_BG: ${OPENROUTER_TRANSPARENT_BG:-1}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}

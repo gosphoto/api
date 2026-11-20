@@ -53,7 +53,10 @@ RUN mkdir -p /app/models && \
       -o /app/models/u2netp.onnx && \
     curl -fsSL \
       "https://github.com/danielgatis/rembg/releases/download/v0.0.0/silueta.onnx" \
-      -o /app/models/silueta.onnx
+      -o /app/models/silueta.onnx && \
+    curl -fsSL \
+      "https://github.com/yakhyo/face-parsing/releases/download/weights/resnet18.onnx" \
+      -o /app/models/bisenet_resnet18.onnx
 
 COPY app ./app
 
@@ -62,6 +65,7 @@ ENV GATE_MODEL_PATH=/app/models/face_landmarker.task \
     SELFIE_SEGMENTER_PATH=/app/models/selfie_segmenter.tflite \
     U2NETP_MODEL_PATH=/app/models/u2netp.onnx \
     SILUETA_MODEL_PATH=/app/models/silueta.onnx \
+    BISENET_MODEL_PATH=/app/models/bisenet_resnet18.onnx \
     EDIT_BACKEND=openrouter \
     EDIT_CUTOUT=silueta \
     RESUME_UPSELL_ENABLED=0 \

@@ -118,11 +118,18 @@ def mirror_result_into_pair(
         return 0
     n = 0
     for path in src.iterdir():
-        if not path.is_file() or path.name == "meta.json":
+        if path.name == "meta.json":
             continue
         try:
-            shutil.copy2(path, pair / path.name)
-            n += 1
+            if path.is_file():
+                shutil.copy2(path, pair / path.name)
+                n += 1
+            elif path.is_dir() and path.name == "bisenet":
+                dest = pair / "bisenet"
+                if dest.exists():
+                    shutil.rmtree(dest)
+                shutil.copytree(path, dest)
+                n += sum(1 for _ in dest.rglob("*") if _.is_file())
         except OSError as e:
             log.warning(
                 "Mirror result→pair failed id=%s file=%s: %s",
@@ -140,6 +147,28 @@ def mirror_result_into_pair(
     return n
 
 
+def write_bisenet_artifacts(
+    folder: Path,
+    *,
+    overlay_png: bytes | None,
+    mask_png: bytes | None,
+) -> bool:
+    """Write results/<id>/bisenet/{overlay,mask}.png for offline analysis."""
+    if not overlay_png and not mask_png:
+        return False
+    try:
+        dest = folder / "bisenet"
+        dest.mkdir(parents=True, exist_ok=True)
+        if overlay_png:
+            (dest / "overlay.png").write_bytes(overlay_png)
+        if mask_png:
+            (dest / "mask.png").write_bytes(mask_png)
+        return True
+    except OSError as e:
+        log.warning("Failed to write bisenet artifacts under %s: %s", folder, e)
+        return False
+
+
 def save_result(
     digital_jpeg: bytes,
     print_jpeg: bytes,
@@ -147,6 +176,8 @@ def save_result(
     meta: dict[str, Any] | None = None,
     result_id: str | None = None,
     resume_jpeg: bytes | None = None,
+    bisenet_overlay_png: bytes | None = None,
+    bisenet_mask_png: bytes | None = None,
 ) -> str | None:
     """
     Write results/<id>/{digital,print,preview_*}.jpg + optional resume + meta.json.
@@ -168,6 +199,11 @@ def save_result(
         preview_print = make_preview_jpeg(print_jpeg)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+        write_bisenet_artifacts(
+            folder,
+            overlay_png=bisenet_overlay_png,
+            mask_png=bisenet_mask_png,
+        )
 
         resume_offer = bool(resume_jpeg)
         if resume_jpeg:
@@ -218,6 +254,8 @@ def save_preview_result(
     meta: dict[str, Any] | None = None,
     result_id: str | None = None,
     resume_jpeg: bytes | None = None,
+    bisenet_overlay_png: bytes | None = None,
+    bisenet_mask_png: bytes | None = None,
 ) -> str | None:
     """Write only screen previews. Full digital.jpg / print.jpg come after payment."""
     if not config.RESULTS_ENABLED or not preview_digital or not preview_print:
@@ -231,6 +269,11 @@ def save_preview_result(
         folder.mkdir(parents=True, exist_ok=False)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+        write_bisenet_artifacts(
+            folder,
+            overlay_png=bisenet_overlay_png,
+            mask_png=bisenet_mask_png,
+        )
 
         resume_offer = bool(resume_jpeg)
         if resume_jpeg:

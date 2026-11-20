@@ -45,11 +45,16 @@ jobs:
           test -f tests/fixtures/grayscale_gate/bw_stepa.jpg
           test -f tests/fixtures/grayscale_gate/color_1.jpg
           test -f tests/test_gate_bangs.py
+          test -f tests/test_bangs_hair_oval.py
+          test -f app/face_parse.py
           test -d tests/fixtures/bangs_gate/positive
           test -d tests/fixtures/bangs_gate/negative
           test -f tests/fixtures/bangs_gate/positive/semenova.jpg
           test "$(find tests/fixtures/bangs_gate/positive -name '*.jpg' | wc -l)" -ge 30
           test "$(find tests/fixtures/bangs_gate/negative -name '*.jpg' | wc -l)" -ge 30
+          test -d tests/fixtures/bangs_gate/overlays/positive
+          test -d tests/fixtures/bangs_gate/overlays/negative
+          test "$(find tests/fixtures/bangs_gate/overlays -name '*.mask.png' | wc -l)" -ge 60
           test -f tests/test_process_cache.py
           echo "API OK"
 
@@ -72,16 +77,20 @@ jobs:
           sudo apt-get update -qq
           sudo apt-get install -y -qq libgl1 libglib2.0-0
 
-      - name: Download Face Landmarker model
+      - name: Download Face Landmarker + BiSeNet models
         run: |
           mkdir -p models
           curl -fsSL \
             "https://storage.googleapis.com/mediapipe-models/face_landmarker/face_landmarker/float16/1/face_landmarker.task" \
             -o models/face_landmarker.task
+          curl -fsSL \
+            "https://github.com/yakhyo/face-parsing/releases/download/weights/resnet18.onnx" \
+            -o models/bisenet_resnet18.onnx
 
       - name: Pytest
         env:
           GATE_MODEL_PATH: ${{ github.workspace }}/models/face_landmarker.task
+          BISENET_MODEL_PATH: ${{ github.workspace }}/models/bisenet_resnet18.onnx
           PYTHONPATH: ${{ github.workspace }}
         run: pytest tests/ -v --tb=short
 

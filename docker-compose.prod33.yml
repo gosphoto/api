@@ -44,6 +44,7 @@ services:
       SILUETA_MODEL_PATH: /app/models/silueta.onnx
       U2NET_MODEL_PATH: /app/models/u2net.onnx
       ISNET_MODEL_PATH: /app/models/isnet-general-use.onnx
+      BISENET_MODEL_PATH: /app/models/bisenet_resnet18.onnx
       REJECTEDS_DIR: /app/rejecteds
       PAIRS_DIR: /app/pairs
       RESULTS_DIR: /app/results

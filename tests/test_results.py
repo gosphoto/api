@@ -66,6 +66,26 @@ def test_save_result_disabled(tmp_path, monkeypatch):
     assert list(tmp_path.iterdir()) == []
 
 
+def test_save_result_writes_bisenet_dir(tmp_path, monkeypatch):
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    from PIL import Image
+    import io
+
+    buf = io.BytesIO()
+    Image.new("RGB", (20, 20), (1, 2, 3)).save(buf, format="JPEG")
+    jpeg = buf.getvalue()
+    rid = save_result(
+        jpeg,
+        jpeg,
+        bisenet_overlay_png=b"ov",
+        bisenet_mask_png=b"mk",
+    )
+    assert rid is not None
+    assert (tmp_path / rid / "bisenet" / "overlay.png").read_bytes() == b"ov"
+    assert (tmp_path / rid / "bisenet" / "mask.png").read_bytes() == b"mk"
+
+
 def test_save_result_meta_json_shape(tmp_path, monkeypatch):
     monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
     monkeypatch.setattr(config, "RESULTS_ENABLED", True)

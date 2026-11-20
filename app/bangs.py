@@ -1,4 +1,4 @@
-"""Detect bangs (чёлка) covering eyebrows — Gosuslugi face-oval fail."""
+"""Detect bangs covering brows/eyes via BiSeNet fringe ∩ face oval."""
 
 from __future__ import annotations
 
@@ -7,194 +7,258 @@ from typing import Any
 import cv2
 import numpy as np
 
-# Eyes anchor the anatomical brow line (brow landmarks drift under fringe).
-_LEFT_EYE = (159, 158, 157)
-_RIGHT_EYE = (386, 385, 384)
-_LEFT_EYE_OUTER = 33
-_RIGHT_EYE_OUTER = 263
-_FOREHEAD = 10
-_NOSE_TIP = 1
+from . import config
+from . import face_parse as fp
 
-_BROW_LINE_K = 0.11
-# True fringe must cover mid-forehead, not only cast a brow-line shadow.
-DEFAULT_MID_FRAC_MIN = 0.65
-DEFAULT_BANGS_FRAC_MIN = 0.40
-DEFAULT_BANGS_CENTER_MIN = 0.48
-
-
-def _xy(landmarks, idx: int, w: int, h: int) -> tuple[int, int]:
-    lm = landmarks[idx]
-    return int(round(lm.x * w)), int(round(lm.y * h))
+# Calibrated on bangs_gate overlays (hair|hat as fringe).
+# Light brow tip-touch must PASS; only clear cover → reject.
+DEFAULT_MID_MIN = 0.30
+DEFAULT_FALLBACK_MIN = 0.35
+DEFAULT_SKIN_TOUCH_MIN = 0.28
+DEFAULT_BROW_TOUCH_MIN = 0.33
+DEFAULT_BROWS_MISSING_MID_MIN = 0.25
+DEFAULT_BROW_DILATE_PX = 10
+DEFAULT_SKIN_DILATE_PX = 6
 
 
-def bangs_on_brows_score(
-    bgr: np.ndarray,
-    landmarks,
+def _dilate(binary: np.ndarray, radius: int) -> np.ndarray:
+    if radius <= 0:
+        return binary.astype(bool)
+    k = 2 * int(radius) + 1
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (k, k))
+    return cv2.dilate(binary.astype(np.uint8), kernel, iterations=1).astype(bool)
+
+
+def _part_mask(mask: np.ndarray, ids: int | tuple[int, ...]) -> np.ndarray:
+    if isinstance(ids, tuple):
+        out = np.zeros(mask.shape[:2], dtype=bool)
+        for i in ids:
+            out |= mask == i
+        return out
+    return mask == ids
+
+
+def hair_oval_intersection(
+    mask: np.ndarray,
+    *,
+    mid_min: float | None = None,
+    fallback_min: float | None = None,
+    skin_touch_min: float | None = None,
+    brow_touch_min: float | None = None,
 ) -> dict[str, Any]:
-    """Score whether fringe covers the forehead down onto the brows.
+    """Score fringe (hair|hat) covering brows/eyes on a BiSeNet class mask.
 
-    Requires dark hair in the mid-forehead plane (чёлка), not merely a dark
-    strip at the brow line (eyebrows, short fringe with skin gap, wet skin).
+    Classes are mutually exclusive, so we measure:
+    - mid: fringe in a band just above the eyes (center)
+    - brow_touch: fringe inside dilated brow neighborhood
+    - skin_touch: fringe along upper skin (forehead) boundary
+    - fallback: upper-center fringe when eyes are barely parsed
+    - brows_missing: eyes present but brows nearly gone (covered)
     """
-    h, w = bgr.shape[:2]
-    if landmarks is None or len(landmarks) < 400:
-        return {"frac": 0.0, "bangs_on_brows": False, "pix": 0, "reason": "no_landmarks"}
-
-    forehead = _xy(landmarks, _FOREHEAD, w, h)
-    nose = _xy(landmarks, _NOSE_TIP, w, h)
-    face_h = max(8.0, float(nose[1] - forehead[1]))
-
-    eye_pts = np.array(
-        [_xy(landmarks, i, w, h) for i in (_LEFT_EYE + _RIGHT_EYE)],
-        dtype=np.int32,
-    )
-    eye_y = float(np.median(eye_pts[:, 1]))
-    # Upside-down / extreme pitch: nose should sit below the eyes.
-    if float(nose[1]) < eye_y - 0.02 * face_h:
+    if mask is None or mask.size == 0:
         return {
-            "frac": 0.0,
+            "hit": False,
             "bangs_on_brows": False,
-            "pix": 0,
-            "reason": "upside_down",
+            "ratio": 0.0,
+            "frac": 0.0,
+            "reason": "empty_mask",
         }
-    brow_line = eye_y - _BROW_LINE_K * face_h
 
-    le = _xy(landmarks, _LEFT_EYE_OUTER, w, h)
-    re = _xy(landmarks, _RIGHT_EYE_OUTER, w, h)
-    span = max(1, abs(re[0] - le[0]))
-    x0 = int(min(le[0], re[0]) + 0.08 * span)
-    x1 = int(max(le[0], re[0]) - 0.08 * span)
+    t_mid = float(
+        mid_min
+        if mid_min is not None
+        else getattr(config, "BANGS_MID_MIN", DEFAULT_MID_MIN)
+    )
+    t_fb = float(
+        fallback_min
+        if fallback_min is not None
+        else getattr(config, "BANGS_FALLBACK_MIN", DEFAULT_FALLBACK_MIN)
+    )
+    t_st = float(
+        skin_touch_min
+        if skin_touch_min is not None
+        else getattr(config, "BANGS_SKIN_TOUCH_MIN", DEFAULT_SKIN_TOUCH_MIN)
+    )
+    t_bt = float(
+        brow_touch_min
+        if brow_touch_min is not None
+        else getattr(config, "BANGS_BROW_TOUCH_MIN", DEFAULT_BROW_TOUCH_MIN)
+    )
+    t_miss_mid = float(
+        getattr(config, "BANGS_BROWS_MISSING_MID_MIN", DEFAULT_BROWS_MISSING_MID_MIN)
+    )
 
-    y1 = int(max(0, brow_line - 1))
-    y0 = int(max(0, brow_line - max(6, 0.12 * face_h)))
-    if y1 <= y0 + 2 or x1 <= x0 + 4:
-        return {"frac": 0.0, "bangs_on_brows": False, "pix": 0, "reason": "bad_box"}
+    fringe = np.isin(mask, [fp.CLASS_HAIR, 18])  # hair + hat (fringe mislabel)
+    brows = np.isin(mask, [fp.CLASS_L_BROW, fp.CLASS_R_BROW])
+    eyes = np.isin(mask, [fp.CLASS_L_EYE, fp.CLASS_R_EYE])
+    skin = mask == fp.CLASS_SKIN
+    eye_n = int(eyes.sum())
+    brow_n = int(brows.sum())
+    h, w = mask.shape[:2]
 
-    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    lab = cv2.cvtColor(bgr, cv2.COLOR_BGR2LAB)
-    a_ch = lab[:, :, 1].astype(np.float32)
-
-    cx0, cx1 = int(0.35 * w), int(0.65 * w)
-    cy0 = int(nose[1])
-    cy1 = int(min(h, nose[1] + 0.18 * face_h))
-    cheek = gray[cy0:cy1, cx0:cx1]
-    cheek_a = a_ch[cy0:cy1, cx0:cx1]
-    skin = float(np.median(cheek)) if cheek.size else 160.0
-    skin_a = float(np.median(cheek_a)) if cheek_a.size else 140.0
-    thr = max(65.0, min(125.0, skin - 40.0))
-
-    def _hair_frac(ya: int, yb: int, xa: int, xb: int) -> tuple[float, float, int]:
-        if yb <= ya + 1 or xb <= xa + 2:
-            return 0.0, 0.0, 0
-        roi = gray[ya:yb, xa:xb]
-        roi_a = a_ch[ya:yb, xa:xb]
-        usable = roi < 245
-        n = int(usable.sum())
-        if n < 20:
-            return 0.0, 0.0, n
-        hair = usable & ((roi < thr) | ((roi < skin - 12) & (roi >= thr)))
-        dark = usable & (roi < thr)
-        skinish = 0.0
-        dn = int(dark.sum())
-        if dn:
-            skinish = int((dark & (roi_a >= skin_a - 3)).sum()) / float(dn)
-        return float(hair.sum()) / float(n), skinish, n
-
-    frac, skinish, n = _hair_frac(y0, y1, x0, x1)
-    mid0 = int(0.25 * (x1 - x0))
-    mid1 = int(0.75 * (x1 - x0))
-    c_frac, _, _ = _hair_frac(y0, y1, x0 + mid0, x0 + mid1)
-
-    fh_top = float(forehead[1])
-    gap = max(4.0, brow_line - fh_top)
-    mid_y0 = int(fh_top + 0.28 * gap)
-    mid_y1 = int(fh_top + 0.72 * gap)
-    # Stricter darkness on mid-forehead (чёлка), vs soft shadows on bare skin.
-    thr_mid = max(55.0, min(115.0, skin - 50.0))
-    mid_roi = gray[mid_y0:mid_y1, x0:x1]
-    mid_u = mid_roi < 245
-    mid_n = int(mid_u.sum())
-    if mid_n < 20:
-        mid_frac = 0.0
-        mid_skinish = 0.0
-        mid_p25 = skin
-        mid_med = skin
+    brow_r = int(getattr(config, "BANGS_BROW_DILATE_PX", DEFAULT_BROW_DILATE_PX))
+    if brow_n:
+        brows_d = _dilate(brows, brow_r)
+        brow_touch = float((fringe & brows_d).sum()) / float(max(int(brows_d.sum()), 1))
     else:
-        mid_hair = mid_u & ((mid_roi < thr_mid) | ((mid_roi < skin - 18) & (mid_roi >= thr_mid)))
-        mid_frac = float(mid_hair.sum()) / float(mid_n)
-        mid_dark = mid_u & (mid_roi < thr_mid)
-        dn = int(mid_dark.sum())
-        mid_a = a_ch[mid_y0:mid_y1, x0:x1]
-        mid_skinish = (
-            int((mid_dark & (mid_a >= skin_a - 3)).sum()) / float(dn) if dn else 0.0
-        )
-        mid_p25 = float(np.percentile(mid_roi[mid_u], 25))
-        mid_med = float(np.median(mid_roi[mid_u]))
+        brow_touch = 0.0
 
-    rows: list[float] = []
-    for yy in range(y0, y1):
-        row = gray[yy, x0:x1]
-        ru = row < 245
-        rn = int(ru.sum())
-        if rn < 8:
-            continue
-        rows.append(float((ru & (row < thr)).sum()) / float(rn))
-    lower = rows[len(rows) // 2 :] if rows else []
-    skin_gap = bool(lower) and (min(lower) < 0.18)
+    mid = 0.0
+    if eye_n > 20:
+        ey = int(np.percentile(np.where(eyes)[0], 15))
+        xs = np.where(eyes)[1]
+        x0, x1 = int(xs.min()), int(xs.max())
+        fw = max(1, x1 - x0)
+        band = mask[
+            max(0, ey - int(0.10 * h)) : ey,
+            max(0, x0 - int(0.15 * fw)) : min(w, x1 + int(0.15 * fw)),
+        ]
+        if band.size:
+            mid = float(np.isin(band, [fp.CLASS_HAIR, 18]).mean())
 
-    sob_roi = gray[y0:y1, x0:x1]
-    usable = sob_roi < 245
-    sob = cv2.Sobel(sob_roi.astype(np.float32), cv2.CV_32F, 1, 0, ksize=3)
-    sob = sob + cv2.Sobel(sob_roi.astype(np.float32), cv2.CV_32F, 0, 1, ksize=3)
-    edge = float(np.mean(np.abs(sob)[usable])) if int(usable.sum()) else 0.0
-    band_med = float(np.median(sob_roi[usable])) if int(usable.sum()) else 255.0
-    brim = band_med < 40.0 and edge < 12.0
-    wet_mid = mid_skinish >= 0.70 and edge < 25.0 and band_med > 70.0
-    # Bare forehead with only mild underexposure is not fringe.
-    weak_mid = (skin - mid_p25) < 48.0
+    brows_missing = eye_n > 50 and brow_n < 0.2 * eye_n
+
+    fallback = 0.0
+    if eye_n < 40:
+        ys, xs = np.where(skin | fringe)
+        if len(ys) > 50:
+            y0, y1 = int(ys.min()), int(ys.max())
+            x0, x1 = int(xs.min()), int(xs.max())
+            fh = max(1, y1 - y0)
+            fw = max(1, x1 - x0)
+            band = mask[
+                y0 : y0 + int(0.45 * fh),
+                x0 + int(0.2 * fw) : x0 + int(0.8 * fw),
+            ]
+            if band.size:
+                fallback = float(np.isin(band, [fp.CLASS_HAIR, 18]).mean())
+
+    skin_touch = 0.0
+    if int(skin.sum()) > 100:
+        ys, xs = np.where(skin)
+        y0, y1 = int(ys.min()), int(ys.max())
+        x0, x1 = int(xs.min()), int(xs.max())
+        fh = max(1, y1 - y0)
+        fw = max(1, x1 - x0)
+        region = np.zeros_like(mask, dtype=bool)
+        region[
+            y0 : y0 + int(0.40 * fh),
+            x0 + int(0.2 * fw) : x0 + int(0.8 * fw),
+        ] = True
+        skin_r = int(getattr(config, "BANGS_SKIN_DILATE_PX", DEFAULT_SKIN_DILATE_PX))
+        skin_d = _dilate(skin, skin_r) & region
+        skin_touch = float((fringe & skin_d).sum()) / float(max(int(skin_d.sum()), 1))
 
     hit = (
-        mid_frac >= DEFAULT_MID_FRAC_MIN
-        and c_frac >= DEFAULT_BANGS_CENTER_MIN
-        and frac >= DEFAULT_BANGS_FRAC_MIN
-        and not skin_gap
-        and not brim
-        and not wet_mid
-        and not weak_mid
+        mid >= t_mid
+        or fallback >= t_fb
+        or (brows_missing and mid >= t_miss_mid)
+        or skin_touch >= t_st
+        or brow_touch >= t_bt
     )
 
+    # Per-part diagnostics (dilated neighborhood fringe fraction)
+    parts: dict[str, Any] = {}
+    part_ids = {
+        "l_brow": fp.CLASS_L_BROW,
+        "r_brow": fp.CLASS_R_BROW,
+        "l_eye": fp.CLASS_L_EYE,
+        "r_eye": fp.CLASS_R_EYE,
+        "nose": fp.CLASS_NOSE,
+        "mouth": (fp.CLASS_MOUTH, fp.CLASS_U_LIP, fp.CLASS_L_LIP),
+    }
+    for name, ids in part_ids.items():
+        part = _part_mask(mask, ids)
+        if int(part.sum()) < 8:
+            parts[name] = {
+                "ratio": 0.0,
+                "intersect_pix": 0,
+                "oval_pix": 0,
+                "hit": False,
+            }
+            continue
+        part_d = _dilate(part, brow_r)
+        inter = int((fringe & part_d).sum())
+        opix = int(part_d.sum())
+        ratio = float(inter) / float(max(opix, 1))
+        parts[name] = {
+            "ratio": round(ratio, 4),
+            "intersect_pix": inter,
+            "oval_pix": opix,
+            "hit": bool(ratio >= t_bt and inter >= 8),
+        }
+
+    ratio = max(mid, brow_touch, skin_touch, fallback)
     return {
-        "frac": round(frac, 3),
-        "c_frac": round(c_frac, 3),
-        "mid_frac": round(mid_frac, 3),
-        "mid_skinish": round(mid_skinish, 3),
-        "mid_p25": round(mid_p25, 1),
-        "weak_mid": weak_mid,
-        "bangs_on_brows": hit,
-        "pix": n,
-        "thresh": DEFAULT_BANGS_FRAC_MIN,
-        "mid_min": DEFAULT_MID_FRAC_MIN,
-        "center_min": DEFAULT_BANGS_CENTER_MIN,
-        "box": [x0, y0, x1, y1],
-        "mid_box": [x0, mid_y0, x1, mid_y1],
-        "brow_line": round(brow_line, 1),
-        "eye_y": round(eye_y, 1),
-        "edge": round(edge, 1),
-        "skin_gap": skin_gap,
-        "wet_mid": wet_mid,
-        "brim": brim,
-        "skinish": round(skinish, 3),
+        "hit": bool(hit),
+        "bangs_on_brows": bool(hit),
+        "ratio": round(ratio, 4),
+        "frac": round(ratio, 4),
+        "mid": round(mid, 4),
+        "brow_touch": round(brow_touch, 4),
+        "skin_touch": round(skin_touch, 4),
+        "fallback": round(fallback, 4),
+        "brows_missing": bool(brows_missing),
+        "eye_pix": eye_n,
+        "brow_pix": brow_n,
+        "hair_pix": int(fringe.sum()),
+        "thresh_mid": t_mid,
+        "thresh_fallback": t_fb,
+        "thresh_skin_touch": t_st,
+        "thresh_brow_touch": t_bt,
+        "thresh_brows_missing_mid": t_miss_mid,
+        "parts": parts,
+        "l_brow": parts["l_brow"],
+        "r_brow": parts["r_brow"],
+        "l_eye": parts["l_eye"],
+        "r_eye": parts["r_eye"],
+        "nose": parts["nose"],
+        "mouth": parts["mouth"],
         "reason": "ok",
     }
 
 
+def bangs_on_brows_score(
+    bgr: np.ndarray,
+    landmarks=None,
+) -> dict[str, Any]:
+    """Run BiSeNet + hair∩oval. ``landmarks`` kept for call-site compat (unused)."""
+    del landmarks
+    try:
+        artifacts = fp.parse_with_artifacts(bgr)
+    except FileNotFoundError as e:
+        return {
+            "frac": 0.0,
+            "bangs_on_brows": False,
+            "hit": False,
+            "pix": 0,
+            "reason": "no_model",
+            "error": str(e),
+        }
+    except Exception as e:
+        return {
+            "frac": 0.0,
+            "bangs_on_brows": False,
+            "hit": False,
+            "pix": 0,
+            "reason": "parse_error",
+            "error": str(e),
+        }
+
+    scores = hair_oval_intersection(artifacts["mask"])
+    scores["pix"] = int(scores.get("hair_pix") or 0)
+    scores["bisenet_overlay_png"] = artifacts["overlay_png"]
+    scores["bisenet_mask_png"] = artifacts["mask_png"]
+    return scores
+
+
 def bangs_on_brows(
     bgr: np.ndarray,
-    landmarks,
+    landmarks=None,
     *,
     frac_min: float | None = None,
 ) -> bool:
     scores = bangs_on_brows_score(bgr, landmarks)
     if frac_min is None:
         return bool(scores.get("bangs_on_brows"))
-    return float(scores.get("frac") or 0.0) >= float(frac_min)
+    return float(scores.get("ratio") or scores.get("frac") or 0.0) >= float(frac_min)
