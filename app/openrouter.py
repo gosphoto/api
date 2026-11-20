@@ -99,13 +99,10 @@ GOSUSLUGI_EDIT_PROMPT = (
     "output must match — zero invented spots. "
     "CRITICAL: preserve exact face identity, age, hair style/color, "
     "eye color, facial proportions from the input. "
-    "HAIR COLOR / EDGE (HARD): keep the exact hair color and density from the "
-    "input — brown stays brown, blonde stays blonde, gray stays gray. "
-    "Do NOT bleach, whiten, chalk, or lighten hair toward #FFFFFF. "
-    "Do NOT punch white holes, speckles, or bright gaps into the hair mass. "
-    "Where the upstream white cutout softens the hair silhouette: fill those "
-    "edge pixels with real neighboring hair color — never leave white or near-"
-    "white inside the hair. Do not dissolve hair into the white backdrop. "
+    "HAIR TIDY (LIGHT): lightly comb only strands that stick out from the outer "
+    "silhouette back into the hair mass so the outline looks neat — nothing "
+    "spiking or poking out in clumps. Keep the same hairstyle, length, volume, "
+    "parting, and color; do not shorten, reshape, or invent a new cut. "
     "Gosuslugi / RF passport rules: face must match the person's age; face fully "
     "open — hair must NOT cover or touch eyes, brows, forehead, cheekbones, or "
     "the face oval. "
@@ -159,8 +156,8 @@ GOSUSLUGI_EDIT_PROMPT = (
     "fully visible): "
     "do NOT change the bangs at all — no trim, no lift, no restyle. "
     "Override 'preserve hair style' ONLY in the IF branch. "
-    "Do not restyle the hair mass beyond clearing the face oval and this "
-    "conditional bangs fix. "
+    "Do not restyle the hair mass beyond clearing the face oval, this "
+    "conditional bangs fix, and the light hair-tidy of sticking-out strands. "
     "Do not cut or shorten the main hair outside the bangs IF-branch; do not "
     "change hair color or overall volume elsewhere; do not invent an "
     "unrelated new hairstyle. "
@@ -197,8 +194,9 @@ GOSUSLUGI_SCORING_PROMPT = (
     "even uniform face lighting / flat passport front fill on every input "
     "(both halves the same brightness, no leftover side gradient or harsh side shadows) "
     "with natural skin exposure "
-    "(no bleach/overexpose); exact hair color from input — no white holes or "
-    "bleached speckles in the hair mass; no invented moles/freckles; "
+    "(no bleach/overexpose); exact hair color from input; lightly tidy strands "
+    "that stick out from the outer silhouette (same style/length/volume); "
+    "no invented moles/freckles; "
     "open face with no hair on the oval (sweep/part away if needed — never tuck "
     "behind ears or invent ears); bangs/чёлка: "
     "if any hair covers or touches either brow or either cheekbone, including a "
@@ -232,7 +230,7 @@ GOSUSLUGI_SCORING_RUBRIC: list[dict[str, Any]] = [
     {
         "key": "identity",
         "label": "Identity fidelity",
-        "description": "Same face, age, skin tone/exposure and texture, hair color/density as the input; no hair bleach or white holes in hair; no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
+        "description": "Same face, age, skin tone/exposure and texture, hair color/density as the input; no invented freckles/moles, no beautify; business suit OK unless religious clothing (keep it).",
         "weight": 0.45,
     },
     {

@@ -70,9 +70,10 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "do not touch the background" in g
     assert "re-matte" not in g
     assert "re-cut" not in g
-    assert "hair color / edge" in g
-    assert "white holes" in g
-    assert "bleach" in g and "hair" in g
+    assert "hair tidy" in g
+    assert "stick out" in g
+    assert "hair color / edge" not in g
+    assert "white holes" not in g
     assert "must erase every isolated flyaway" not in g
     assert "flyaway" not in g
     assert "wall halo" not in g
@@ -81,6 +82,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     from app.openrouter import GOSUSLUGI_SCORING_PROMPT, GOSUSLUGI_SCORING_RUBRIC
 
     s = GOSUSLUGI_SCORING_PROMPT.lower()
+    assert "stick out" in s
+    assert "white holes" not in s
+    assert "bleached speckles" not in s
     assert "flyaway" not in s
     assert "wisps" not in s
     assert "wall halo" not in s
