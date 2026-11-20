@@ -14,7 +14,7 @@ import numpy as np
 
 from . import config
 from .bg import last_cutout_backend, prepare_for_cutout, white_background_local
-from .compose_bg import composite_on_white
+from .compose_bg import composite_on_white, decontaminate_alpha_colors
 from .face_protect import align_edit_to_original, face_protect_mask
 from .gate import _decode_image, _resize_max_side
 from .edit_router import choose_edit_model
@@ -48,12 +48,16 @@ def _pre_edit_replicate_cutout(orig_jpg: bytes) -> tuple[bytes, dict[str, Any]]:
         decoded = _decode_any(png)
         if decoded is None:
             raise ReplicateBgError("cutout PNG decode failed")
+        decontaminate = bool(config.PRE_EDIT_DECONTAMINATE)
+        if decontaminate and decoded.ndim == 3 and decoded.shape[2] == 4:
+            decoded = decontaminate_alpha_colors(decoded)
         on_white = composite_on_white(decoded)
         ok, buf = cv2.imencode(".jpg", on_white, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
         if not ok:
             raise ReplicateBgError("cutout JPEG re-encode failed")
         meta["applied"] = True
         meta["ok"] = True
+        meta["decontaminate"] = decontaminate
         return buf.tobytes(), meta
     except Exception as exc:
         meta["ok"] = False
