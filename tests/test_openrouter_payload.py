@@ -70,6 +70,9 @@ def test_gosuslugi_prompt_is_resume_with_white_bg_no_skin_retouch():
     assert "do not touch the background" in g
     assert "re-matte" not in g
     assert "re-cut" not in g
+    assert "hair color / edge" in g
+    assert "white holes" in g
+    assert "bleach" in g and "hair" in g
     assert "must erase every isolated flyaway" not in g
     assert "flyaway" not in g
     assert "wall halo" not in g
