@@ -23,7 +23,7 @@ from . import progress_events as progress_events_mod
 from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
-from .brightness import DEFAULT_BRIGHTNESS, parse_brightness
+from .brightness import DEFAULT_BRIGHTNESS, DEFAULT_CONTRAST, parse_brightness, parse_contrast
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
 from . import face_parse as face_parse_mod
@@ -147,6 +147,10 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         body["brightness"] = parse_brightness(meta.get("brightness", DEFAULT_BRIGHTNESS))
     except ValueError:
         body["brightness"] = DEFAULT_BRIGHTNESS
+    try:
+        body["contrast"] = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
+    except ValueError:
+        body["contrast"] = DEFAULT_CONTRAST
     from . import full_render
 
     body["brightness_editable"] = (
@@ -1334,6 +1338,38 @@ def set_result_brightness(result_id: str, payload: BrightnessBody):
         raise HTTPException(
             status_code=409,
             detail="digital_base.jpg missing; brightness cannot be changed for this result",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    results_mod.mirror_result_into_pair(result_id, meta=meta)
+    return _result_public_payload(result_id, meta)
+
+
+class AdjustBody(BaseModel):
+    brightness: float = Field(..., ge=0.7, le=1.35)
+    contrast: float = Field(..., ge=0.7, le=1.35)
+
+
+@app.post("/api/result/{result_id}/adjust")
+def set_result_adjust(result_id: str, payload: AdjustBody):
+    meta0 = load_meta(result_id) if is_valid_result_id(result_id) else None
+    if not meta0:
+        raise HTTPException(status_code=404, detail="Result not found")
+    from . import full_render
+
+    if full_render.public_status(result_id, meta0) == "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Full-size render is in progress; try again in a moment",
+        )
+    try:
+        meta = results_mod.rebake_adjust(
+            result_id, payload.brightness, payload.contrast
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=409,
+            detail="digital_base.jpg missing; adjust cannot be applied for this result",
         )
     except ValueError as e:
         raise HTTPException(status_code=422, detail=str(e))

@@ -17,7 +17,15 @@ from PIL import Image
 
 from . import config
 from . import results
-from .brightness import DEFAULT_BRIGHTNESS, apply_brightness, is_dirty, parse_brightness
+from .brightness import (
+    DEFAULT_BRIGHTNESS,
+    DEFAULT_CONTRAST,
+    apply_adjust,
+    is_contrast_dirty,
+    is_dirty,
+    parse_brightness,
+    parse_contrast,
+)
 from .pairs import EDIT_GEMINI, resolve_pair_dir
 
 log = logging.getLogger("gosphoto-gate")
@@ -121,10 +129,14 @@ def promote_paid_from_edit_gemini(result_id: str, meta: dict) -> bool:
             brightness = parse_brightness(meta.get("brightness", DEFAULT_BRIGHTNESS))
         except ValueError:
             brightness = DEFAULT_BRIGHTNESS
-        if is_dirty(brightness):
+        try:
+            contrast = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
+        except ValueError:
+            contrast = DEFAULT_CONTRAST
+        if is_dirty(brightness) or is_contrast_dirty(contrast):
             rgb = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
-            bright = apply_brightness(rgb, brightness)
-            cropped = cv2.cvtColor(np.asarray(bright, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+            adjusted = apply_adjust(rgb, brightness, contrast)
+            cropped = cv2.cvtColor(np.asarray(adjusted, dtype=np.uint8), cv2.COLOR_RGB2BGR)
             jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
         else:
             jpeg = base_jpeg

@@ -466,3 +466,100 @@ def test_brightness_editable_flag(tmp_path, monkeypatch, preview_result):
     rid2 = results.save_preview_result(_jpeg(), _jpeg(), meta={})  # legacy: no base
     assert rid2
     assert client.get(f"/api/result/{rid2}").json()["brightness_editable"] is False
+
+
+# ---------------------------------------------------------------------------
+# Contrast: GET payload, POST /adjust, /brightness alias, paid promote
+# ---------------------------------------------------------------------------
+
+
+def test_get_result_includes_default_contrast(preview_result):
+    client, rid = preview_result
+    r = client.get(f"/api/result/{rid}")
+    assert r.status_code == 200
+    body = r.json()
+    assert body["brightness"] == pytest.approx(1.0)
+    assert body["contrast"] == pytest.approx(1.0)
+
+
+def test_post_adjust_sets_both(preview_result):
+    client, rid = preview_result
+    r = client.post(
+        f"/api/result/{rid}/adjust",
+        json={"brightness": 1.15, "contrast": 1.2},
+    )
+    assert r.status_code == 200
+    body = r.json()
+    assert body["brightness"] == pytest.approx(1.15)
+    assert body["contrast"] == pytest.approx(1.2)
+    g = client.get(f"/api/result/{rid}").json()
+    assert g["contrast"] == pytest.approx(1.2)
+
+
+def test_post_adjust_out_of_range_422(preview_result):
+    client, rid = preview_result
+    r = client.post(
+        f"/api/result/{rid}/adjust",
+        json={"brightness": 1.0, "contrast": 2.5},
+    )
+    assert r.status_code == 422
+
+
+def test_post_brightness_alias_keeps_contrast(preview_result):
+    client, rid = preview_result
+    client.post(
+        f"/api/result/{rid}/adjust",
+        json={"brightness": 1.0, "contrast": 1.25},
+    )
+    r = client.post(f"/api/result/{rid}/brightness", json={"brightness": 1.1})
+    assert r.status_code == 200
+    assert r.json()["contrast"] == pytest.approx(1.25)
+    assert r.json()["brightness"] == pytest.approx(1.1)
+
+
+def test_post_adjust_unknown_404_and_missing_base_409(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    main = _import_app_main()
+    client = TestClient(main.app)
+    body = {"brightness": 1.0, "contrast": 1.1}
+    assert client.post(f"/api/result/{'a' * 32}/adjust", json=body).status_code == 404
+    rid = results.save_preview_result(_jpeg(), _jpeg(), meta={})  # no digital_base
+    r = client.post(f"/api/result/{rid}/adjust", json=body)
+    assert r.status_code == 409
+    assert "digital_base" in r.json()["detail"]
+
+
+def test_contrast_survives_paid_promote(tmp_path, monkeypatch):
+    import numpy as np
+
+    results, rid = _promote_setup(tmp_path, monkeypatch)  # stubs mediapipe if absent
+    from app import crop, full_render
+
+    def two_tone_crop(bgr, *, width, height, dpi):
+        cropped = np.full((height, width, 3), 80, dtype=np.uint8)
+        cropped[:, width // 2 :] = 160
+        return cropped, {"fake": True}, {}
+
+    monkeypatch.setattr(crop, "run_crop_stage", two_tone_crop)
+    meta = results.load_meta(rid)
+    meta["contrast"] = 1.3  # unpaid slider value (no digital_base yet)
+    results._write_meta(rid, meta)
+
+    assert full_render.promote_paid_from_edit_gemini(rid, results.load_meta(rid))
+
+    folder = results.result_dir(rid)
+
+    def spread(data: bytes) -> int:
+        img = Image.open(io.BytesIO(data)).convert("RGB")
+        w, h = img.size
+        return img.getpixel((w * 3 // 4, h // 2))[0] - img.getpixel((w // 4, h // 2))[0]
+
+    base_spread = spread((folder / "digital_base.jpg").read_bytes())
+    assert base_spread == pytest.approx(80, abs=6)
+    assert spread((folder / "digital.jpg").read_bytes()) > base_spread + 15
+    assert results.load_meta(rid)["contrast"] == pytest.approx(1.3)
