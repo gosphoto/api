@@ -74,3 +74,69 @@ def test_save_preview_can_store_digital_base(tmp_path, monkeypatch):
     )
     assert results.load_meta(rid2)["brightness"] == pytest.approx(1.2)
     assert not (results.result_dir(rid2) / "digital_base.jpg").exists()
+
+
+def _rebake_setup(tmp_path, monkeypatch, *, with_base=True):
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    monkeypatch.setattr(config, "PAIRS_DIR", tmp_path / "pairs")
+
+    def jpeg(color, size=(70, 90)):
+        buf = io.BytesIO()
+        Image.new("RGB", size, color).save(buf, format="JPEG", quality=95)
+        return buf.getvalue()
+
+    rid = results.save_preview_result(
+        jpeg((80, 80, 80), size=(48, 60)),
+        jpeg((80, 80, 80), size=(100, 60)),
+        meta={"doc_type": "passport_rf"},
+        digital_base_jpeg=jpeg((80, 80, 80)) if with_base else None,
+    )
+    assert rid
+    return results, rid, jpeg
+
+
+def _mid_red(data: bytes) -> int:
+    img = Image.open(io.BytesIO(data)).convert("RGB")
+    return img.getpixel((img.size[0] // 2, img.size[1] // 2))[0]
+
+
+def test_rebake_brightness_updates_previews_and_meta(tmp_path, monkeypatch):
+    results, rid, _ = _rebake_setup(tmp_path, monkeypatch)
+    folder = results.result_dir(rid)
+    before = _mid_red((folder / "preview_digital.jpg").read_bytes())
+    meta = results.rebake_brightness(rid, 1.25)
+    assert meta["brightness"] == pytest.approx(1.25)
+    assert results.load_meta(rid)["brightness"] == pytest.approx(1.25)
+    after = _mid_red((folder / "preview_digital.jpg").read_bytes())
+    assert after > before
+    assert (folder / "preview_print.jpg").is_file()
+    # unpaid preview-only: no full-size files created
+    assert not (folder / "digital.jpg").exists()
+    assert not (folder / "print.jpg").exists()
+
+
+def test_rebake_brightness_rewrites_full_files_when_present(tmp_path, monkeypatch):
+    results, rid, jpeg = _rebake_setup(tmp_path, monkeypatch)
+    folder = results.result_dir(rid)
+    (folder / "digital.jpg").write_bytes(jpeg((80, 80, 80)))
+    (folder / "print.jpg").write_bytes(jpeg((80, 80, 80), size=(60, 90)))
+    results.rebake_brightness(rid, 1.3)
+    assert _mid_red((folder / "digital.jpg").read_bytes()) > 90
+    sheet = Image.open(io.BytesIO((folder / "print.jpg").read_bytes())).convert("RGB")
+    assert sheet.size == (1181, 1772)
+    px = sheet.getpixel((sheet.size[0] // 4, sheet.size[1] // 4))[0]
+    assert px > 90 and px < 250
+    meta = results.load_meta(rid)
+    assert meta["digital_bytes"] == (folder / "digital.jpg").stat().st_size
+    assert meta["print_bytes"] == (folder / "print.jpg").stat().st_size
+
+
+def test_rebake_brightness_missing_base_raises(tmp_path, monkeypatch):
+    results, rid, _ = _rebake_setup(tmp_path, monkeypatch, with_base=False)
+    with pytest.raises(FileNotFoundError):
+        results.rebake_brightness(rid, 1.2)
+    with pytest.raises(FileNotFoundError):
+        results.rebake_brightness("a" * 32, 1.2)

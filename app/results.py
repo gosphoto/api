@@ -735,3 +735,66 @@ def ensure_view(result_id: str) -> bytes | None:
     except Exception as e:
         log.warning("Failed to build view jpeg id=%s: %s", result_id, e)
         return None
+
+
+def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
+    """
+    Re-render previews (and full digital/print if already present) from
+    digital_base.jpg with the given brightness, then persist meta.brightness.
+
+    Raises FileNotFoundError if the result or digital_base.jpg is missing.
+    """
+    import io
+
+    import cv2
+    import numpy as np
+    from PIL import Image
+
+    from .brightness import apply_brightness
+    from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
+
+    if not is_valid_result_id(result_id):
+        raise FileNotFoundError("result not found")
+    folder = result_dir(result_id)
+    meta = load_meta(result_id)
+    base_path = folder / DIGITAL_BASE_FILE
+    if meta is None or not base_path.is_file():
+        raise FileNotFoundError("digital_base.jpg missing")
+
+    with Image.open(io.BytesIO(base_path.read_bytes())) as src:
+        bright = apply_brightness(src.convert("RGB"), float(brightness))
+        bright.load()
+    bgr = cv2.cvtColor(np.asarray(bright, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+
+    # Local encode (app.crop pulls heavy deps); same quality/size/DPI policy as crop.encode_jpeg.
+    digital_jpeg = b""
+    for q in [int(config.JPEG_QUALITY), *range(int(config.JPEG_QUALITY) - 4, 54, -4), 50]:
+        buf = io.BytesIO()
+        bright.save(
+            buf,
+            format="JPEG",
+            quality=max(1, q),
+            dpi=(int(config.PASSPORT_DPI), int(config.PASSPORT_DPI)),
+            optimize=True,
+        )
+        digital_jpeg = buf.getvalue()
+        if len(digital_jpeg) <= int(config.JPEG_MAX_BYTES):
+            break
+    sheet_bgr, _ = make_print_sheet_bgr(bgr)
+    print_jpeg = encode_print_jpeg(sheet_bgr)
+
+    (folder / "preview_digital.jpg").write_bytes(make_preview_jpeg(digital_jpeg))
+    (folder / "preview_print.jpg").write_bytes(make_preview_jpeg(print_jpeg))
+
+    has_full = (folder / "digital.jpg").is_file()
+    if has_full:
+        (folder / "digital.jpg").write_bytes(digital_jpeg)
+        (folder / "print.jpg").write_bytes(print_jpeg)
+        meta["digital_bytes"] = len(digital_jpeg)
+        meta["print_bytes"] = len(print_jpeg)
+    if has_full or (folder / "view_digital.jpg").is_file():
+        (folder / "view_digital.jpg").write_bytes(make_view_jpeg(digital_jpeg))
+
+    meta["brightness"] = round(float(brightness), 4)
+    _write_meta(result_id, meta)
+    return meta
