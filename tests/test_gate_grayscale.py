@@ -22,6 +22,8 @@ COLOR = [
     "color_3.jpg",
     "color_4.jpg",
     "color_5.jpg",
+    # Prod false-positive at MIN=14.0 (face_chroma_p90≈13.2): muted flash selfie.
+    "color_muted_flash_selfie.jpg",
 ]
 
 GRAYSCALE_MESSAGE = "Черно белое фото не допускается"

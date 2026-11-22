@@ -30,8 +30,10 @@ MIN_BLUR_VARIANCE = float(os.getenv("GATE_MIN_BLUR_VARIANCE", "10"))
 WARN_FACE_HEIGHT_FRAC = float(os.getenv("GATE_WARN_FACE_HEIGHT_FRAC", "0.37"))
 
 # Hard-reject near-grayscale faces (B&W / desaturated). Face-oval chroma p90
-# below this → reason=grayscale. Calibrated on Olga B&W (~10.6) vs color (≥16).
-MIN_FACE_CHROMA_P90 = float(os.getenv("GATE_MIN_FACE_CHROMA_P90", "14.0"))
+# below this → reason=grayscale. Calibrated on Olga B&W (~10.6) vs muted color
+# false-positive (~13.2) / typical color (≥16). 14.0 rejected a flash selfie that
+# was clearly color; 12.5 keeps real B&W out with margin.
+MIN_FACE_CHROMA_P90 = float(os.getenv("GATE_MIN_FACE_CHROMA_P90", "12.5"))
 
 CORS_ORIGINS = [
     o.strip()

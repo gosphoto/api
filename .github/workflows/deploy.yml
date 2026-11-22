@@ -44,6 +44,7 @@ jobs:
           test -d tests/fixtures/grayscale_gate
           test -f tests/fixtures/grayscale_gate/bw_stepa.jpg
           test -f tests/fixtures/grayscale_gate/color_1.jpg
+          test -f tests/fixtures/grayscale_gate/color_muted_flash_selfie.jpg
           test -f tests/test_gate_bangs.py
           test -f tests/test_bangs_hair_oval.py
           test -f app/face_parse.py
