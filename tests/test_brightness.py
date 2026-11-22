@@ -152,6 +152,41 @@ def test_rebake_brightness_updates_previews_and_meta(tmp_path, monkeypatch):
     assert not (folder / "print.jpg").exists()
 
 
+def test_rebake_adjust_writes_brightness_and_contrast_meta(tmp_path, monkeypatch):
+    results, rid, _ = _rebake_setup(tmp_path, monkeypatch)
+    meta = results.rebake_adjust(rid, 1.12345, 1.23456)
+    assert meta["brightness"] == pytest.approx(1.1235)
+    assert meta["contrast"] == pytest.approx(1.2346)
+    stored = results.load_meta(rid)
+    assert stored["brightness"] == pytest.approx(1.1235)
+    assert stored["contrast"] == pytest.approx(1.2346)
+
+
+def test_rebake_brightness_preserves_stored_contrast(tmp_path, monkeypatch):
+    results, rid, jpeg = _rebake_setup(tmp_path, monkeypatch)
+    folder = results.result_dir(rid)
+    base = Image.new("RGB", (100, 100), (80, 80, 80))
+    for x in range(50, 100):
+        for y in range(100):
+            base.putpixel((x, y), (160, 160, 160))
+    buf = io.BytesIO()
+    base.save(buf, format="JPEG", quality=100, subsampling=0)
+    (folder / results.DIGITAL_BASE_FILE).write_bytes(buf.getvalue())
+    (folder / "digital.jpg").write_bytes(jpeg((100, 100, 100)))
+    (folder / "print.jpg").write_bytes(jpeg((100, 100, 100)))
+    meta = results.load_meta(rid)
+    meta["contrast"] = 1.2
+    results._write_meta(rid, meta)
+
+    updated = results.rebake_brightness(rid, 1.0)
+
+    rendered = Image.open(folder / "digital.jpg").convert("RGB")
+    spread = rendered.getpixel((75, 50))[0] - rendered.getpixel((25, 50))[0]
+    assert spread > 90
+    assert updated["brightness"] == pytest.approx(1.0)
+    assert updated["contrast"] == pytest.approx(1.2)
+
+
 def test_rebake_brightness_rewrites_full_files_when_present(tmp_path, monkeypatch):
     results, rid, jpeg = _rebake_setup(tmp_path, monkeypatch)
     folder = results.result_dir(rid)

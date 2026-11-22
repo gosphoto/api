@@ -737,10 +737,12 @@ def ensure_view(result_id: str) -> bytes | None:
         return None
 
 
-def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
+def rebake_adjust(
+    result_id: str, brightness: float, contrast: float
+) -> dict[str, Any]:
     """
     Re-render previews (and full digital/print if already present) from
-    digital_base.jpg with the given brightness, then persist meta.brightness.
+    digital_base.jpg with the given brightness and contrast, then persist both.
 
     Raises FileNotFoundError if the result or digital_base.jpg is missing.
     """
@@ -750,7 +752,7 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
     import numpy as np
     from PIL import Image
 
-    from .brightness import apply_brightness
+    from .brightness import apply_adjust
     from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
 
     if not is_valid_result_id(result_id):
@@ -762,9 +764,11 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
         raise FileNotFoundError("digital_base.jpg missing")
 
     with Image.open(io.BytesIO(base_path.read_bytes())) as src:
-        bright = apply_brightness(src.convert("RGB"), float(brightness))
-        bright.load()
-    bgr = cv2.cvtColor(np.asarray(bright, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+        adjusted = apply_adjust(
+            src.convert("RGB"), float(brightness), float(contrast)
+        )
+        adjusted.load()
+    bgr = cv2.cvtColor(np.asarray(adjusted, dtype=np.uint8), cv2.COLOR_RGB2BGR)
 
     # Local encode (app.crop pulls heavy deps); same quality/size/DPI policy as crop.encode_jpeg.
     preset = config.resolve_doc_preset(meta.get("doc_type"))
@@ -773,7 +777,7 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
     digital_jpeg = b""
     for q in [int(config.JPEG_QUALITY), *range(int(config.JPEG_QUALITY) - 4, 54, -4), 50]:
         buf = io.BytesIO()
-        bright.save(
+        adjusted.save(
             buf,
             format="JPEG",
             quality=max(1, q),
@@ -800,11 +804,25 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
         (folder / "view_digital.jpg").write_bytes(make_view_jpeg(digital_jpeg))
 
     patch["brightness"] = round(float(brightness), 4)
+    patch["contrast"] = round(float(contrast), 4)
     # The render above is slow; other writers (set_paid, promote) may have updated meta
-    # meanwhile. Re-read and patch only brightness-related keys (no stale full-dict write).
+    # meanwhile. Re-read and patch only adjustment-related keys (no stale full-dict write).
     fresh = load_meta(result_id)
     if fresh is None:
         raise FileNotFoundError("result not found")
     fresh.update(patch)
     _write_meta(result_id, fresh)
     return fresh
+
+
+def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
+    from .brightness import DEFAULT_CONTRAST, parse_contrast
+
+    meta = load_meta(result_id)
+    if meta is None:
+        raise FileNotFoundError("result not found")
+    try:
+        contrast = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
+    except ValueError:
+        contrast = DEFAULT_CONTRAST
+    return rebake_adjust(result_id, brightness, contrast)
