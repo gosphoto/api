@@ -13,9 +13,19 @@ from pathlib import Path
 
 import cv2
 import numpy as np
+from PIL import Image
 
 from . import config
 from . import results
+from .brightness import (
+    DEFAULT_BRIGHTNESS,
+    DEFAULT_CONTRAST,
+    apply_adjust,
+    is_contrast_dirty,
+    is_dirty,
+    parse_brightness,
+    parse_contrast,
+)
 from .pairs import EDIT_GEMINI, resolve_pair_dir
 
 log = logging.getLogger("gosphoto-gate")
@@ -113,7 +123,23 @@ def promote_paid_from_edit_gemini(result_id: str, meta: dict) -> bool:
         cropped, crop_metrics, compliance = run_crop_stage(
             bgr, width=out_w, height=out_h, dpi=dpi
         )
-        jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
+        # Neutral (pre-brightness) passport frame: source for later slider rebakes.
+        base_jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
+        try:
+            brightness = parse_brightness(meta.get("brightness", DEFAULT_BRIGHTNESS))
+        except ValueError:
+            brightness = DEFAULT_BRIGHTNESS
+        try:
+            contrast = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
+        except ValueError:
+            contrast = DEFAULT_CONTRAST
+        if is_dirty(brightness) or is_contrast_dirty(contrast):
+            rgb = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+            adjusted = apply_adjust(rgb, brightness, contrast)
+            cropped = cv2.cvtColor(np.asarray(adjusted, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+            jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
+        else:
+            jpeg = base_jpeg
         print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     except Exception as e:
         log.warning("Paid promote crop failed id=%s: %s", result_id, e)
@@ -129,6 +155,10 @@ def promote_paid_from_edit_gemini(result_id: str, meta: dict) -> bool:
         for k in ("width", "height", "dpi", "copies", "bytes", "size_cm", "mime", "layout")
         if k in print_sheet
     }
+    try:
+        results.write_digital_base(result_id, base_jpeg)
+    except Exception as e:
+        log.warning("Paid promote digital_base write failed id=%s: %s", result_id, e)
     ok = results.attach_paid_jpegs(
         result_id,
         jpeg,

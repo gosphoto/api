@@ -23,6 +23,7 @@ from . import progress_events as progress_events_mod
 from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
+from .brightness import DEFAULT_BRIGHTNESS, DEFAULT_CONTRAST, parse_brightness, parse_contrast
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
 from . import face_parse as face_parse_mod
@@ -142,8 +143,19 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         "saved_at": meta.get("saved_at"),
         "torso_ok": bool(meta.get("torso_ok")),
     }
+    try:
+        body["brightness"] = parse_brightness(meta.get("brightness", DEFAULT_BRIGHTNESS))
+    except ValueError:
+        body["brightness"] = DEFAULT_BRIGHTNESS
+    try:
+        body["contrast"] = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
+    except ValueError:
+        body["contrast"] = DEFAULT_CONTRAST
     from . import full_render
 
+    body["brightness_editable"] = (
+        results_mod.result_dir(result_id) / results_mod.DIGITAL_BASE_FILE
+    ).is_file()
     full = full_render.public_status(result_id, meta) if paid else None
     body["full"] = full
     variants_out: list[dict] = []
@@ -753,6 +765,9 @@ def _run_preview_stages(
         return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
 
     preview_digital = _preview_jpeg_from_bgr(cropped)
+    digital_base_jpeg = encode_jpeg(
+        cropped, max_bytes=int(preset["jpeg_max_bytes"]), dpi=dpi
+    )
     print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     preview_print = make_preview_jpeg(print_jpeg)
     print_meta = {
@@ -764,6 +779,7 @@ def _run_preview_stages(
         "ok": True,
         "preview_digital": preview_digital,
         "preview_print": preview_print,
+        "digital_base_jpeg": digital_base_jpeg,
         "print_jpeg": print_jpeg,
         "print_meta": print_meta,
         "edit_meta": edit_meta,
@@ -961,6 +977,7 @@ def _run_process_pipeline(
         resume_jpeg=resume_jpeg,
         bisenet_overlay_png=gate.bisenet_overlay_png,
         bisenet_mask_png=gate.bisenet_mask_png,
+        digital_base_jpeg=passport.get("digital_base_jpeg") or None,
     )
     if result_id:
         process_cache_put(data, preset["doc_type"], result_id)
@@ -1297,6 +1314,67 @@ def get_result_resume(result_id: str):
     if not data:
         raise HTTPException(status_code=404, detail="Result not found")
     return Response(content=data, media_type="image/jpeg")
+
+
+class BrightnessBody(BaseModel):
+    brightness: float = Field(..., ge=0.7, le=1.35)
+
+
+@app.post("/api/result/{result_id}/brightness")
+def set_result_brightness(result_id: str, payload: BrightnessBody):
+    meta0 = load_meta(result_id) if is_valid_result_id(result_id) else None
+    if not meta0:
+        raise HTTPException(status_code=404, detail="Result not found")
+    from . import full_render
+
+    if full_render.public_status(result_id, meta0) == "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Full-size render is in progress; try changing brightness again in a moment",
+        )
+    try:
+        meta = results_mod.rebake_brightness(result_id, payload.brightness)
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=409,
+            detail="digital_base.jpg missing; brightness cannot be changed for this result",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    results_mod.mirror_result_into_pair(result_id, meta=meta)
+    return _result_public_payload(result_id, meta)
+
+
+class AdjustBody(BaseModel):
+    brightness: float = Field(..., ge=0.7, le=1.35)
+    contrast: float = Field(..., ge=0.7, le=1.35)
+
+
+@app.post("/api/result/{result_id}/adjust")
+def set_result_adjust(result_id: str, payload: AdjustBody):
+    meta0 = load_meta(result_id) if is_valid_result_id(result_id) else None
+    if not meta0:
+        raise HTTPException(status_code=404, detail="Result not found")
+    from . import full_render
+
+    if full_render.public_status(result_id, meta0) == "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Full-size render is in progress; try again in a moment",
+        )
+    try:
+        meta = results_mod.rebake_adjust(
+            result_id, payload.brightness, payload.contrast
+        )
+    except FileNotFoundError:
+        raise HTTPException(
+            status_code=409,
+            detail="digital_base.jpg missing; adjust cannot be applied for this result",
+        )
+    except ValueError as e:
+        raise HTTPException(status_code=422, detail=str(e))
+    results_mod.mirror_result_into_pair(result_id, meta=meta)
+    return _result_public_payload(result_id, meta)
 
 
 class ResultEmailBody(BaseModel):

@@ -147,6 +147,17 @@ def mirror_result_into_pair(
     return n
 
 
+DIGITAL_BASE_FILE = "digital_base.jpg"
+DEFAULT_BRIGHTNESS = 1.0
+
+
+def write_digital_base(result_id: str, jpeg_bytes: bytes) -> None:
+    """Write neutral full-size passport JPEG (internal; used for brightness rebake)."""
+    if not jpeg_bytes:
+        return
+    (result_dir(result_id) / DIGITAL_BASE_FILE).write_bytes(jpeg_bytes)
+
+
 def write_bisenet_artifacts(
     folder: Path,
     *,
@@ -178,6 +189,7 @@ def save_result(
     resume_jpeg: bytes | None = None,
     bisenet_overlay_png: bytes | None = None,
     bisenet_mask_png: bytes | None = None,
+    digital_base_jpeg: bytes | None = None,
 ) -> str | None:
     """
     Write results/<id>/{digital,print,preview_*}.jpg + optional resume + meta.json.
@@ -199,6 +211,8 @@ def save_result(
         preview_print = make_preview_jpeg(print_jpeg)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+        if digital_base_jpeg:
+            write_digital_base(rid, digital_base_jpeg)
         write_bisenet_artifacts(
             folder,
             overlay_png=bisenet_overlay_png,
@@ -220,6 +234,7 @@ def save_result(
             "preview_print": "preview_print.jpg",
             "digital_bytes": len(digital_jpeg),
             "print_bytes": len(print_jpeg),
+            "brightness": DEFAULT_BRIGHTNESS,
             **(meta or {}),
             "paid": False,
             "resume_offer": resume_offer,
@@ -256,6 +271,7 @@ def save_preview_result(
     resume_jpeg: bytes | None = None,
     bisenet_overlay_png: bytes | None = None,
     bisenet_mask_png: bytes | None = None,
+    digital_base_jpeg: bytes | None = None,
 ) -> str | None:
     """Write only screen previews. Full digital.jpg / print.jpg come after payment."""
     if not config.RESULTS_ENABLED or not preview_digital or not preview_print:
@@ -269,6 +285,8 @@ def save_preview_result(
         folder.mkdir(parents=True, exist_ok=False)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+        if digital_base_jpeg:
+            write_digital_base(rid, digital_base_jpeg)
         write_bisenet_artifacts(
             folder,
             overlay_png=bisenet_overlay_png,
@@ -287,6 +305,7 @@ def save_preview_result(
             "preview_digital": "preview_digital.jpg",
             "preview_print": "preview_print.jpg",
             "preview_only": True,
+            "brightness": DEFAULT_BRIGHTNESS,
             **(meta or {}),
             "paid": False,
             "resume_offer": resume_offer,
@@ -515,6 +534,9 @@ def clone_result(source_id: str) -> str | None:
             src_file = src / name
             if src_file.is_file():
                 shutil.copy2(src_file, dst / name)
+        base_file = src / DIGITAL_BASE_FILE
+        if base_file.is_file():
+            shutil.copy2(base_file, dst / DIGITAL_BASE_FILE)
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         new_meta = {k: v for k, v in meta.items() if k not in _PAYMENT_META_KEYS}
         new_meta.update(
@@ -713,3 +735,94 @@ def ensure_view(result_id: str) -> bytes | None:
     except Exception as e:
         log.warning("Failed to build view jpeg id=%s: %s", result_id, e)
         return None
+
+
+def rebake_adjust(
+    result_id: str, brightness: float, contrast: float
+) -> dict[str, Any]:
+    """
+    Re-render previews (and full digital/print if already present) from
+    digital_base.jpg with the given brightness and contrast, then persist both.
+
+    Raises FileNotFoundError if the result or digital_base.jpg is missing.
+    """
+    import io
+
+    import cv2
+    import numpy as np
+    from PIL import Image
+
+    from .brightness import apply_adjust
+    from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
+
+    if not is_valid_result_id(result_id):
+        raise FileNotFoundError("result not found")
+    folder = result_dir(result_id)
+    meta = load_meta(result_id)
+    base_path = folder / DIGITAL_BASE_FILE
+    if meta is None or not base_path.is_file():
+        raise FileNotFoundError("digital_base.jpg missing")
+
+    with Image.open(io.BytesIO(base_path.read_bytes())) as src:
+        adjusted = apply_adjust(
+            src.convert("RGB"), float(brightness), float(contrast)
+        )
+        adjusted.load()
+    bgr = cv2.cvtColor(np.asarray(adjusted, dtype=np.uint8), cv2.COLOR_RGB2BGR)
+
+    # Local encode (app.crop pulls heavy deps); same quality/size/DPI policy as crop.encode_jpeg.
+    preset = config.resolve_doc_preset(meta.get("doc_type"))
+    dpi = int(preset["dpi"])
+    max_bytes = int(preset["jpeg_max_bytes"])
+    digital_jpeg = b""
+    for q in [int(config.JPEG_QUALITY), *range(int(config.JPEG_QUALITY) - 4, 54, -4), 50]:
+        buf = io.BytesIO()
+        adjusted.save(
+            buf,
+            format="JPEG",
+            quality=max(1, q),
+            dpi=(dpi, dpi),
+            optimize=True,
+        )
+        digital_jpeg = buf.getvalue()
+        if len(digital_jpeg) <= max_bytes:
+            break
+    sheet_bgr, _ = make_print_sheet_bgr(bgr)
+    print_jpeg = encode_print_jpeg(sheet_bgr)
+
+    (folder / "preview_digital.jpg").write_bytes(make_preview_jpeg(digital_jpeg))
+    (folder / "preview_print.jpg").write_bytes(make_preview_jpeg(print_jpeg))
+
+    patch: dict[str, Any] = {}
+    has_full = (folder / "digital.jpg").is_file()
+    if has_full:
+        (folder / "digital.jpg").write_bytes(digital_jpeg)
+        (folder / "print.jpg").write_bytes(print_jpeg)
+        patch["digital_bytes"] = len(digital_jpeg)
+        patch["print_bytes"] = len(print_jpeg)
+    if has_full or (folder / "view_digital.jpg").is_file():
+        (folder / "view_digital.jpg").write_bytes(make_view_jpeg(digital_jpeg))
+
+    patch["brightness"] = round(float(brightness), 4)
+    patch["contrast"] = round(float(contrast), 4)
+    # The render above is slow; other writers (set_paid, promote) may have updated meta
+    # meanwhile. Re-read and patch only adjustment-related keys (no stale full-dict write).
+    fresh = load_meta(result_id)
+    if fresh is None:
+        raise FileNotFoundError("result not found")
+    fresh.update(patch)
+    _write_meta(result_id, fresh)
+    return fresh
+
+
+def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
+    from .brightness import DEFAULT_CONTRAST, parse_contrast
+
+    meta = load_meta(result_id)
+    if meta is None:
+        raise FileNotFoundError("result not found")
+    try:
+        contrast = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
+    except ValueError:
+        contrast = DEFAULT_CONTRAST
+    return rebake_adjust(result_id, brightness, contrast)
