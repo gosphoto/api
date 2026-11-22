@@ -753,6 +753,9 @@ def _run_preview_stages(
         return {"ok": False, "stage": "crop", "message": f"Crop failed: {e}"}
 
     preview_digital = _preview_jpeg_from_bgr(cropped)
+    digital_base_jpeg = encode_jpeg(
+        cropped, max_bytes=int(preset["jpeg_max_bytes"]), dpi=dpi
+    )
     print_jpeg, print_sheet = _print_payload(cropped, include_base64=False)
     preview_print = make_preview_jpeg(print_jpeg)
     print_meta = {
@@ -764,6 +767,7 @@ def _run_preview_stages(
         "ok": True,
         "preview_digital": preview_digital,
         "preview_print": preview_print,
+        "digital_base_jpeg": digital_base_jpeg,
         "print_jpeg": print_jpeg,
         "print_meta": print_meta,
         "edit_meta": edit_meta,
@@ -961,6 +965,7 @@ def _run_process_pipeline(
         resume_jpeg=resume_jpeg,
         bisenet_overlay_png=gate.bisenet_overlay_png,
         bisenet_mask_png=gate.bisenet_mask_png,
+        digital_base_jpeg=passport.get("digital_base_jpeg") or None,
     )
     if result_id:
         process_cache_put(data, preset["doc_type"], result_id)

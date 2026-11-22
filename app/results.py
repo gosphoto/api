@@ -147,6 +147,17 @@ def mirror_result_into_pair(
     return n
 
 
+DIGITAL_BASE_FILE = "digital_base.jpg"
+DEFAULT_BRIGHTNESS = 1.0
+
+
+def write_digital_base(result_id: str, jpeg_bytes: bytes) -> None:
+    """Write neutral full-size passport JPEG (internal; used for brightness rebake)."""
+    if not jpeg_bytes:
+        return
+    (result_dir(result_id) / DIGITAL_BASE_FILE).write_bytes(jpeg_bytes)
+
+
 def write_bisenet_artifacts(
     folder: Path,
     *,
@@ -178,6 +189,7 @@ def save_result(
     resume_jpeg: bytes | None = None,
     bisenet_overlay_png: bytes | None = None,
     bisenet_mask_png: bytes | None = None,
+    digital_base_jpeg: bytes | None = None,
 ) -> str | None:
     """
     Write results/<id>/{digital,print,preview_*}.jpg + optional resume + meta.json.
@@ -199,6 +211,8 @@ def save_result(
         preview_print = make_preview_jpeg(print_jpeg)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+        if digital_base_jpeg:
+            write_digital_base(rid, digital_base_jpeg)
         write_bisenet_artifacts(
             folder,
             overlay_png=bisenet_overlay_png,
@@ -220,6 +234,7 @@ def save_result(
             "preview_print": "preview_print.jpg",
             "digital_bytes": len(digital_jpeg),
             "print_bytes": len(print_jpeg),
+            "brightness": DEFAULT_BRIGHTNESS,
             **(meta or {}),
             "paid": False,
             "resume_offer": resume_offer,
@@ -256,6 +271,7 @@ def save_preview_result(
     resume_jpeg: bytes | None = None,
     bisenet_overlay_png: bytes | None = None,
     bisenet_mask_png: bytes | None = None,
+    digital_base_jpeg: bytes | None = None,
 ) -> str | None:
     """Write only screen previews. Full digital.jpg / print.jpg come after payment."""
     if not config.RESULTS_ENABLED or not preview_digital or not preview_print:
@@ -269,6 +285,8 @@ def save_preview_result(
         folder.mkdir(parents=True, exist_ok=False)
         (folder / "preview_digital.jpg").write_bytes(preview_digital)
         (folder / "preview_print.jpg").write_bytes(preview_print)
+        if digital_base_jpeg:
+            write_digital_base(rid, digital_base_jpeg)
         write_bisenet_artifacts(
             folder,
             overlay_png=bisenet_overlay_png,
@@ -287,6 +305,7 @@ def save_preview_result(
             "preview_digital": "preview_digital.jpg",
             "preview_print": "preview_print.jpg",
             "preview_only": True,
+            "brightness": DEFAULT_BRIGHTNESS,
             **(meta or {}),
             "paid": False,
             "resume_offer": resume_offer,
@@ -515,6 +534,9 @@ def clone_result(source_id: str) -> str | None:
             src_file = src / name
             if src_file.is_file():
                 shutil.copy2(src_file, dst / name)
+        base_file = src / DIGITAL_BASE_FILE
+        if base_file.is_file():
+            shutil.copy2(base_file, dst / DIGITAL_BASE_FILE)
         ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         new_meta = {k: v for k, v in meta.items() if k not in _PAYMENT_META_KEYS}
         new_meta.update(

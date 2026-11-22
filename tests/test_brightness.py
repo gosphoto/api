@@ -39,3 +39,38 @@ def test_apply_brightness_brightens_mid_gray():
     assert out.getpixel((0, 0))[0] > 128
     same = apply_brightness(img, 1.0)
     assert same.getpixel((0, 0)) == (128, 128, 128)
+
+def test_save_preview_can_store_digital_base(tmp_path, monkeypatch):
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    monkeypatch.setattr(config, "PAIRS_DIR", tmp_path / "pairs")
+
+    def jpeg(size=(70, 90), color=(100, 110, 120)):
+        buf = io.BytesIO()
+        Image.new("RGB", size, color).save(buf, format="JPEG", quality=90)
+        return buf.getvalue()
+
+    base = jpeg()
+    rid = results.save_preview_result(
+        jpeg(size=(48, 60)),
+        jpeg(size=(80, 50)),
+        meta={"doc_type": "passport_rf"},
+        digital_base_jpeg=base,
+    )
+    assert rid
+    folder = results.result_dir(rid)
+    assert (folder / "digital_base.jpg").read_bytes() == base
+    meta = results.load_meta(rid)
+    assert meta.get("brightness") == pytest.approx(1.0)
+    assert "digital_base.jpg" not in results.ALLOWED_FILES
+
+    # existing brightness in meta is preserved
+    rid2 = results.save_preview_result(
+        jpeg(size=(48, 60)),
+        jpeg(size=(80, 50)),
+        meta={"brightness": 1.2},
+    )
+    assert results.load_meta(rid2)["brightness"] == pytest.approx(1.2)
+    assert not (results.result_dir(rid2) / "digital_base.jpg").exists()
