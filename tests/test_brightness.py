@@ -5,9 +5,13 @@ from PIL import Image
 
 from app.brightness import (
     DEFAULT_BRIGHTNESS,
+    apply_adjust,
     apply_brightness,
+    apply_contrast,
+    is_contrast_dirty,
     is_dirty,
     parse_brightness,
+    parse_contrast,
 )
 
 
@@ -39,6 +43,36 @@ def test_apply_brightness_brightens_mid_gray():
     assert out.getpixel((0, 0))[0] > 128
     same = apply_brightness(img, 1.0)
     assert same.getpixel((0, 0)) == (128, 128, 128)
+
+
+def test_parse_contrast_valid_and_rejects():
+    assert parse_contrast(1.0) == pytest.approx(1.0)
+    assert parse_contrast(1.2) == pytest.approx(1.2)
+    with pytest.raises(ValueError):
+        parse_contrast(2.0)
+    with pytest.raises(ValueError):
+        parse_contrast("x")
+
+
+def test_is_contrast_dirty():
+    assert is_contrast_dirty(1.0) is False
+    assert is_contrast_dirty(1.2) is True
+
+
+def test_apply_contrast_increases_spread():
+    img = Image.new("RGB", (2, 1))
+    img.putpixel((0, 0), (80, 80, 80))
+    img.putpixel((1, 0), (180, 180, 180))
+    out = apply_contrast(img, 1.3)
+    assert out.getpixel((1, 0))[0] - out.getpixel((0, 0))[0] > 100
+
+
+def test_apply_adjust_order_brightness_then_contrast():
+    img = Image.new("RGB", (32, 32), (128, 128, 128))
+    out = apply_adjust(img, 1.2, 1.2)
+    assert out.mode == "RGB"
+    assert out.getpixel((0, 0)) != (128, 128, 128)
+
 
 def test_save_preview_can_store_digital_base(tmp_path, monkeypatch):
     from app import config, results
