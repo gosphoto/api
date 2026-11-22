@@ -316,3 +316,84 @@ def test_paid_promote_default_brightness_is_neutral(tmp_path, monkeypatch):
     folder = results.result_dir(rid)
     assert (folder / "digital_base.jpg").is_file()
     assert _mean_luma((folder / "digital.jpg").read_bytes()) == pytest.approx(100, abs=3)
+
+
+# ---------------------------------------------------------------------------
+# Final-review fixes (I-1 / I-2 / I-3)
+# ---------------------------------------------------------------------------
+
+
+def test_rebake_zagran_uses_preset_dpi(tmp_path, monkeypatch):
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    monkeypatch.setattr(config, "PAIRS_DIR", tmp_path / "pairs")
+    rid = results.save_preview_result(
+        _jpeg(size=(48, 60)),
+        _jpeg(size=(80, 50)),
+        meta={"doc_type": "zagran"},
+        digital_base_jpeg=_jpeg((80, 80, 80), size=(497, 638)),
+    )
+    assert rid
+    folder = results.result_dir(rid)
+    (folder / "digital.jpg").write_bytes(_jpeg((80, 80, 80), size=(497, 638)))
+    (folder / "print.jpg").write_bytes(_jpeg((80, 80, 80), size=(60, 90)))
+    results.rebake_brightness(rid, 1.2)
+    with Image.open(folder / "digital.jpg") as img:
+        dpi = tuple(round(v) for v in img.info["dpi"])
+    assert dpi == (360, 360) == (config.ZAGRAN_DPI, config.ZAGRAN_DPI)
+
+
+def test_rebake_rereads_meta_before_write(tmp_path, monkeypatch):
+    """A concurrent set_paid during the slow render must not be clobbered."""
+    results, rid, _ = _rebake_setup(tmp_path, monkeypatch)
+    assert not results.load_meta(rid).get("paid")
+    orig = results.make_preview_jpeg
+    fired = []
+
+    def racing_preview(data):
+        if not fired:
+            fired.append(1)
+            results.set_paid(rid, payment_id="pay-race", tochka_operation_id="op-race")
+        return orig(data)
+
+    monkeypatch.setattr(results, "make_preview_jpeg", racing_preview)
+    results.rebake_brightness(rid, 1.2)
+    meta = results.load_meta(rid)
+    assert fired
+    assert meta["paid"] is True
+    assert meta.get("payment_id") == "pay-race"
+    assert meta["brightness"] == pytest.approx(1.2)
+
+
+def test_post_brightness_409_while_full_render_pending(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    main = _import_app_main()
+    rid = results.save_preview_result(
+        _jpeg(), _jpeg(), meta={}, digital_base_jpeg=_jpeg(size=(827, 1063))
+    )
+    assert rid
+    results.set_paid(rid, payment_id="pay-p", tochka_operation_id="op-p")
+    client = TestClient(main.app)
+    # paid, no digital.jpg yet -> full render pending
+    r = client.post(f"/api/result/{rid}/brightness", json={"brightness": 1.2})
+    assert r.status_code == 409
+    assert "render" in r.json()["detail"].lower()
+    assert results.load_meta(rid)["brightness"] == pytest.approx(1.0)
+
+
+def test_brightness_editable_flag(tmp_path, monkeypatch, preview_result):
+    from app import config, results
+
+    client, rid = preview_result
+    assert client.get(f"/api/result/{rid}").json()["brightness_editable"] is True
+
+    rid2 = results.save_preview_result(_jpeg(), _jpeg(), meta={})  # legacy: no base
+    assert rid2
+    assert client.get(f"/api/result/{rid2}").json()["brightness_editable"] is False

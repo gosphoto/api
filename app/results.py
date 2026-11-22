@@ -767,6 +767,9 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
     bgr = cv2.cvtColor(np.asarray(bright, dtype=np.uint8), cv2.COLOR_RGB2BGR)
 
     # Local encode (app.crop pulls heavy deps); same quality/size/DPI policy as crop.encode_jpeg.
+    preset = config.resolve_doc_preset(meta.get("doc_type"))
+    dpi = int(preset["dpi"])
+    max_bytes = int(preset["jpeg_max_bytes"])
     digital_jpeg = b""
     for q in [int(config.JPEG_QUALITY), *range(int(config.JPEG_QUALITY) - 4, 54, -4), 50]:
         buf = io.BytesIO()
@@ -774,11 +777,11 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
             buf,
             format="JPEG",
             quality=max(1, q),
-            dpi=(int(config.PASSPORT_DPI), int(config.PASSPORT_DPI)),
+            dpi=(dpi, dpi),
             optimize=True,
         )
         digital_jpeg = buf.getvalue()
-        if len(digital_jpeg) <= int(config.JPEG_MAX_BYTES):
+        if len(digital_jpeg) <= max_bytes:
             break
     sheet_bgr, _ = make_print_sheet_bgr(bgr)
     print_jpeg = encode_print_jpeg(sheet_bgr)
@@ -786,15 +789,22 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
     (folder / "preview_digital.jpg").write_bytes(make_preview_jpeg(digital_jpeg))
     (folder / "preview_print.jpg").write_bytes(make_preview_jpeg(print_jpeg))
 
+    patch: dict[str, Any] = {}
     has_full = (folder / "digital.jpg").is_file()
     if has_full:
         (folder / "digital.jpg").write_bytes(digital_jpeg)
         (folder / "print.jpg").write_bytes(print_jpeg)
-        meta["digital_bytes"] = len(digital_jpeg)
-        meta["print_bytes"] = len(print_jpeg)
+        patch["digital_bytes"] = len(digital_jpeg)
+        patch["print_bytes"] = len(print_jpeg)
     if has_full or (folder / "view_digital.jpg").is_file():
         (folder / "view_digital.jpg").write_bytes(make_view_jpeg(digital_jpeg))
 
-    meta["brightness"] = round(float(brightness), 4)
-    _write_meta(result_id, meta)
-    return meta
+    patch["brightness"] = round(float(brightness), 4)
+    # The render above is slow; other writers (set_paid, promote) may have updated meta
+    # meanwhile. Re-read and patch only brightness-related keys (no stale full-dict write).
+    fresh = load_meta(result_id)
+    if fresh is None:
+        raise FileNotFoundError("result not found")
+    fresh.update(patch)
+    _write_meta(result_id, fresh)
+    return fresh

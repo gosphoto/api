@@ -149,6 +149,9 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         body["brightness"] = DEFAULT_BRIGHTNESS
     from . import full_render
 
+    body["brightness_editable"] = (
+        results_mod.result_dir(result_id) / results_mod.DIGITAL_BASE_FILE
+    ).is_file()
     full = full_render.public_status(result_id, meta) if paid else None
     body["full"] = full
     variants_out: list[dict] = []
@@ -1315,8 +1318,16 @@ class BrightnessBody(BaseModel):
 
 @app.post("/api/result/{result_id}/brightness")
 def set_result_brightness(result_id: str, payload: BrightnessBody):
-    if not is_valid_result_id(result_id) or not load_meta(result_id):
+    meta0 = load_meta(result_id) if is_valid_result_id(result_id) else None
+    if not meta0:
         raise HTTPException(status_code=404, detail="Result not found")
+    from . import full_render
+
+    if full_render.public_status(result_id, meta0) == "pending":
+        raise HTTPException(
+            status_code=409,
+            detail="Full-size render is in progress; try changing brightness again in a moment",
+        )
     try:
         meta = results_mod.rebake_brightness(result_id, payload.brightness)
     except FileNotFoundError:
