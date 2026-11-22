@@ -232,3 +232,87 @@ def test_post_brightness_missing_base_409(tmp_path, monkeypatch):
     )
     assert r.status_code == 409
     assert "digital_base" in r.json()["detail"]
+
+
+# ---------------------------------------------------------------------------
+# Paid promote keeps brightness
+# ---------------------------------------------------------------------------
+
+
+def _mean_luma(data: bytes) -> float:
+    import numpy as np
+
+    return float(np.asarray(Image.open(io.BytesIO(data)).convert("L")).mean())
+
+
+def _promote_setup(tmp_path, monkeypatch, *, brightness=None):
+    import numpy as np
+
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path / "results")
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    monkeypatch.setattr(config, "PAIRS_DIR", tmp_path / "pairs")
+    monkeypatch.setattr(config, "PAIRS_ENABLED", True)
+    main = _import_app_main()  # noqa: F841 - promote imports app.main
+
+    pair = tmp_path / "pairs" / "20261002T140000Z_selfie"
+    pair.mkdir(parents=True)
+    (pair / "in.jpg").write_bytes(_jpeg(size=(40, 50)))
+    (pair / "edit_gemini.jpg").write_bytes(_jpeg((100, 100, 100), size=(200, 260)))
+
+    from app import crop
+
+    def fake_crop(bgr, *, width, height, dpi):
+        cropped = np.full((height, width, 3), 100, dtype=np.uint8)
+        return cropped, {"fake": True}, {}
+
+    monkeypatch.setattr(crop, "run_crop_stage", fake_crop)
+
+    meta = {"source_pair": pair.name, "doc_type": "passport_rf"}
+    if brightness is not None:
+        meta["brightness"] = brightness
+    rid = results.save_preview_result(_jpeg(), _jpeg(), meta=meta)
+    assert rid
+    results.set_paid(rid, payment_id="pay-b", tochka_operation_id="op-b")
+    return results, rid
+
+
+def test_brightness_survives_paid_promote(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import full_render
+
+    results, rid = _promote_setup(tmp_path, monkeypatch)
+    main = _import_app_main()
+    client = TestClient(main.app)
+    meta = results.load_meta(rid)
+    meta["brightness"] = 1.25  # unpaid slider value (no digital_base yet)
+    results._write_meta(rid, meta)
+
+    assert full_render.promote_paid_from_edit_gemini(rid, results.load_meta(rid))
+
+    folder = results.result_dir(rid)
+    base = (folder / "digital_base.jpg").read_bytes()
+    digital = (folder / "digital.jpg").read_bytes()
+    assert _mean_luma(base) == pytest.approx(100, abs=3)
+    assert _mean_luma(digital) > _mean_luma(base) * 1.15
+    assert _mean_luma((folder / "preview_digital.jpg").read_bytes()) > 110
+    assert results.load_meta(rid)["brightness"] == pytest.approx(1.25)
+    assert client.get(f"/api/result/{rid}").json()["brightness"] == pytest.approx(1.25)
+
+    # reset after pay works on full files
+    r = client.post(f"/api/result/{rid}/brightness", json={"brightness": 1.0})
+    assert r.status_code == 200
+    reset = (folder / "digital.jpg").read_bytes()
+    assert _mean_luma(reset) == pytest.approx(100, abs=3)
+
+
+def test_paid_promote_default_brightness_is_neutral(tmp_path, monkeypatch):
+    from app import full_render
+
+    results, rid = _promote_setup(tmp_path, monkeypatch)
+    assert full_render.promote_paid_from_edit_gemini(rid, results.load_meta(rid))
+    folder = results.result_dir(rid)
+    assert (folder / "digital_base.jpg").is_file()
+    assert _mean_luma((folder / "digital.jpg").read_bytes()) == pytest.approx(100, abs=3)
