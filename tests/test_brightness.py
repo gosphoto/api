@@ -140,3 +140,95 @@ def test_rebake_brightness_missing_base_raises(tmp_path, monkeypatch):
         results.rebake_brightness(rid, 1.2)
     with pytest.raises(FileNotFoundError):
         results.rebake_brightness("a" * 32, 1.2)
+
+
+# ---------------------------------------------------------------------------
+# API (real app.main:app)
+# ---------------------------------------------------------------------------
+
+
+def _import_app_main():
+    """Import real app.main; stub mediapipe only if it is not installed (CI-light venvs)."""
+    import importlib
+    import sys
+    from unittest.mock import MagicMock
+
+    try:
+        import mediapipe  # noqa: F401
+    except ModuleNotFoundError:
+        for name in ("mediapipe", "mediapipe.tasks", "mediapipe.tasks.python"):
+            sys.modules.setdefault(name, MagicMock())
+    return importlib.import_module("app.main")
+
+
+def _jpeg(color=(120, 110, 100), size=(64, 80)) -> bytes:
+    buf = io.BytesIO()
+    Image.new("RGB", size, color).save(buf, format="JPEG")
+    return buf.getvalue()
+
+
+@pytest.fixture
+def preview_result(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    main = _import_app_main()
+    rid = results.save_preview_result(
+        _jpeg(),
+        _jpeg(),
+        meta={"width": 64, "height": 80, "dpi": 600},
+        digital_base_jpeg=_jpeg(size=(827, 1063)),
+    )
+    assert rid
+    return TestClient(main.app), rid
+
+
+def test_get_result_includes_default_brightness(preview_result):
+    client, rid = preview_result
+    r = client.get(f"/api/result/{rid}")
+    assert r.status_code == 200
+    assert r.json()["brightness"] == pytest.approx(1.0)
+
+
+def test_post_brightness_updates_and_rejects_oob(preview_result):
+    from app import results
+
+    client, rid = preview_result
+    bad = client.post(f"/api/result/{rid}/brightness", json={"brightness": 2.5})
+    assert bad.status_code == 422
+    ok = client.post(f"/api/result/{rid}/brightness", json={"brightness": 1.25})
+    assert ok.status_code == 200
+    assert ok.json()["brightness"] == pytest.approx(1.25)
+    assert results.load_meta(rid)["brightness"] == pytest.approx(1.25)
+    # unpaid: digital still locked
+    assert ok.json().get("digital_url") in (None,)
+    assert client.get(f"/api/result/{rid}").json()["brightness"] == pytest.approx(1.25)
+    reset = client.post(f"/api/result/{rid}/brightness", json={"brightness": 1.0})
+    assert reset.json()["brightness"] == pytest.approx(1.0)
+
+
+def test_post_brightness_unknown_result_404(preview_result):
+    client, _ = preview_result
+    r = client.post(f"/api/result/{'a' * 32}/brightness", json={"brightness": 1.1})
+    assert r.status_code == 404
+    r = client.post("/api/result/not-a-valid-id/brightness", json={"brightness": 1.1})
+    assert r.status_code == 404
+
+
+def test_post_brightness_missing_base_409(tmp_path, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from app import config, results
+
+    monkeypatch.setattr(config, "RESULTS_DIR", tmp_path)
+    monkeypatch.setattr(config, "RESULTS_ENABLED", True)
+    main = _import_app_main()
+    rid = results.save_preview_result(_jpeg(), _jpeg(), meta={})  # no digital_base
+    r = TestClient(main.app).post(
+        f"/api/result/{rid}/brightness", json={"brightness": 1.1}
+    )
+    assert r.status_code == 409
+    assert "digital_base" in r.json()["detail"]
