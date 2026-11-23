@@ -8,10 +8,13 @@ from app.brightness import (
     apply_adjust,
     apply_brightness,
     apply_contrast,
+    apply_saturation,
     is_contrast_dirty,
     is_dirty,
+    is_saturation_dirty,
     parse_brightness,
     parse_contrast,
+    parse_saturation,
 )
 
 
@@ -72,6 +75,32 @@ def test_apply_adjust_order_brightness_then_contrast():
     out = apply_adjust(img, 1.2, 1.2)
     assert out.mode == "RGB"
     assert out.getpixel((0, 0)) != (128, 128, 128)
+
+
+def test_parse_saturation_valid_and_rejects():
+    assert parse_saturation(1.0) == pytest.approx(1.0)
+    assert parse_saturation(1.2) == pytest.approx(1.2)
+    with pytest.raises(ValueError):
+        parse_saturation(2.0)
+    with pytest.raises(ValueError):
+        parse_saturation("x")
+
+
+def test_is_saturation_dirty():
+    assert is_saturation_dirty(1.0) is False
+    assert is_saturation_dirty(1.2) is True
+
+
+def test_apply_saturation_boosts_chroma():
+    img = Image.new("RGB", (1, 1), (200, 80, 80))
+    boosted = apply_saturation(img, 1.3)
+    muted = apply_saturation(img, 0.7)
+    # Higher saturation → larger channel spread from gray mean.
+    def spread(px):
+        return max(px) - min(px)
+
+    assert spread(boosted.getpixel((0, 0))) > spread(img.getpixel((0, 0)))
+    assert spread(muted.getpixel((0, 0))) < spread(img.getpixel((0, 0)))
 
 
 def test_save_preview_can_store_digital_base(tmp_path, monkeypatch):
@@ -154,12 +183,14 @@ def test_rebake_brightness_updates_previews_and_meta(tmp_path, monkeypatch):
 
 def test_rebake_adjust_writes_brightness_and_contrast_meta(tmp_path, monkeypatch):
     results, rid, _ = _rebake_setup(tmp_path, monkeypatch)
-    meta = results.rebake_adjust(rid, 1.12345, 1.23456)
+    meta = results.rebake_adjust(rid, 1.12345, 1.23456, 1.34567)
     assert meta["brightness"] == pytest.approx(1.1235)
     assert meta["contrast"] == pytest.approx(1.2346)
+    assert meta["saturation"] == pytest.approx(1.3457)
     stored = results.load_meta(rid)
     assert stored["brightness"] == pytest.approx(1.1235)
     assert stored["contrast"] == pytest.approx(1.2346)
+    assert stored["saturation"] == pytest.approx(1.3457)
 
 
 def test_rebake_brightness_preserves_stored_contrast(tmp_path, monkeypatch):
@@ -176,6 +207,7 @@ def test_rebake_brightness_preserves_stored_contrast(tmp_path, monkeypatch):
     (folder / "print.jpg").write_bytes(jpeg((100, 100, 100)))
     meta = results.load_meta(rid)
     meta["contrast"] = 1.2
+    meta["saturation"] = 1.15
     results._write_meta(rid, meta)
 
     updated = results.rebake_brightness(rid, 1.0)
@@ -185,6 +217,7 @@ def test_rebake_brightness_preserves_stored_contrast(tmp_path, monkeypatch):
     assert spread > 90
     assert updated["brightness"] == pytest.approx(1.0)
     assert updated["contrast"] == pytest.approx(1.2)
+    assert updated["saturation"] == pytest.approx(1.15)
 
 
 def test_rebake_brightness_rewrites_full_files_when_present(tmp_path, monkeypatch):
@@ -480,20 +513,23 @@ def test_get_result_includes_default_contrast(preview_result):
     body = r.json()
     assert body["brightness"] == pytest.approx(1.0)
     assert body["contrast"] == pytest.approx(1.0)
+    assert body["saturation"] == pytest.approx(1.0)
 
 
 def test_post_adjust_sets_both(preview_result):
     client, rid = preview_result
     r = client.post(
         f"/api/result/{rid}/adjust",
-        json={"brightness": 1.15, "contrast": 1.2},
+        json={"brightness": 1.15, "contrast": 1.2, "saturation": 1.1},
     )
     assert r.status_code == 200
     body = r.json()
     assert body["brightness"] == pytest.approx(1.15)
     assert body["contrast"] == pytest.approx(1.2)
+    assert body["saturation"] == pytest.approx(1.1)
     g = client.get(f"/api/result/{rid}").json()
     assert g["contrast"] == pytest.approx(1.2)
+    assert g["saturation"] == pytest.approx(1.1)
 
 
 def test_post_adjust_out_of_range_422(preview_result):
@@ -503,17 +539,23 @@ def test_post_adjust_out_of_range_422(preview_result):
         json={"brightness": 1.0, "contrast": 2.5},
     )
     assert r.status_code == 422
+    r2 = client.post(
+        f"/api/result/{rid}/adjust",
+        json={"brightness": 1.0, "contrast": 1.0, "saturation": 2.5},
+    )
+    assert r2.status_code == 422
 
 
 def test_post_brightness_alias_keeps_contrast(preview_result):
     client, rid = preview_result
     client.post(
         f"/api/result/{rid}/adjust",
-        json={"brightness": 1.0, "contrast": 1.25},
+        json={"brightness": 1.0, "contrast": 1.25, "saturation": 1.18},
     )
     r = client.post(f"/api/result/{rid}/brightness", json={"brightness": 1.1})
     assert r.status_code == 200
     assert r.json()["contrast"] == pytest.approx(1.25)
+    assert r.json()["saturation"] == pytest.approx(1.18)
     assert r.json()["brightness"] == pytest.approx(1.1)
 
 
@@ -548,6 +590,7 @@ def test_contrast_survives_paid_promote(tmp_path, monkeypatch):
     monkeypatch.setattr(crop, "run_crop_stage", two_tone_crop)
     meta = results.load_meta(rid)
     meta["contrast"] = 1.3  # unpaid slider value (no digital_base yet)
+    meta["saturation"] = 1.2
     results._write_meta(rid, meta)
 
     assert full_render.promote_paid_from_edit_gemini(rid, results.load_meta(rid))
@@ -563,3 +606,4 @@ def test_contrast_survives_paid_promote(tmp_path, monkeypatch):
     assert base_spread == pytest.approx(80, abs=6)
     assert spread((folder / "digital.jpg").read_bytes()) > base_spread + 15
     assert results.load_meta(rid)["contrast"] == pytest.approx(1.3)
+    assert results.load_meta(rid)["saturation"] == pytest.approx(1.2)

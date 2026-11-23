@@ -23,7 +23,14 @@ from . import progress_events as progress_events_mod
 from . import result_email as result_email_mod
 from . import torso as torso_mod
 from .bg import warmup_cutout
-from .brightness import DEFAULT_BRIGHTNESS, DEFAULT_CONTRAST, parse_brightness, parse_contrast
+from .brightness import (
+    DEFAULT_BRIGHTNESS,
+    DEFAULT_CONTRAST,
+    DEFAULT_SATURATION,
+    parse_brightness,
+    parse_contrast,
+    parse_saturation,
+)
 from .crop import encode_jpeg, run_crop_stage
 from .edit import run_edit_stage, run_preview_edit, run_resume_suit_edit
 from . import face_parse as face_parse_mod
@@ -151,6 +158,12 @@ def _result_public_payload(result_id: str, meta: dict) -> dict:
         body["contrast"] = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
     except ValueError:
         body["contrast"] = DEFAULT_CONTRAST
+    try:
+        body["saturation"] = parse_saturation(
+            meta.get("saturation", DEFAULT_SATURATION)
+        )
+    except ValueError:
+        body["saturation"] = DEFAULT_SATURATION
     from . import full_render
 
     body["brightness_editable"] = (
@@ -1348,6 +1361,8 @@ def set_result_brightness(result_id: str, payload: BrightnessBody):
 class AdjustBody(BaseModel):
     brightness: float = Field(..., ge=0.7, le=1.35)
     contrast: float = Field(..., ge=0.7, le=1.35)
+    # Optional so older landing builds keep working during rolling deploy.
+    saturation: float = Field(DEFAULT_SATURATION, ge=0.7, le=1.35)
 
 
 @app.post("/api/result/{result_id}/adjust")
@@ -1364,7 +1379,10 @@ def set_result_adjust(result_id: str, payload: AdjustBody):
         )
     try:
         meta = results_mod.rebake_adjust(
-            result_id, payload.brightness, payload.contrast
+            result_id,
+            payload.brightness,
+            payload.contrast,
+            payload.saturation,
         )
     except FileNotFoundError:
         raise HTTPException(

@@ -20,11 +20,14 @@ from . import results
 from .brightness import (
     DEFAULT_BRIGHTNESS,
     DEFAULT_CONTRAST,
+    DEFAULT_SATURATION,
     apply_adjust,
     is_contrast_dirty,
     is_dirty,
+    is_saturation_dirty,
     parse_brightness,
     parse_contrast,
+    parse_saturation,
 )
 from .pairs import EDIT_GEMINI, resolve_pair_dir
 
@@ -133,9 +136,17 @@ def promote_paid_from_edit_gemini(result_id: str, meta: dict) -> bool:
             contrast = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
         except ValueError:
             contrast = DEFAULT_CONTRAST
-        if is_dirty(brightness) or is_contrast_dirty(contrast):
+        try:
+            saturation = parse_saturation(meta.get("saturation", DEFAULT_SATURATION))
+        except ValueError:
+            saturation = DEFAULT_SATURATION
+        if (
+            is_dirty(brightness)
+            or is_contrast_dirty(contrast)
+            or is_saturation_dirty(saturation)
+        ):
             rgb = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
-            adjusted = apply_adjust(rgb, brightness, contrast)
+            adjusted = apply_adjust(rgb, brightness, contrast, saturation)
             cropped = cv2.cvtColor(np.asarray(adjusted, dtype=np.uint8), cv2.COLOR_RGB2BGR)
             jpeg = encode_jpeg(cropped, max_bytes=jpeg_max, dpi=dpi)
         else:

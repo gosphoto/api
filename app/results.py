@@ -738,11 +738,14 @@ def ensure_view(result_id: str) -> bytes | None:
 
 
 def rebake_adjust(
-    result_id: str, brightness: float, contrast: float
+    result_id: str,
+    brightness: float,
+    contrast: float,
+    saturation: float | None = None,
 ) -> dict[str, Any]:
     """
     Re-render previews (and full digital/print if already present) from
-    digital_base.jpg with the given brightness and contrast, then persist both.
+    digital_base.jpg with brightness / contrast / saturation, then persist them.
 
     Raises FileNotFoundError if the result or digital_base.jpg is missing.
     """
@@ -752,8 +755,11 @@ def rebake_adjust(
     import numpy as np
     from PIL import Image
 
-    from .brightness import apply_adjust
+    from .brightness import DEFAULT_SATURATION, apply_adjust
     from .print_sheet import encode_print_jpeg, make_print_sheet_bgr
+
+    if saturation is None:
+        saturation = DEFAULT_SATURATION
 
     if not is_valid_result_id(result_id):
         raise FileNotFoundError("result not found")
@@ -765,7 +771,10 @@ def rebake_adjust(
 
     with Image.open(io.BytesIO(base_path.read_bytes())) as src:
         adjusted = apply_adjust(
-            src.convert("RGB"), float(brightness), float(contrast)
+            src.convert("RGB"),
+            float(brightness),
+            float(contrast),
+            float(saturation),
         )
         adjusted.load()
     bgr = cv2.cvtColor(np.asarray(adjusted, dtype=np.uint8), cv2.COLOR_RGB2BGR)
@@ -805,6 +814,7 @@ def rebake_adjust(
 
     patch["brightness"] = round(float(brightness), 4)
     patch["contrast"] = round(float(contrast), 4)
+    patch["saturation"] = round(float(saturation), 4)
     # The render above is slow; other writers (set_paid, promote) may have updated meta
     # meanwhile. Re-read and patch only adjustment-related keys (no stale full-dict write).
     fresh = load_meta(result_id)
@@ -816,7 +826,12 @@ def rebake_adjust(
 
 
 def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
-    from .brightness import DEFAULT_CONTRAST, parse_contrast
+    from .brightness import (
+        DEFAULT_CONTRAST,
+        DEFAULT_SATURATION,
+        parse_contrast,
+        parse_saturation,
+    )
 
     meta = load_meta(result_id)
     if meta is None:
@@ -825,4 +840,8 @@ def rebake_brightness(result_id: str, brightness: float) -> dict[str, Any]:
         contrast = parse_contrast(meta.get("contrast", DEFAULT_CONTRAST))
     except ValueError:
         contrast = DEFAULT_CONTRAST
-    return rebake_adjust(result_id, brightness, contrast)
+    try:
+        saturation = parse_saturation(meta.get("saturation", DEFAULT_SATURATION))
+    except ValueError:
+        saturation = DEFAULT_SATURATION
+    return rebake_adjust(result_id, brightness, contrast, saturation)
